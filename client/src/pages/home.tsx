@@ -62,7 +62,7 @@ export default function Home() {
         const data = await response.json();
         console.log("Set path response:", data);
         
-        setUploadedImageUrl(uploadURL || "");
+        setUploadedImageUrl(data.objectPath); // Use our backend proxy path
         setUploadedImagePath(data.objectPath);
         toast({
           title: "Image uploaded successfully",
