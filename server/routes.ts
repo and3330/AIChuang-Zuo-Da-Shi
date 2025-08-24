@@ -144,7 +144,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.log(`API Error Response: ${errorText}`);
+        console.log(`❌ BytePlus API Error ${response.status}:`);
+        console.log(errorText);
         await storage.updateImageGeneration(generationId, {
           status: "failed",
           errorMessage: `API Error: ${response.status} ${errorText}`,
