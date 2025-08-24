@@ -30,9 +30,15 @@ export default function Home() {
   // Poll for generation status
   const { data: generation, isLoading: isPolling } = useQuery<ImageGeneration>({
     queryKey: ["/api/image-generations", currentGenerationId],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/image-generations/${currentGenerationId}`);
+      return response.json();
+    },
     enabled: !!currentGenerationId,
-    refetchInterval: (data: unknown) => {
-      const gen = data as ImageGeneration | undefined;
+    staleTime: 0, // Always fetch fresh data
+    gcTime: 0, // Don't cache data
+    refetchInterval: (query) => {
+      const gen = query.data as ImageGeneration | undefined;
       return (gen?.status === "pending" || gen?.status === "processing") ? 2000 : false;
     },
   });
@@ -99,6 +105,8 @@ export default function Home() {
     },
     onSuccess: (data: ImageGeneration) => {
       setCurrentGenerationId(data.id);
+      // Invalidate any existing cache for this generation
+      queryClient.invalidateQueries({ queryKey: ["/api/image-generations", data.id] });
       toast({
         title: "Generation started",
         description: "Your image is being processed...",
