@@ -130,7 +130,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prompt: generation.prompt,
         image: dataUri,
         response_format: "url",
-        size: "1024x1024",
         seed: generation.seed,
         guidance_scale: generation.guidanceScale,
         watermark: generation.watermark
