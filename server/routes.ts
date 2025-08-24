@@ -115,11 +115,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`Calling BytePlus API with image URL: ${imageUrl}`);
       
-      // Call BytePlus API with alternative endpoints to handle DNS issues
-      const apiEndpoints = [
-        "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations",
-        "https://ark.ap-southeast-1.bytedance.com/api/v3/images/generations"
-      ];
       const requestBody = {
         model: "ep-20250824201751-nm8dh",
         prompt: generation.prompt,
@@ -133,48 +128,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));
 
-      let response;
-      let lastError;
+      // Call BytePlus API
+      const response = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer d3ad50dc-9caf-4bf8-aef3-e2e1b850c0ed`
+        },
+        body: JSON.stringify(requestBody)
+      });
       
-      // Try different API endpoints to handle DNS issues
-      for (let endpointIndex = 0; endpointIndex < apiEndpoints.length; endpointIndex++) {
-        const apiUrl = apiEndpoints[endpointIndex];
-        
-        // Retry each endpoint up to 2 times
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          try {
-            console.log(`Endpoint ${endpointIndex + 1}, Attempt ${attempt}: Calling ${apiUrl}...`);
-            response = await fetch(apiUrl, {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": `Bearer d3ad50dc-9caf-4bf8-aef3-e2e1b850c0ed`
-              },
-              body: JSON.stringify(requestBody)
-            });
-            
-            console.log(`API response status: ${response.status}`);
-            break; // Success - exit retry loop
-            
-          } catch (error) {
-            lastError = error;
-            console.error(`Endpoint ${endpointIndex + 1}, Attempt ${attempt} failed:`, error);
-            
-            if (attempt < 2) {
-              console.log(`Waiting 1 second before retry...`);
-              await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-          }
-        }
-        
-        if (response) {
-          break; // Success - exit endpoint loop
-        }
-      }
-      
-      if (!response) {
-        throw lastError || new Error("Failed to connect to BytePlus API after 3 attempts");
-      }
+      console.log(`API response status: ${response.status}`);
 
       const processingTime = (Date.now() - startTime) / 1000;
 
