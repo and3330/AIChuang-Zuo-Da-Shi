@@ -109,19 +109,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const startTime = Date.now();
       
+      // Get the full image URL for BytePlus API
+      const replyDomain = process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000';
+      const imageUrl = `https://${replyDomain}${generation.originalImageUrl}`;
+      
+      console.log(`Calling BytePlus API with image URL: ${imageUrl}`);
+      
       // Call BytePlus API
-      const response = await fetch("https://ark.ap-southeast-bytepluses.com/api/v3/images/generations", {
+      const response = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${process.env.ARK_API_KEY || process.env.BYTEPLUS_API_KEY || "d3ad50dc-9caf-4bf8-aef3-e2e1b850c0ed"}`
+          "Authorization": `Bearer d3ad50dc-9caf-4bf8-aef3-e2e1b850c0ed`
         },
         body: JSON.stringify({
           model: "ep-20250824201751-nm8dh",
           prompt: generation.prompt,
-          image: `${process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000'}${generation.originalImageUrl}`,
+          image: imageUrl,
           response_format: "url",
-          size: "adaptive",
+          size: "1024x1024",
           seed: generation.seed,
           guidance_scale: generation.guidanceScale,
           watermark: generation.watermark
