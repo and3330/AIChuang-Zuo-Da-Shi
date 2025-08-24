@@ -14,12 +14,15 @@ import type { UploadResult } from "@uppy/core";
 import type { ImageGeneration } from "@shared/schema";
 
 export default function Home() {
+  const [mode, setMode] = useState<"image-to-image" | "text-to-image">("image-to-image");
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
   const [uploadedImagePath, setUploadedImagePath] = useState<string>("");
   const [prompt, setPrompt] = useState("Make the bubbles heart-shaped");
+  const [textPrompt, setTextPrompt] = useState("A beautiful landscape with mountains and a lake at sunset");
   const [guidanceScale, setGuidanceScale] = useState(5.5);
   const [seed, setSeed] = useState(21);
   const [watermark, setWatermark] = useState(true);
+  const [size, setSize] = useState("1024x1024");
   const [currentGenerationId, setCurrentGenerationId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   
@@ -93,13 +96,7 @@ export default function Home() {
   };
 
   const generateMutation = useMutation({
-    mutationFn: async (data: {
-      originalImageUrl: string;
-      prompt: string;
-      guidanceScale: number;
-      seed: number;
-      watermark: boolean;
-    }) => {
+    mutationFn: async (data: any) => {
       const response = await apiRequest("POST", "/api/image-generations", data);
       return response.json();
     },
@@ -123,22 +120,43 @@ export default function Home() {
   });
 
   const handleGenerate = () => {
-    if (!uploadedImagePath || !prompt.trim()) {
-      toast({
-        title: "Missing information",
-        description: "Please upload an image and enter a prompt.",
-        variant: "destructive",
-      });
-      return;
-    }
+    if (mode === "image-to-image") {
+      if (!uploadedImagePath || !prompt.trim()) {
+        toast({
+          title: "Missing information",
+          description: "Please upload an image and enter a prompt.",
+          variant: "destructive",
+        });
+        return;
+      }
 
-    generateMutation.mutate({
-      originalImageUrl: uploadedImagePath,
-      prompt: prompt.trim(),
-      guidanceScale,
-      seed,
-      watermark,
-    });
+      generateMutation.mutate({
+        type: "image-to-image",
+        originalImageUrl: uploadedImagePath,
+        prompt: prompt.trim(),
+        guidanceScale,
+        seed,
+        watermark,
+      });
+    } else {
+      if (!textPrompt.trim()) {
+        toast({
+          title: "Missing prompt",
+          description: "Please enter a text prompt for image generation.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      generateMutation.mutate({
+        type: "text-to-image",
+        prompt: textPrompt.trim(),
+        guidanceScale,
+        seed,
+        watermark,
+        size,
+      });
+    }
   };
 
   const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -191,13 +209,56 @@ export default function Home() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
-          {/* Upload Section */}
+          {/* Mode Selection */}
           <Card className="bg-surface rounded-xl shadow-sm border border-gray-200">
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
-                <i className="fas fa-upload text-primary mr-2"></i>
-                Upload Your Image
+                <i className="fas fa-magic text-primary mr-2"></i>
+                Choose Generation Mode
               </h2>
+              <div className="flex space-x-4">
+                <button
+                  onClick={() => setMode("image-to-image")}
+                  className={`flex-1 p-4 rounded-lg border-2 transition-all duration-200 ${
+                    mode === "image-to-image"
+                      ? "border-primary bg-blue-50 text-primary"
+                      : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                  }`}
+                  data-testid="mode-image-to-image"
+                >
+                  <div className="text-center">
+                    <i className="fas fa-image text-2xl mb-2"></i>
+                    <div className="font-semibold">Image to Image</div>
+                    <div className="text-sm opacity-80">Edit existing images with AI</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setMode("text-to-image")}
+                  className={`flex-1 p-4 rounded-lg border-2 transition-all duration-200 ${
+                    mode === "text-to-image"
+                      ? "border-primary bg-blue-50 text-primary"
+                      : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                  }`}
+                  data-testid="mode-text-to-image"
+                >
+                  <div className="text-center">
+                    <i className="fas fa-pencil-alt text-2xl mb-2"></i>
+                    <div className="font-semibold">Text to Image</div>
+                    <div className="text-sm opacity-80">Create images from text descriptions</div>
+                  </div>
+                </button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Input Section */}
+          {mode === "image-to-image" ? (
+            <Card className="bg-surface rounded-xl shadow-sm border border-gray-200">
+              <CardContent className="p-6">
+                <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
+                  <i className="fas fa-upload text-primary mr-2"></i>
+                  Upload Your Image
+                </h2>
               
               {!uploadedImageUrl ? (
                 <div className="space-y-4">
@@ -266,8 +327,66 @@ export default function Home() {
               )}
             </CardContent>
           </Card>
+          ) : (
+            <Card className="bg-surface rounded-xl shadow-sm border border-gray-200">
+              <CardContent className="p-6">
+                <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
+                  <i className="fas fa-pencil-alt text-primary mr-2"></i>
+                  Text to Image Generation
+                </h2>
+                
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="textPromptInput" className="text-sm font-medium text-secondary">
+                      Describe the image you want to create
+                    </Label>
+                    <Textarea 
+                      id="textPromptInput"
+                      rows={4}
+                      className="mt-2 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+                      placeholder="e.g., A beautiful landscape with mountains and a lake at sunset, realistic style, high quality..."
+                      value={textPrompt}
+                      onChange={(e) => setTextPrompt(e.target.value)}
+                      data-testid="textarea-text-prompt"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Be detailed and specific about what you want to see in the generated image</p>
+                  </div>
 
-          {/* Prompt Section */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm font-medium text-secondary">Image Size</Label>
+                      <select 
+                        value={size} 
+                        onChange={(e) => setSize(e.target.value)}
+                        className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        data-testid="select-size"
+                      >
+                        <option value="1024x1024">1024x1024 (Square)</option>
+                        <option value="1024x768">1024x768 (Landscape)</option>
+                        <option value="768x1024">768x1024 (Portrait)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-sm font-medium text-secondary">Guidance Scale</Label>
+                      <Input 
+                        type="number" 
+                        min="1" 
+                        max="20" 
+                        value={guidanceScale} 
+                        step="0.5"
+                        className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                        onChange={(e) => setGuidanceScale(parseFloat(e.target.value))}
+                        data-testid="input-guidance-scale"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Prompt Section for Image-to-Image */}
+          {mode === "image-to-image" && (
           <Card className="bg-surface rounded-xl shadow-sm border border-gray-200">
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
@@ -351,17 +470,29 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
+          )}
 
           {/* Generate Button */}
           <div className="flex justify-center">
             <Button
               onClick={handleGenerate}
-              disabled={!uploadedImagePath || !prompt.trim() || isGenerating}
+              disabled={
+                (mode === "image-to-image" && (!uploadedImagePath || !prompt.trim())) ||
+                (mode === "text-to-image" && !textPrompt.trim()) ||
+                isGenerating
+              }
               className="bg-primary hover:bg-blue-800 text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center space-x-3"
               data-testid="button-generate"
             >
               <i className="fas fa-magic"></i>
-              <span>{isGenerating ? "Generating..." : "Generate AI Edit"}</span>
+              <span>
+                {isGenerating 
+                  ? "Generating..." 
+                  : mode === "text-to-image" 
+                    ? "Generate Image" 
+                    : "Generate AI Edit"
+                }
+              </span>
             </Button>
           </div>
 

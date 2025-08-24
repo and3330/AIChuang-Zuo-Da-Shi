@@ -11,12 +11,14 @@ export const users = pgTable("users", {
 
 export const imageGenerations = pgTable("image_generations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  originalImageUrl: text("original_image_url").notNull(),
+  type: text("type").notNull().default("image-to-image"), // image-to-image, text-to-image
+  originalImageUrl: text("original_image_url"), // Optional for text-to-image
   generatedImageUrl: text("generated_image_url"),
   prompt: text("prompt").notNull(),
   guidanceScale: real("guidance_scale").default(5.5),
   seed: real("seed").default(21),
   watermark: boolean("watermark").default(true),
+  size: text("size").default("1024x1024"), // For text-to-image
   status: text("status").notNull().default("pending"), // pending, processing, completed, failed
   errorMessage: text("error_message"),
   processingTime: real("processing_time"),
@@ -30,14 +32,40 @@ export const insertUserSchema = createInsertSchema(users).pick({
 });
 
 export const insertImageGenerationSchema = createInsertSchema(imageGenerations).pick({
+  type: true,
   originalImageUrl: true,
   prompt: true,
   guidanceScale: true,
   seed: true,
   watermark: true,
+  size: true,
+});
+
+// Text-to-image specific schema
+export const insertTextToImageSchema = createInsertSchema(imageGenerations).pick({
+  prompt: true,
+  guidanceScale: true,
+  seed: true,
+  watermark: true,
+  size: true,
+}).extend({
+  type: z.literal("text-to-image")
+});
+
+// Image-to-image specific schema  
+export const insertImageToImageSchema = createInsertSchema(imageGenerations).pick({
+  originalImageUrl: true,
+  prompt: true,
+  guidanceScale: true,
+  seed: true,
+  watermark: true,
+}).extend({
+  type: z.literal("image-to-image")
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertImageGeneration = z.infer<typeof insertImageGenerationSchema>;
+export type InsertTextToImage = z.infer<typeof insertTextToImageSchema>;
+export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
 export type ImageGeneration = typeof imageGenerations.$inferSelect;

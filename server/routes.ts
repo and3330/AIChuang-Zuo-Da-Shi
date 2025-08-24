@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertImageGenerationSchema } from "@shared/schema";
+import { insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -62,7 +62,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new image generation request
   app.post("/api/image-generations", async (req, res) => {
     try {
-      const validatedData = insertImageGenerationSchema.parse(req.body);
+      // Validate request body based on type
+      const requestType = req.body.type || "image-to-image";
+      let validatedData;
+      
+      if (requestType === "text-to-image") {
+        validatedData = insertTextToImageSchema.parse(req.body);
+      } else {
+        validatedData = insertImageToImageSchema.parse(req.body);
+      }
+      
       const generation = await storage.createImageGeneration(validatedData);
       
       // Start processing in background
@@ -109,38 +118,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const startTime = Date.now();
       
-      // Get image as base64 (BytePlus cannot access Replit domains directly)
-      const localImageUrl = `http://localhost:5000${generation.originalImageUrl}`;
+      let requestBody: any;
+      let apiKey: string | undefined;
       
-      console.log(`Getting image from: ${localImageUrl}`);
-      
-      const imageResponse = await fetch(localImageUrl);
-      if (!imageResponse.ok) {
-        throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+      if (generation.type === "text-to-image") {
+        // Text-to-image generation
+        requestBody = {
+          model: "ep-20250813133320-b7ht8",
+          prompt: generation.prompt,
+          response_format: "url",
+          size: generation.size || "1024x1024",
+          guidance_scale: generation.guidanceScale || 3,
+          watermark: generation.watermark
+        };
+        apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY;
+      } else {
+        // Image-to-image generation
+        if (!generation.originalImageUrl) {
+          throw new Error("Original image URL is required for image-to-image generation");
+        }
+        
+        // Get image as base64 (BytePlus cannot access Replit domains directly)
+        const localImageUrl = `http://localhost:5000${generation.originalImageUrl}`;
+        
+        console.log(`Getting image from: ${localImageUrl}`);
+        
+        const imageResponse = await fetch(localImageUrl);
+        if (!imageResponse.ok) {
+          throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+        }
+        
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const base64Image = Buffer.from(imageBuffer).toString('base64');
+        const dataUri = `data:image/jpeg;base64,${base64Image}`;
+        
+        console.log(`✅ Image converted to base64 (${base64Image.length} chars)`);
+        
+        requestBody = {
+          model: "ep-20250824201751-nm8dh",
+          prompt: generation.prompt,
+          image: dataUri,
+          response_format: "url",
+          seed: generation.seed,
+          guidance_scale: generation.guidanceScale,
+          watermark: generation.watermark
+        };
+        apiKey = process.env.ARK_API_KEY;
       }
-      
-      const imageBuffer = await imageResponse.arrayBuffer();
-      const base64Image = Buffer.from(imageBuffer).toString('base64');
-      const dataUri = `data:image/jpeg;base64,${base64Image}`;
-      
-      console.log(`✅ Image converted to base64 (${base64Image.length} chars)`);
-      
-      const requestBody = {
-        model: "ep-20250824201751-nm8dh",
-        prompt: generation.prompt,
-        image: dataUri,
-        response_format: "url",
-        seed: generation.seed,
-        guidance_scale: generation.guidanceScale,
-        watermark: generation.watermark
-      };
 
       console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));
 
-      // Call BytePlus API
-      const apiKey = process.env.ARK_API_KEY;
       if (!apiKey) {
-        throw new Error("ARK_API_KEY environment variable is not set");
+        throw new Error(`API key is not set for ${generation.type}`);
       }
       
       const response = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
