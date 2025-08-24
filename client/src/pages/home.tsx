@@ -38,7 +38,7 @@ export default function Home() {
     staleTime: 0, // Always fetch fresh data
     gcTime: 0, // Don't cache data
     refetchInterval: (query) => {
-      const gen = query.data as ImageGeneration | undefined;
+      const gen = query.state.data as ImageGeneration | undefined;
       return (gen?.status === "pending" || gen?.status === "processing") ? 2000 : false;
     },
   });

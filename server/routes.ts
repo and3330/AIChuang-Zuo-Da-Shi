@@ -138,11 +138,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));
 
       // Call BytePlus API
+      const apiKey = process.env.ARK_API_KEY;
+      if (!apiKey) {
+        throw new Error("ARK_API_KEY environment variable is not set");
+      }
+      
       const response = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer d3ad50dc-9caf-4bf8-aef3-e2e1b850c0ed`
+          "Authorization": `Bearer ${apiKey}`
         },
         body: JSON.stringify(requestBody)
       });
