@@ -48,7 +48,10 @@ export class MemStorage implements IStorage {
       errorMessage: null,
       processingTime: null,
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      seed: insertGeneration.seed ?? 21,
+      guidanceScale: insertGeneration.guidanceScale ?? 5.5,
+      watermark: insertGeneration.watermark ?? true
     };
     this.imageGenerations.set(id, generation);
     return generation;
@@ -73,7 +76,7 @@ export class MemStorage implements IStorage {
 
   async getAllImageGenerations(): Promise<ImageGeneration[]> {
     return Array.from(this.imageGenerations.values()).sort(
-      (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
+      (a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
     );
   }
 }

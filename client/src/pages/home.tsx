@@ -28,12 +28,12 @@ export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Poll for generation status
-  const { data: generation, isLoading: isPolling } = useQuery({
+  const { data: generation, isLoading: isPolling } = useQuery<ImageGeneration>({
     queryKey: ["/api/image-generations", currentGenerationId],
     enabled: !!currentGenerationId,
-    refetchInterval: (data) => {
-      const gen = data as ImageGeneration;
-      return gen?.status === "pending" || gen?.status === "processing" ? 2000 : false;
+    refetchInterval: (data: unknown) => {
+      const gen = data as ImageGeneration | undefined;
+      return (gen?.status === "pending" || gen?.status === "processing") ? 2000 : false;
     },
   });
 
@@ -46,7 +46,7 @@ export default function Home() {
     };
   };
 
-  const handleUploadComplete = async (result: UploadResult) => {
+  const handleUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
     if (result.successful && result.successful[0]) {
       const uploadURL = result.successful[0].uploadURL;
       
@@ -56,7 +56,7 @@ export default function Home() {
         });
         const data = await response.json();
         
-        setUploadedImageUrl(uploadURL);
+        setUploadedImageUrl(uploadURL || "");
         setUploadedImagePath(data.objectPath);
         toast({
           title: "Image uploaded successfully",
