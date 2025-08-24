@@ -38,8 +38,10 @@ export default function Home() {
   });
 
   const handleGetUploadParameters = async () => {
+    console.log("Getting upload parameters...");
     const response = await apiRequest("POST", "/api/objects/upload");
     const data = await response.json();
+    console.log("Upload parameters:", data);
     return {
       method: "PUT" as const,
       url: data.uploadURL,
@@ -47,14 +49,18 @@ export default function Home() {
   };
 
   const handleUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
+    console.log("Upload complete result:", result);
+    
     if (result.successful && result.successful[0]) {
       const uploadURL = result.successful[0].uploadURL;
+      console.log("Upload URL:", uploadURL);
       
       try {
         const response = await apiRequest("PUT", "/api/objects/set-path", {
           imageURL: uploadURL,
         });
         const data = await response.json();
+        console.log("Set path response:", data);
         
         setUploadedImageUrl(uploadURL || "");
         setUploadedImagePath(data.objectPath);
@@ -70,6 +76,13 @@ export default function Home() {
           variant: "destructive",
         });
       }
+    } else {
+      console.error("Upload failed:", result);
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload image.",
+        variant: "destructive",
+      });
     }
   };
 
