@@ -109,16 +109,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const startTime = Date.now();
       
-      // Get the full image URL for BytePlus API
-      const replyDomain = process.env.REPLIT_DOMAINS?.split(',')[0] || 'localhost:5000';
-      const imageUrl = `https://${replyDomain}${generation.originalImageUrl}`;
+      // Get image as base64 (BytePlus cannot access Replit domains directly)
+      const localImageUrl = `http://localhost:5000${generation.originalImageUrl}`;
       
-      console.log(`Calling BytePlus API with image URL: ${imageUrl}`);
+      console.log(`Getting image from: ${localImageUrl}`);
+      
+      const imageResponse = await fetch(localImageUrl);
+      if (!imageResponse.ok) {
+        throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+      }
+      
+      const imageBuffer = await imageResponse.arrayBuffer();
+      const base64Image = Buffer.from(imageBuffer).toString('base64');
+      const dataUri = `data:image/jpeg;base64,${base64Image}`;
+      
+      console.log(`✅ Image converted to base64 (${base64Image.length} chars)`);
       
       const requestBody = {
         model: "ep-20250824201751-nm8dh",
         prompt: generation.prompt,
-        image: imageUrl,
+        image: dataUri,
         response_format: "url",
         size: "1024x1024",
         seed: generation.seed,

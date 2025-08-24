@@ -1,0 +1,185 @@
+官方Seedance 1.0 API上线！注册免费领取200万Token，体验Top级视频模型！
+官方Seedance 1.0 API上线！注册免费领取200万Token，体验Top级视频模型！
+N
+ModelArk
+文档首页
+/
+ModelArk
+/
+Console Function
+/
+Online Inference
+/
+Viewing and managing inference endpoints
+在本产品文档中搜索
+Viewing and managing inference endpoints
+更新时间： 2025年2月28日 14:05:31首次发布时间： 2025年1月23日 14:39:59
+
+Viewing and managing model inference
+Log in to ModelArk and click Online inference in the left navigation bar to go to the list page. The list page displays the name, status, create time, and admin information for each endpoint. You can perform actions including API call, trial, stop, and delete.
+Image
+
+On the Online inference page, you can search by endpoint name, model name, and endpoint id.
+The following table describes the statuses of inference endpoints.
+Parameter
+
+Description
+
+Endpoint status
+
+Scheduling: The backend resource is being scheduled. It may be in a queue or has been started.
+
+Healthy: The endpoint is in normal status and can be called properly.
+
+This parameter does not indicate the endpoint load. If the rate limit is exceeded, the status may still be healthy, but the service will return an error.
+
+Stopped: The user stops the access.
+
+Abnormal: The connected model is abnormal. You can submit a work order for handling at the backend.
+
+
+Viewing inference endpoint details
+Click the name of an inference endpoint to access its details page, where you can view the overview, monitoring, API calls, and other information of the endpoint.
+
+Overview
+You can view the model information of the endpoint.
+
+Basic information: connected model, rate limits, creator, and other information.
+Billing information: billing type and input/output price.
+Associated agents.
+Click ··· in the upper right corner to edit information or delete the service. Note that you can change the model version but not the base model.
+Check whether the rate limits of the endpoint meet your needs in the specific scenarios. If not, you can follow the front-end instructions to submit a work order to customer service.
+
+API calls
+This page displays the two authorization methods for API calls.
+Method 1: API key After creating an API key on ModelArk, use the API key to obtain the service call permission of the corresponding endpoint.
+You can obtain the API key on the API key management page, configure environment variables, and refer to the sample API to call the endpoint.
+ImageMethod 2: Authorize by BytePlus IAM. After permissions are granted for subaccounts on IAM, the access key and secret access key in the API access of the subaccount can be used for resource-level authentication, which is more secure and controllable.
+After obtaining authorization, you can use the multilingual SDK provided by the platform to initiate calls after configuring the access key and secret access key in environment variables.
+Image
+
+
+Monitoring configuration
+This page displays the tokens per minute (TPM), API latency, error rate, streaming first frame latency, streaming non-first token latency, and non-streaming latency. To view monitoring data, you need to perform three steps: Enable the VMP service, authorize cross-service access, and select a workspace.
+Image
+
+1. Activate the VMP service and create a workspace
+VMP: BytePlus managed services for Prometheus
+
+Click Activate in step 1 to go to the VMP activation application page. Read and confirm the service overview and billing method, and then click Apply for activation. After the service is activated, click View product details to enter the VMP configuration page.
+Note
+You need VMPFullAccess to complete this configuration. You can configure the permission through IAM in the upper right corner of the console.
+If you purchase a standard VMP workspace, you will not be charged for the monitoring metrics collected by ModelArk. For VMP billing details, see Billing Details.
+
+
+2. Authorize cross-service access
+Cross-service access requires activation of the VMP service. If this service has been activated in step 1, cross-service access will be authorized automatically.
+
+3. Select the workspace
+Associate the workspace configured in step 1 with the endpoint. After you click Save, the Monitoring tab appears.
+Image
+
+Metric alerting configuration
+
+Prerequisites
+For detailed instructions on BytePlus authorization, see https://docs.byteplus.com/en/docs/byteplus-platform/docs-what-is-the-policy-syntax .
+
+If alert rules need to be configured for a subaccount, the VMPFullAccess permission of the account is required. If you only have VMPReadOnlyAccess, the following API permissions need to be added:
+
+VMP: CreateAlertingRuleGroup, which creates alert rule groups via an alert template.
+VMP: UpdateAlertingRuleGroup, which updates alert rule groups.
+VMP: UpgradeAlertingRuleGroups, which upgrades alert rule groups based on the latest alert template.
+VMP: DeleteAlertingRuleGroup, which deletes alert rule groups.
+
+Creating an alert rule group
+Click Configure metric alert in the upper right corner of the Monitoring tab to go to the alert configuration page.
+
+For Template category, select ARK. You can view predefined alert templates. If existing alert templates do not meet your needs, you can configure your own template based on the VMP Creating an alert rule. Then, click Next to go to the basic information page.
+Basic information includes the alert name, associated workspace, applicable endpoint IDs, notification policy, and aggregation policy. After the configuration is completed, click Next to configure the alert rule.
+Configuration has been set based on the selected template. You can make adjustments as needed. Then, click OK.
+Configured alert rules can be edited or deleted.
+
+Alert notification
+Notifications can be sent via email or SMS. For more information, see Alert Center.
+
+Monitoring
+This page displays the TPM, API latency, error rate, first token latency, non-first token latency, token input length, and token output length.
+Image
+
+
+上一篇
+Get Endpoint ID
+下一篇
+Free Tokens Only Mode
+Viewing and managing model inference
+Viewing inference endpoint details
+Overview
+API calls
+Monitoring configuration
+1. Activate the VMP service and create a workspace
+2. Authorize cross-service access
+3. Select the workspace
+Metric alerting configuration
+Prerequisites
+Creating an alert rule group
+Alert notification
+Monitoring
+鼠标选中内容，快速反馈问题
+选中存在疑惑的内容，即可快速反馈问题，我们将会跟进处理
+不再提示
+好的，知道了
+产品
+精选
+人工智能与推荐
+计算
+容器与中间件
+内容交付
+数据分析
+数据库
+企业云服务
+媒体服务
+网络
+安全
+存储
+解决方案
+按行业
+按场景
+支持和资源
+BytePlus免费套餐
+AI初创公司加速器
+BytePlus概念
+博客
+客户成功
+洞察
+活动
+文档
+Report abuse
+网站地图
+公司
+关于我们
+信任中心
+合作伙伴网络
+合作伙伴中心
+人才招聘
+联系我们
+联系我们
+更多支持
+免费开始
+成为合作伙伴
+BytePlus Discord 社区
+BytePlus YouTube
+在LinkedIn上关注
+在X上关注
+© 2025 BytePlus私人有限公司。
+•
+服务条款
+•
+隐私政策
+•
+Cookie 设置
+来自字节跳动的AI原生企业合作伙伴
+ByteDance logo
+BytePlus Discord 社区
+BytePlus YouTube
+在LinkedIn上关注
+在X上关注
