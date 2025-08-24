@@ -144,6 +144,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.log(`API Error Response: ${errorText}`);
         await storage.updateImageGeneration(generationId, {
           status: "failed",
           errorMessage: `API Error: ${response.status} ${errorText}`,
