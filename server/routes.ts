@@ -131,7 +131,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           guidance_scale: generation.guidanceScale || 3,
           watermark: generation.watermark
         };
-        apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY;
+        apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY || "b1630e23-c442-4f01-a257-c5a6d51aa8dc";
       } else {
         // Image-to-image generation
         if (!generation.originalImageUrl) {
@@ -163,11 +163,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           guidance_scale: generation.guidanceScale,
           watermark: generation.watermark
         };
-        apiKey = process.env.ARK_API_KEY;
+        apiKey = process.env.ARK_API_KEY || "d3ad50dc-9caf-4bf8-aef3-e2e1b850c0ed";
       }
 
       console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));
 
+      console.log(`Using API key for ${generation.type}: ${apiKey ? 'SET' : 'NOT SET'}`);
+      
       if (!apiKey) {
         throw new Error(`API key is not set for ${generation.type}`);
       }
