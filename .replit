@@ -44,3 +44,6 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_object_storage==1.0.0"]
+
+[objectStorage]
+defaultBucketID = "replit-objstore-dc18d145-1463-4301-b961-549c5a8950ef"

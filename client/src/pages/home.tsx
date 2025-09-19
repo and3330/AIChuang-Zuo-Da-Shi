@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { ObjectUploader } from "@/components/ObjectUploader";
@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { UploadResult } from "@uppy/core";
 import type { ImageGeneration } from "@shared/schema";
@@ -25,6 +26,7 @@ export default function Home() {
   const [size, setSize] = useState("1:1");
   const [currentGenerationId, setCurrentGenerationId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -615,16 +617,61 @@ export default function Home() {
                       <i className="fas fa-sparkles text-accent mr-2"></i>
                       AI Generated Result
                     </h3>
-                    <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative">
-                      <img 
-                        src={generation.generatedImageUrl} 
-                        alt="AI generated result" 
-                        className="w-full h-full object-cover" 
-                        data-testid="img-generated"
-                      />
-                      <div className="absolute top-3 right-3">
-                        <span className="bg-accent text-white text-xs px-2 py-1 rounded-full font-medium">NEW</span>
-                      </div>
+                    <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
+                      <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
+                        <DialogTrigger asChild>
+                          <div 
+                            className="relative cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg"
+                            onClick={() => setIsLightboxOpen(true)}
+                            data-testid="lightbox-trigger"
+                            role="button"
+                            tabIndex={0}
+                            aria-label="Click to view full-size image"
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                setIsLightboxOpen(true);
+                              }
+                            }}
+                          >
+                            <img 
+                              src={generation.generatedImageUrl} 
+                              alt="AI generated result" 
+                              className="w-full h-full object-cover transition-all duration-200" 
+                              data-testid="img-generated"
+                            />
+                            {/* Zoom icon overlay */}
+                            <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+                              <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white bg-opacity-90 rounded-full p-3 transform scale-75 group-hover:scale-100 transition-transform">
+                                <i className="fas fa-search-plus text-gray-700 text-xl" aria-hidden="true"></i>
+                              </div>
+                            </div>
+                            {/* NEW badge */}
+                            <div className="absolute top-3 right-3 z-10">
+                              <span className="bg-accent text-white text-xs px-2 py-1 rounded-full font-medium">NEW</span>
+                            </div>
+                          </div>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 bg-transparent border-0 shadow-none">
+                          <div className="relative flex items-center justify-center w-full h-full">
+                            <img 
+                              src={generation.generatedImageUrl} 
+                              alt="AI generated result - Full size" 
+                              className="max-w-full max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+                              data-testid="img-lightbox"
+                            />
+                            {/* Close button - positioned outside the image */}
+                            <button
+                              onClick={() => setIsLightboxOpen(false)}
+                              className="absolute top-4 right-4 bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-700 hover:text-gray-900 rounded-full p-2 transition-all duration-200 shadow-lg z-10"
+                              aria-label="Close lightbox"
+                              data-testid="button-close-lightbox"
+                            >
+                              <i className="fas fa-times text-lg" aria-hidden="true"></i>
+                            </button>
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     </div>
                   </div>
                 </div>
