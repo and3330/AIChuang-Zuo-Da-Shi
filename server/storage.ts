@@ -10,6 +10,7 @@ export interface IStorage {
   getImageGeneration(id: string): Promise<ImageGeneration | undefined>;
   updateImageGeneration(id: string, updates: Partial<ImageGeneration>): Promise<ImageGeneration | undefined>;
   getAllImageGenerations(): Promise<ImageGeneration[]>;
+  getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
 }
 
 export class MemStorage implements IStorage {
@@ -41,17 +42,21 @@ export class MemStorage implements IStorage {
   async createImageGeneration(insertGeneration: InsertImageGeneration): Promise<ImageGeneration> {
     const id = randomUUID();
     const generation: ImageGeneration = {
-      ...insertGeneration,
       id,
+      type: insertGeneration.type ?? "image-to-image",
+      originalImageUrl: insertGeneration.originalImageUrl ?? null,
       generatedImageUrl: null,
+      prompt: insertGeneration.prompt,
+      guidanceScale: insertGeneration.guidanceScale ?? 5.5,
+      seed: insertGeneration.seed ?? 21,
+      watermark: insertGeneration.watermark ?? true,
+      size: insertGeneration.size ?? "1:1",
       status: "pending",
       errorMessage: null,
       processingTime: null,
+      cost: 0.03,
       createdAt: new Date(),
-      updatedAt: new Date(),
-      seed: insertGeneration.seed ?? 21,
-      guidanceScale: insertGeneration.guidanceScale ?? 5.5,
-      watermark: insertGeneration.watermark ?? true
+      updatedAt: new Date()
     };
     this.imageGenerations.set(id, generation);
     return generation;
@@ -78,6 +83,13 @@ export class MemStorage implements IStorage {
     return Array.from(this.imageGenerations.values()).sort(
       (a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
     );
+  }
+
+  async getStats(): Promise<{ totalGenerations: number; totalCost: number }> {
+    const generations = Array.from(this.imageGenerations.values());
+    const totalGenerations = generations.length;
+    const totalCost = generations.reduce((sum, gen) => sum + (gen.cost || 0), 0);
+    return { totalGenerations, totalCost };
   }
 }
 

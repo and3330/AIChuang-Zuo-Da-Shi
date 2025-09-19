@@ -30,6 +30,12 @@ export default function Home() {
   const queryClient = useQueryClient();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Fetch statistics
+  const { data: stats } = useQuery<{ totalGenerations: number; totalCost: number }>({
+    queryKey: ["/api/stats"],
+    refetchInterval: 5000, // Refresh stats every 5 seconds
+  });
+
   // Poll for generation status
   const { data: generation, isLoading: isPolling } = useQuery<ImageGeneration>({
     queryKey: ["/api/image-generations", currentGenerationId],
@@ -104,6 +110,8 @@ export default function Home() {
       setCurrentGenerationId(data.id);
       // Invalidate any existing cache for this generation
       queryClient.invalidateQueries({ queryKey: ["/api/image-generations", data.id] });
+      // Invalidate stats to update the count and cost
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       toast({
         title: "Generation started",
         description: "Your image is being processed...",
@@ -209,6 +217,36 @@ export default function Home() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
+          {/* Cost Statistics Card */}
+          <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl shadow-sm">
+            <CardContent className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center">
+                    <i className="fas fa-images text-primary text-xl"></i>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Total Images Generated</p>
+                    <p className="text-2xl font-bold text-secondary" data-testid="text-total-generations">
+                      {stats?.totalGenerations ?? 0}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center">
+                    <i className="fas fa-dollar-sign text-green-600 text-xl"></i>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">Total Cost</p>
+                    <p className="text-2xl font-bold text-secondary" data-testid="text-total-cost">
+                      ${(stats?.totalCost ?? 0).toFixed(2)}
+                    </p>
+                    <p className="text-xs text-gray-500">$0.03 per image</p>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
           {/* Mode Selection */}
           <Card className="bg-surface rounded-xl shadow-sm border border-gray-200">
             <CardContent className="p-6">

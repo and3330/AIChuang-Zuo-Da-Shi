@@ -22,6 +22,7 @@ export const imageGenerations = pgTable("image_generations", {
   status: text("status").notNull().default("pending"), // pending, processing, completed, failed
   errorMessage: text("error_message"),
   processingTime: real("processing_time"),
+  cost: real("cost").default(0.03),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

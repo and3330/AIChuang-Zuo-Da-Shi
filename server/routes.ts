@@ -109,6 +109,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get statistics
+  app.get("/api/stats", async (req, res) => {
+    try {
+      const stats = await storage.getStats();
+      res.json(stats);
+    } catch (error) {
+      console.error("Error getting stats:", error);
+      res.status(500).json({ error: "Failed to get statistics" });
+    }
+  });
+
   async function processImageGeneration(generationId: string) {
     try {
       await storage.updateImageGeneration(generationId, { status: "processing" });
