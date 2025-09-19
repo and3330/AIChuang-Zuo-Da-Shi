@@ -141,7 +141,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           size: generation.size || "1:1",
           sequential_image_generation: "disabled",
           stream: false,
-          guidance_scale: generation.guidanceScale || 3,
           watermark: generation.watermark
         };
         apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY || "e21bc13e-482e-4f28-aa99-8be61cc6f547";
@@ -175,7 +174,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
           sequential_image_generation: "disabled",
           stream: false,
           seed: generation.seed,
-          guidance_scale: generation.guidanceScale,
           watermark: generation.watermark
         };
         apiKey = process.env.ARK_API_KEY || "e21bc13e-482e-4f28-aa99-8be61cc6f547";
