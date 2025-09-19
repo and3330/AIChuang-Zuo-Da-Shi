@@ -14,7 +14,9 @@ function convertAspectRatioToPixelDimensions(aspectRatio: string): string {
     "9:16": "1080x1920",
     "2:3": "683x1024",
     "3:2": "1024x683",
-    "21:9": "2560x1097"
+    "21:9": "2560x1097",
+    "A4": "2480x3508",
+    "A5": "1748x2480"
   };
   
   return sizeMap[aspectRatio] || "1024x1024"; // Default to square if unknown
