@@ -4,6 +4,22 @@ import { storage } from "./storage";
 import { insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
+// Size conversion function to map aspect ratios to pixel dimensions
+function convertAspectRatioToPixelDimensions(aspectRatio: string): string {
+  const sizeMap: Record<string, string> = {
+    "1:1": "1024x1024",
+    "3:4": "768x1024", 
+    "4:3": "1024x768",
+    "16:9": "1920x1080",
+    "9:16": "1080x1920",
+    "2:3": "683x1024",
+    "3:2": "1024x683",
+    "21:9": "2560x1097"
+  };
+  
+  return sizeMap[aspectRatio] || "1024x1024"; // Default to square if unknown
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
 
@@ -134,11 +150,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (generation.type === "text-to-image") {
         // Text-to-image generation
+        const aspectRatio = generation.size || "1:1";
+        const pixelSize = convertAspectRatioToPixelDimensions(aspectRatio);
+        
         requestBody = {
           model: "ep-20250919143350-zlx7d",
           prompt: generation.prompt,
           response_format: "url",
-          size: generation.size || "1:1",
+          size: pixelSize,
           sequential_image_generation: "disabled",
           stream: false,
           watermark: generation.watermark

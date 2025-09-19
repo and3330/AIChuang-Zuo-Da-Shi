@@ -399,14 +399,14 @@ export default function Home() {
                         className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                         data-testid="select-size"
                       >
-                        <option value="1:1">1:1 (Square)</option>
-                        <option value="3:4">3:4 (Portrait)</option>
-                        <option value="4:3">4:3 (Landscape)</option>
-                        <option value="16:9">16:9 (Wide Landscape)</option>
-                        <option value="9:16">9:16 (Tall Portrait)</option>
-                        <option value="2:3">2:3 (Portrait)</option>
-                        <option value="3:2">3:2 (Landscape)</option>
-                        <option value="21:9">21:9 (Ultra Wide)</option>
+                        <option value="1:1">1:1 (1024x1024)</option>
+                        <option value="3:4">3:4 (768x1024)</option>
+                        <option value="4:3">4:3 (1024x768)</option>
+                        <option value="16:9">16:9 (1920x1080)</option>
+                        <option value="9:16">9:16 (1080x1920)</option>
+                        <option value="2:3">2:3 (683x1024)</option>
+                        <option value="3:2">3:2 (1024x683)</option>
+                        <option value="21:9">21:9 (2560x1097)</option>
                       </select>
                     </div>
                     <div>
