@@ -11,6 +11,7 @@ export const users = pgTable("users", {
 
 export const imageGenerations = pgTable("image_generations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: varchar("batch_id"), // For grouping related generations together
   type: text("type").notNull().default("image-to-image"), // image-to-image, text-to-image
   originalImageUrl: text("original_image_url"), // Optional for text-to-image
   generatedImageUrl: text("generated_image_url"),
@@ -34,6 +35,7 @@ export const insertUserSchema = createInsertSchema(users).pick({
 
 export const insertImageGenerationSchema = createInsertSchema(imageGenerations).pick({
   type: true,
+  batchId: true,
   originalImageUrl: true,
   prompt: true,
   guidanceScale: true,
@@ -60,8 +62,19 @@ export const insertImageToImageSchema = createInsertSchema(imageGenerations).pic
   guidanceScale: true,
   seed: true,
   watermark: true,
+  batchId: true,
 }).extend({
   type: z.literal("image-to-image")
+});
+
+// Batch image generation schema
+export const insertBatchImageToImageSchema = z.object({
+  type: z.literal("image-to-image"),
+  originalImageUrl: z.string(),
+  prompts: z.array(z.string()).min(2).max(10),
+  guidanceScale: z.number().optional(),
+  seed: z.number().optional(),
+  watermark: z.boolean().optional(),
 });
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -69,4 +82,5 @@ export type User = typeof users.$inferSelect;
 export type InsertImageGeneration = z.infer<typeof insertImageGenerationSchema>;
 export type InsertTextToImage = z.infer<typeof insertTextToImageSchema>;
 export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
+export type InsertBatchImageToImage = z.infer<typeof insertBatchImageToImageSchema>;
 export type ImageGeneration = typeof imageGenerations.$inferSelect;

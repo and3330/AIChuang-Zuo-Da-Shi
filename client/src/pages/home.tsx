@@ -27,6 +27,11 @@ export default function Home() {
   const [currentGenerationId, setCurrentGenerationId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
+  const [isBatchMode, setIsBatchMode] = useState(false);
+  const [batchCount, setBatchCount] = useState(2);
+  const [batchPrompts, setBatchPrompts] = useState<string[]>(["Make the bubbles heart-shaped", "Change the sky to sunset colors"]);
+  const [currentBatchId, setCurrentBatchId] = useState<string>("");
+  const [batchGenerations, setBatchGenerations] = useState<ImageGeneration[]>([]);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -38,19 +43,43 @@ export default function Home() {
     refetchInterval: 5000, // Refresh stats every 5 seconds
   });
 
-  // Poll for generation status
+  // Poll for generation status (single generation)
   const { data: generation, isLoading: isPolling } = useQuery<ImageGeneration>({
     queryKey: ["/api/image-generations", currentGenerationId],
     queryFn: async () => {
       const response = await apiRequest("GET", `/api/image-generations/${currentGenerationId}`);
       return response.json();
     },
-    enabled: !!currentGenerationId,
+    enabled: !!currentGenerationId && !currentBatchId,
     staleTime: 0, // Always fetch fresh data
     gcTime: 0, // Don't cache data
     refetchInterval: (query) => {
       const gen = query.state.data as ImageGeneration | undefined;
       return (gen?.status === "pending" || gen?.status === "processing") ? 2000 : false;
+    },
+  });
+
+  // Poll for batch generation status
+  const { data: batchData, isLoading: isBatchPolling } = useQuery<{
+    batchId: string;
+    generations: ImageGeneration[];
+    totalCount: number;
+    completedCount: number;
+    failedCount: number;
+    totalCost: number;
+  }>({
+    queryKey: ["/api/batch-generations", currentBatchId],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/batch-generations/${currentBatchId}`);
+      return response.json();
+    },
+    enabled: !!currentBatchId,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasProcessing = data?.generations.some(g => g.status === "pending" || g.status === "processing");
+      return hasProcessing ? 2000 : false;
     },
   });
 
@@ -108,16 +137,31 @@ export default function Home() {
       const response = await apiRequest("POST", "/api/image-generations", data);
       return response.json();
     },
-    onSuccess: (data: ImageGeneration) => {
-      setCurrentGenerationId(data.id);
-      // Invalidate any existing cache for this generation
-      queryClient.invalidateQueries({ queryKey: ["/api/image-generations", data.id] });
+    onSuccess: (data: any) => {
+      if (data.batchId) {
+        // Batch generation response
+        setCurrentBatchId(data.batchId);
+        setCurrentGenerationId("");
+        setBatchGenerations(data.generations);
+        // Invalidate batch cache
+        queryClient.invalidateQueries({ queryKey: ["/api/batch-generations", data.batchId] });
+        toast({
+          title: "Batch generation started",
+          description: `Processing ${data.totalCount} images...`,
+        });
+      } else {
+        // Single generation response
+        setCurrentGenerationId(data.id);
+        setCurrentBatchId("");
+        // Invalidate any existing cache for this generation
+        queryClient.invalidateQueries({ queryKey: ["/api/image-generations", data.id] });
+        toast({
+          title: "Generation started",
+          description: "Your image is being processed...",
+        });
+      }
       // Invalidate stats to update the count and cost
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
-      toast({
-        title: "Generation started",
-        description: "Your image is being processed...",
-      });
     },
     onError: (error) => {
       console.error("Generation error:", error);
@@ -129,25 +173,81 @@ export default function Home() {
     },
   });
 
+  // Helper functions for batch mode
+  const updateBatchPrompt = (index: number, value: string) => {
+    const newPrompts = [...batchPrompts];
+    newPrompts[index] = value;
+    setBatchPrompts(newPrompts);
+  };
+
+  const updateBatchCount = (count: number) => {
+    setBatchCount(count);
+    const newPrompts = [...batchPrompts];
+    
+    if (count > newPrompts.length) {
+      // Add more prompts
+      for (let i = newPrompts.length; i < count; i++) {
+        newPrompts.push(`Variation ${i + 1}`);
+      }
+    } else {
+      // Remove excess prompts
+      newPrompts.splice(count);
+    }
+    
+    setBatchPrompts(newPrompts);
+  };
+
   const handleGenerate = () => {
     if (mode === "image-to-image") {
-      if (!uploadedImagePath || !prompt.trim()) {
+      if (!uploadedImagePath) {
         toast({
-          title: "Missing information",
-          description: "Please upload an image and enter a prompt.",
+          title: "Missing image",
+          description: "Please upload an image first.",
           variant: "destructive",
         });
         return;
       }
 
-      generateMutation.mutate({
-        type: "image-to-image",
-        originalImageUrl: uploadedImagePath,
-        prompt: prompt.trim(),
-        guidanceScale,
-        seed,
-        watermark,
-      });
+      if (isBatchMode) {
+        // Batch generation
+        const validPrompts = batchPrompts.filter(p => p.trim());
+        if (validPrompts.length < 2) {
+          toast({
+            title: "Missing prompts",
+            description: "Please enter at least 2 prompts for batch generation.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        generateMutation.mutate({
+          type: "image-to-image",
+          originalImageUrl: uploadedImagePath,
+          prompts: validPrompts,
+          guidanceScale,
+          seed,
+          watermark,
+        });
+      } else {
+        // Single generation
+        if (!prompt.trim()) {
+          toast({
+            title: "Missing prompt",
+            description: "Please enter a prompt.",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        generateMutation.mutate({
+          type: "image-to-image",
+          originalImageUrl: uploadedImagePath,
+          prompt: prompt.trim(),
+          guidanceScale,
+          seed,
+          watermark,
+        });
+      }
     } else {
       if (!textPrompt.trim()) {
         toast({
@@ -188,12 +288,16 @@ export default function Home() {
     setUploadedImageUrl("");
     setUploadedImagePath("");
     setCurrentGenerationId("");
+    setCurrentBatchId("");
+    setBatchGenerations([]);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
   };
 
-  const isGenerating = generateMutation.isPending || (generation?.status === "pending" || generation?.status === "processing");
+  const isGenerating = generateMutation.isPending || 
+    (generation?.status === "pending" || generation?.status === "processing") ||
+    (batchData?.generations.some(g => g.status === "pending" || g.status === "processing"));
 
   return (
     <div className="bg-background min-h-screen font-inter">
@@ -436,27 +540,103 @@ export default function Home() {
           {mode === "image-to-image" && (
           <Card className="bg-surface rounded-xl shadow-sm border border-gray-200">
             <CardContent className="p-6">
-              <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
-                <i className="fas fa-edit text-primary mr-2"></i>
-                Describe Your Modifications
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-secondary flex items-center">
+                  <i className="fas fa-edit text-primary mr-2"></i>
+                  Describe Your Modifications
+                </h2>
+                
+                {/* Batch Mode Toggle */}
+                <div className="flex items-center space-x-3">
+                  <Label htmlFor="batchToggle" className="text-sm font-medium text-secondary">
+                    Batch Generation
+                  </Label>
+                  <input
+                    id="batchToggle"
+                    type="checkbox"
+                    checked={isBatchMode}
+                    onChange={(e) => {
+                      setIsBatchMode(e.target.checked);
+                      if (e.target.checked) {
+                        updateBatchCount(batchCount); // Initialize batch prompts
+                      }
+                    }}
+                    className="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
+                    data-testid="checkbox-batch-mode"
+                  />
+                </div>
+              </div>
               
               <div className="space-y-4">
-                <div>
-                  <Label htmlFor="promptInput" className="text-sm font-medium text-secondary">
-                    What changes would you like to make?
-                  </Label>
-                  <Textarea 
-                    id="promptInput"
-                    rows={3}
-                    className="mt-2 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-                    placeholder="e.g., Make the bubbles heart-shaped, change the sky to sunset colors, add flying birds..."
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    data-testid="textarea-prompt"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">Be specific about the changes you want to see in your image</p>
-                </div>
+                {!isBatchMode ? (
+                  /* Single Generation Mode */
+                  <div>
+                    <Label htmlFor="promptInput" className="text-sm font-medium text-secondary">
+                      What changes would you like to make?
+                    </Label>
+                    <Textarea 
+                      id="promptInput"
+                      rows={3}
+                      className="mt-2 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+                      placeholder="e.g., Make the bubbles heart-shaped, change the sky to sunset colors, add flying birds..."
+                      value={prompt}
+                      onChange={(e) => setPrompt(e.target.value)}
+                      data-testid="textarea-prompt"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">Be specific about the changes you want to see in your image</p>
+                  </div>
+                ) : (
+                  /* Batch Generation Mode */
+                  <div className="space-y-4">
+                    {/* Batch Count Selection */}
+                    <div>
+                      <Label className="text-sm font-medium text-secondary mb-2 block">
+                        How many images would you like to generate?
+                      </Label>
+                      <div className="flex items-center space-x-4">
+                        <Input
+                          type="number"
+                          min="2"
+                          max="10"
+                          value={batchCount}
+                          onChange={(e) => {
+                            const count = parseInt(e.target.value) || 2;
+                            updateBatchCount(Math.min(Math.max(count, 2), 10));
+                          }}
+                          className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                          data-testid="input-batch-count"
+                        />
+                        <span className="text-sm text-gray-500">images (2-10)</span>
+                        <div className="text-sm text-gray-600">
+                          Total cost: <span className="font-semibold text-primary" data-testid="text-batch-cost">${(batchCount * 0.03).toFixed(2)}</span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Dynamic Prompt Fields */}
+                    <div className="space-y-3">
+                      <Label className="text-sm font-medium text-secondary">
+                        Describe each variation:
+                      </Label>
+                      {batchPrompts.slice(0, batchCount).map((batchPrompt, index) => (
+                        <div key={index}>
+                          <Label className="text-xs text-gray-600 mb-1 block">
+                            Image {index + 1} description:
+                          </Label>
+                          <Textarea
+                            rows={2}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-sm"
+                            placeholder={`e.g., ${index === 0 ? 'Make the bubbles heart-shaped' : index === 1 ? 'Change the sky to sunset colors' : `Variation ${index + 1}`}`}
+                            value={batchPrompt}
+                            onChange={(e) => updateBatchPrompt(index, e.target.value)}
+                            data-testid={`textarea-batch-prompt-${index}`}
+                          />
+                        </div>
+                      ))}
+                      <p className="text-xs text-gray-500">Each image will be generated with its specific description while keeping the same base image and settings</p>
+                    </div>
+                  </div>
+                )}
 
                 {/* Advanced Options */}
                 <details className="group" open={showAdvanced}>
@@ -524,7 +704,9 @@ export default function Home() {
             <Button
               onClick={handleGenerate}
               disabled={
-                (mode === "image-to-image" && (!uploadedImagePath || !prompt.trim())) ||
+                (mode === "image-to-image" && !uploadedImagePath) ||
+                (mode === "image-to-image" && !isBatchMode && !prompt.trim()) ||
+                (mode === "image-to-image" && isBatchMode && batchPrompts.filter(p => p.trim()).length < 2) ||
                 (mode === "text-to-image" && !textPrompt.trim()) ||
                 isGenerating
               }
@@ -534,10 +716,12 @@ export default function Home() {
               <i className="fas fa-magic"></i>
               <span>
                 {isGenerating 
-                  ? "Generating..." 
+                  ? (isBatchMode && mode === "image-to-image" ? `Generating ${batchCount} images...` : "Generating...") 
                   : mode === "text-to-image" 
                     ? "Generate Image" 
-                    : "Generate AI Edit"
+                    : isBatchMode 
+                      ? `Generate ${batchCount} AI Edits` 
+                      : "Generate AI Edit"
                 }
               </span>
             </Button>
@@ -587,8 +771,8 @@ export default function Home() {
             </Card>
           )}
 
-          {/* Results Section */}
-          {generation?.status === "completed" && generation.generatedImageUrl && (
+          {/* Results Section - Single Generation */}
+          {generation?.status === "completed" && generation.generatedImageUrl && !currentBatchId && (
             <Card className="bg-surface rounded-xl shadow-sm border border-gray-200" data-testid="results-section">
               <CardContent className="p-6">
                 <h2 className="text-lg font-semibold text-secondary mb-6 flex items-center">
@@ -821,6 +1005,215 @@ export default function Home() {
                     </div>
                   </details>
                 </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Batch Results Section */}
+          {batchData && batchData.generations.some(g => g.status === "completed" && g.generatedImageUrl) && (
+            <Card className="bg-surface rounded-xl shadow-sm border border-gray-200" data-testid="batch-results-section">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-secondary flex items-center">
+                    <i className="fas fa-images text-primary mr-2"></i>
+                    Batch Generation Results
+                  </h2>
+                  <div className="flex items-center space-x-4">
+                    <div className="text-sm text-gray-600" data-testid="batch-progress">
+                      {batchData.completedCount} of {batchData.totalCount} complete
+                    </div>
+                    <div className="text-sm font-semibold text-primary" data-testid="batch-total-cost">
+                      Total: ${batchData.totalCost.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                {batchData.completedCount < batchData.totalCount && (
+                  <div className="mb-6">
+                    <div className="flex justify-between text-sm text-gray-600 mb-2">
+                      <span>Processing Progress</span>
+                      <span>{Math.round((batchData.completedCount / batchData.totalCount) * 100)}%</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-primary h-2 rounded-full transition-all duration-300"
+                        style={{width: `${(batchData.completedCount / batchData.totalCount) * 100}%`}}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Original Image Reference */}
+                <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+                  <h3 className="text-sm font-medium text-secondary mb-3 flex items-center">
+                    <i className="fas fa-image text-gray-500 mr-2"></i>
+                    Base Image Used for All Variations
+                  </h3>
+                  <div className="w-32 h-32 bg-gray-100 rounded-lg overflow-hidden">
+                    <img 
+                      src={uploadedImageUrl} 
+                      alt="Base image for batch generation" 
+                      className="w-full h-full object-cover" 
+                      data-testid="img-batch-base"
+                    />
+                  </div>
+                </div>
+
+                {/* Generated Images Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {batchData.generations.map((gen, index) => (
+                    <div key={gen.id} className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-secondary">
+                          Image {index + 1}
+                        </h3>
+                        <div className="flex items-center space-x-2">
+                          {gen.status === "completed" && (
+                            <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                              <i className="fas fa-check mr-1"></i>Complete
+                            </span>
+                          )}
+                          {gen.status === "processing" && (
+                            <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                              <i className="fas fa-spinner fa-spin mr-1"></i>Processing
+                            </span>
+                          )}
+                          {gen.status === "failed" && (
+                            <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
+                              <i className="fas fa-exclamation mr-1"></i>Failed
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {/* Image Display */}
+                      <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
+                        {gen.status === "completed" && gen.generatedImageUrl ? (
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <div 
+                                className="relative cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg"
+                                data-testid={`lightbox-trigger-${index}`}
+                                role="button"
+                                tabIndex={0}
+                                aria-label={`Click to view full-size image ${index + 1}`}
+                              >
+                                <img 
+                                  src={gen.generatedImageUrl} 
+                                  alt={`AI generated variation ${index + 1}`} 
+                                  className="w-full h-full object-cover transition-all duration-200" 
+                                  data-testid={`img-batch-generated-${index}`}
+                                />
+                                {/* Zoom icon overlay */}
+                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+                                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white bg-opacity-90 rounded-full p-2 transform scale-75 group-hover:scale-100 transition-transform">
+                                    <i className="fas fa-search-plus text-gray-700" aria-hidden="true"></i>
+                                  </div>
+                                </div>
+                              </div>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 bg-transparent border-0 shadow-none">
+                              <div className="relative flex items-center justify-center w-full h-full">
+                                <img 
+                                  src={gen.generatedImageUrl} 
+                                  alt={`AI generated variation ${index + 1} - Full size`} 
+                                  className="max-w-full max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+                                  data-testid={`img-batch-lightbox-${index}`}
+                                />
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        ) : gen.status === "processing" ? (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="text-center space-y-2">
+                              <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
+                              <p className="text-xs text-gray-500">Processing...</p>
+                            </div>
+                          </div>
+                        ) : gen.status === "failed" ? (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="text-center space-y-2">
+                              <i className="fas fa-exclamation-triangle text-red-400 text-2xl"></i>
+                              <p className="text-xs text-red-600">Generation failed</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <div className="text-center space-y-2">
+                              <i className="fas fa-clock text-gray-400 text-2xl"></i>
+                              <p className="text-xs text-gray-500">Waiting...</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Prompt Display */}
+                      <div className="p-3 bg-gray-50 rounded-lg">
+                        <p className="text-xs text-gray-600 font-medium mb-1">Prompt:</p>
+                        <p className="text-sm text-gray-800" data-testid={`text-batch-prompt-${index}`}>
+                          "{gen.prompt}"
+                        </p>
+                      </div>
+
+                      {/* Individual Actions */}
+                      {gen.status === "completed" && gen.generatedImageUrl && (
+                        <div className="flex justify-center space-x-2">
+                          <Button 
+                            size="sm"
+                            className="bg-primary hover:bg-blue-800 text-white px-4 py-2 rounded-lg text-xs"
+                            onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = gen.generatedImageUrl!;
+                              link.download = `ai-batch-${gen.id}-${index + 1}.jpg`;
+                              link.click();
+                            }}
+                            data-testid={`button-download-${index}`}
+                          >
+                            <i className="fas fa-download mr-1"></i>
+                            Download
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Batch Actions */}
+                {batchData.completedCount > 0 && (
+                  <div className="mt-6 pt-4 border-t border-gray-200">
+                    <div className="flex flex-wrap gap-3 justify-center">
+                      <Button 
+                        className="bg-primary hover:bg-blue-800 text-white px-6 py-2 rounded-lg font-medium"
+                        onClick={() => {
+                          // Download all completed images as a zip would be ideal, but for now just download individually
+                          const completedGens = batchData.generations.filter(g => g.status === "completed" && g.generatedImageUrl);
+                          completedGens.forEach((gen, idx) => {
+                            setTimeout(() => {
+                              const link = document.createElement('a');
+                              link.href = gen.generatedImageUrl!;
+                              link.download = `ai-batch-${gen.id}-${idx + 1}.jpg`;
+                              link.click();
+                            }, idx * 100); // Stagger downloads slightly
+                          });
+                        }}
+                        data-testid="button-download-all"
+                      >
+                        <i className="fas fa-download mr-2"></i>
+                        Download All ({batchData.completedCount} images)
+                      </Button>
+                      <Button 
+                        variant="secondary"
+                        className="bg-gray-100 hover:bg-gray-200 text-secondary px-6 py-2 rounded-lg font-medium"
+                        onClick={handleGenerate}
+                        data-testid="button-generate-batch-again"
+                      >
+                        <i className="fas fa-redo mr-2"></i>
+                        Generate Again
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}

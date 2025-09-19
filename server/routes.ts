@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema } from "@shared/schema";
+import { insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
 // Size conversion function to map aspect ratios to pixel dimensions
@@ -77,25 +77,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create new image generation request
+  // Create new image generation request (single or batch)
   app.post("/api/image-generations", async (req, res) => {
     try {
-      // Validate request body based on type
-      const requestType = req.body.type || "image-to-image";
-      let validatedData;
-      
-      if (requestType === "text-to-image") {
-        validatedData = insertTextToImageSchema.parse(req.body);
+      // Check if this is a batch request
+      if (req.body.prompts && Array.isArray(req.body.prompts)) {
+        // Batch generation request
+        const validatedData = insertBatchImageToImageSchema.parse(req.body);
+        const generations = await storage.createBatchImageGenerations(validatedData);
+        
+        // Start processing all generations in background  
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        generations.forEach(gen => {
+          processImageGeneration(gen.id, baseUrl).catch(console.error);
+        });
+        
+        res.json({ 
+          batchId: generations[0].batchId,
+          generations,
+          totalCount: generations.length,
+          totalCost: generations.length * 0.03
+        });
       } else {
-        validatedData = insertImageToImageSchema.parse(req.body);
+        // Single generation request (existing behavior)
+        const requestType = req.body.type || "image-to-image";
+        let validatedData;
+        
+        if (requestType === "text-to-image") {
+          validatedData = insertTextToImageSchema.parse(req.body);
+        } else {
+          validatedData = insertImageToImageSchema.parse(req.body);
+        }
+        
+        const generation = await storage.createImageGeneration(validatedData);
+        
+        // Start processing in background
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        processImageGeneration(generation.id, baseUrl).catch(console.error);
+        
+        res.json(generation);
       }
-      
-      const generation = await storage.createImageGeneration(validatedData);
-      
-      // Start processing in background
-      processImageGeneration(generation.id).catch(console.error);
-      
-      res.json(generation);
     } catch (error) {
       console.error("Error creating image generation:", error);
       res.status(500).json({ error: "Failed to create image generation" });
@@ -113,6 +134,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error getting image generation:", error);
       res.status(500).json({ error: "Failed to get image generation" });
+    }
+  });
+
+  // Get batch generations by batch ID
+  app.get("/api/batch-generations/:batchId", async (req, res) => {
+    try {
+      const generations = await storage.getImageGenerationsByBatchId(req.params.batchId);
+      if (generations.length === 0) {
+        return res.status(404).json({ error: "Batch not found" });
+      }
+      res.json({
+        batchId: req.params.batchId,
+        generations,
+        totalCount: generations.length,
+        completedCount: generations.filter(g => g.status === 'completed').length,
+        failedCount: generations.filter(g => g.status === 'failed').length,
+        totalCost: generations.reduce((sum, gen) => sum + (gen.cost || 0), 0)
+      });
+    } catch (error) {
+      console.error("Error getting batch generations:", error);
+      res.status(500).json({ error: "Failed to get batch generations" });
     }
   });
 
@@ -138,7 +180,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  async function processImageGeneration(generationId: string) {
+  async function processImageGeneration(generationId: string, baseUrl?: string) {
     try {
       await storage.updateImageGeneration(generationId, { status: "processing" });
       
@@ -164,7 +206,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           stream: false,
           watermark: generation.watermark
         };
-        apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY || "e21bc13e-482e-4f28-aa99-8be61cc6f547";
+        apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY;
       } else {
         // Image-to-image generation
         if (!generation.originalImageUrl) {
@@ -172,7 +214,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Get image as base64 (BytePlus cannot access Replit domains directly)
-        const localImageUrl = `http://localhost:5000${generation.originalImageUrl}`;
+        // Use dynamic server URL instead of hardcoded localhost
+        const serverUrl = baseUrl || 'http://localhost:5000';
+        const localImageUrl = `${serverUrl}${generation.originalImageUrl}`;
         
         console.log(`Getting image from: ${localImageUrl}`);
         
@@ -197,7 +241,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           seed: generation.seed,
           watermark: generation.watermark
         };
-        apiKey = process.env.ARK_API_KEY || "e21bc13e-482e-4f28-aa99-8be61cc6f547";
+        apiKey = process.env.ARK_API_KEY;
       }
 
       console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));
@@ -205,7 +249,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`Using API key for ${generation.type}: ${apiKey ? 'SET' : 'NOT SET'}`);
       
       if (!apiKey) {
-        throw new Error(`API key is not set for ${generation.type}`);
+        const missingEnvVar = generation.type === "text-to-image" ? "ARK_TEXT_TO_IMAGE_API_KEY" : "ARK_API_KEY";
+        throw new Error(`${missingEnvVar} environment variable is not set. Please configure your API key.`);
       }
       
       const response = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {

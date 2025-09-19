@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration } from "@shared/schema";
+import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -7,7 +7,9 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   
   createImageGeneration(generation: InsertImageGeneration): Promise<ImageGeneration>;
+  createBatchImageGenerations(batchData: InsertBatchImageToImage): Promise<ImageGeneration[]>;
   getImageGeneration(id: string): Promise<ImageGeneration | undefined>;
+  getImageGenerationsByBatchId(batchId: string): Promise<ImageGeneration[]>;
   updateImageGeneration(id: string, updates: Partial<ImageGeneration>): Promise<ImageGeneration | undefined>;
   getAllImageGenerations(): Promise<ImageGeneration[]>;
   getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
@@ -43,6 +45,7 @@ export class MemStorage implements IStorage {
     const id = randomUUID();
     const generation: ImageGeneration = {
       id,
+      batchId: insertGeneration.batchId ?? null,
       type: insertGeneration.type ?? "image-to-image",
       originalImageUrl: insertGeneration.originalImageUrl ?? null,
       generatedImageUrl: null,
@@ -62,8 +65,34 @@ export class MemStorage implements IStorage {
     return generation;
   }
 
+  async createBatchImageGenerations(batchData: InsertBatchImageToImage): Promise<ImageGeneration[]> {
+    const batchId = randomUUID();
+    const generations: ImageGeneration[] = [];
+    
+    for (const prompt of batchData.prompts) {
+      const generation = await this.createImageGeneration({
+        type: batchData.type,
+        batchId,
+        originalImageUrl: batchData.originalImageUrl,
+        prompt,
+        guidanceScale: batchData.guidanceScale,
+        seed: batchData.seed,
+        watermark: batchData.watermark,
+      });
+      generations.push(generation);
+    }
+    
+    return generations;
+  }
+
   async getImageGeneration(id: string): Promise<ImageGeneration | undefined> {
     return this.imageGenerations.get(id);
+  }
+
+  async getImageGenerationsByBatchId(batchId: string): Promise<ImageGeneration[]> {
+    return Array.from(this.imageGenerations.values())
+      .filter(generation => generation.batchId === batchId)
+      .sort((a, b) => (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0));
   }
 
   async updateImageGeneration(id: string, updates: Partial<ImageGeneration>): Promise<ImageGeneration | undefined> {
