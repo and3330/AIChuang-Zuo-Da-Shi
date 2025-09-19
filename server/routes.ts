@@ -227,7 +227,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateImageGeneration(generationId, {
         status: "completed",
         generatedImageUrl,
-        processingTime
+        processingTime,
+        cost: 0.03
       });
 
     } catch (error) {

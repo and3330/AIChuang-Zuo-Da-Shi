@@ -54,7 +54,7 @@ export class MemStorage implements IStorage {
       status: "pending",
       errorMessage: null,
       processingTime: null,
-      cost: 0.03,
+      cost: 0,
       createdAt: new Date(),
       updatedAt: new Date()
     };
