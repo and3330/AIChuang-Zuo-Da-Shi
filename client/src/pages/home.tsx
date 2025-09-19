@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { ObjectUploader } from "@/components/ObjectUploader";
+import { UnifiedUploader } from "@/components/UnifiedUploader";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -35,7 +35,6 @@ export default function Home() {
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch statistics
   const { data: stats } = useQuery<{ totalGenerations: number; totalCost: number }>({
@@ -269,19 +268,13 @@ export default function Home() {
     }
   };
 
-  const handleFileInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      // Create a preview URL
-      const previewUrl = URL.createObjectURL(file);
-      setUploadedImageUrl(previewUrl);
-      
-      // TODO: Handle actual upload through ObjectUploader
-      toast({
-        title: "File selected",
-        description: "Please use the upload button to upload your image.",
-      });
-    }
+  const handleUploadError = (error: Error) => {
+    console.error("Upload error:", error);
+    toast({
+      title: "Upload failed",
+      description: error.message || "Failed to upload image.",
+      variant: "destructive",
+    });
   };
 
   const removeImage = () => {
@@ -290,9 +283,6 @@ export default function Home() {
     setCurrentGenerationId("");
     setCurrentBatchId("");
     setBatchGenerations([]);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
   };
 
   const isGenerating = generateMutation.isPending || 
@@ -405,48 +395,16 @@ export default function Home() {
                 </h2>
               
               {!uploadedImageUrl ? (
-                <div className="space-y-4">
-                  <div 
-                    className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-primary transition-colors cursor-pointer bg-gray-50 hover:bg-blue-50"
-                    onClick={() => fileInputRef.current?.click()}
-                    data-testid="drop-zone"
-                  >
-                    <div className="space-y-4">
-                      <div className="w-16 h-16 mx-auto bg-primary/10 rounded-full flex items-center justify-center">
-                        <i className="fas fa-cloud-upload-alt text-primary text-2xl"></i>
-                      </div>
-                      <div>
-                        <p className="text-lg font-medium text-secondary">Drop your image here</p>
-                        <p className="text-sm text-gray-500 mt-1">or <span className="text-primary font-medium">browse files</span></p>
-                      </div>
-                      <p className="text-xs text-gray-400">Supports JPG, PNG up to 10MB</p>
-                    </div>
-                  </div>
-                  
-                  <div className="flex justify-center">
-                    <ObjectUploader
-                      maxNumberOfFiles={1}
-                      maxFileSize={10485760}
-                      onGetUploadParameters={handleGetUploadParameters}
-                      onComplete={handleUploadComplete}
-                      buttonClassName="bg-primary hover:bg-blue-800 text-white px-6 py-3 rounded-lg font-medium"
-                    >
-                      <div className="flex items-center gap-2">
-                        <i className="fas fa-upload"></i>
-                        <span>Upload Image</span>
-                      </div>
-                    </ObjectUploader>
-                  </div>
-
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png"
-                    className="hidden"
-                    onChange={handleFileInputChange}
-                    data-testid="file-input"
-                  />
-                </div>
+                <UnifiedUploader
+                  maxNumberOfFiles={1}
+                  maxFileSize={10485760}
+                  onGetUploadParameters={handleGetUploadParameters}
+                  onComplete={handleUploadComplete}
+                  onError={handleUploadError}
+                  className="w-full"
+                >
+                  Drop your image here or click to browse
+                </UnifiedUploader>
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
