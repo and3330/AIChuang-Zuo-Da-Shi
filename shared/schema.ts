@@ -18,7 +18,7 @@ export const imageGenerations = pgTable("image_generations", {
   guidanceScale: real("guidance_scale").default(5.5),
   seed: real("seed").default(21),
   watermark: boolean("watermark").default(true),
-  size: text("size").default("1024x1024"), // For text-to-image
+  size: text("size").default("1:1"), // For text-to-image (aspect ratio)
   status: text("status").notNull().default("pending"), // pending, processing, completed, failed
   errorMessage: text("error_message"),
   processingTime: real("processing_time"),

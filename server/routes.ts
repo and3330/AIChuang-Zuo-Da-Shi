@@ -124,14 +124,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (generation.type === "text-to-image") {
         // Text-to-image generation
         requestBody = {
-          model: "ep-20250813133320-b7ht8",
+          model: "ep-20250919143350-zlx7d",
           prompt: generation.prompt,
           response_format: "url",
-          size: generation.size || "1024x1024",
+          size: generation.size || "1:1",
+          sequential_image_generation: "disabled",
+          stream: false,
           guidance_scale: generation.guidanceScale || 3,
           watermark: generation.watermark
         };
-        apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY || "b1630e23-c442-4f01-a257-c5a6d51aa8dc";
+        apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY || "e21bc13e-482e-4f28-aa99-8be61cc6f547";
       } else {
         // Image-to-image generation
         if (!generation.originalImageUrl) {
@@ -155,15 +157,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`✅ Image converted to base64 (${base64Image.length} chars)`);
         
         requestBody = {
-          model: "ep-20250824201751-nm8dh",
+          model: "ep-20250919143350-zlx7d",
           prompt: generation.prompt,
           image: dataUri,
           response_format: "url",
+          sequential_image_generation: "disabled",
+          stream: false,
           seed: generation.seed,
           guidance_scale: generation.guidanceScale,
           watermark: generation.watermark
         };
-        apiKey = process.env.ARK_API_KEY || "d3ad50dc-9caf-4bf8-aef3-e2e1b850c0ed";
+        apiKey = process.env.ARK_API_KEY || "e21bc13e-482e-4f28-aa99-8be61cc6f547";
       }
 
       console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));

@@ -22,7 +22,7 @@ export default function Home() {
   const [guidanceScale, setGuidanceScale] = useState(5.5);
   const [seed, setSeed] = useState(21);
   const [watermark, setWatermark] = useState(true);
-  const [size, setSize] = useState("1024x1024");
+  const [size, setSize] = useState("1:1");
   const [currentGenerationId, setCurrentGenerationId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   
@@ -361,9 +361,14 @@ export default function Home() {
                         className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                         data-testid="select-size"
                       >
-                        <option value="1024x1024">1024x1024 (Square)</option>
-                        <option value="1024x768">1024x768 (Landscape)</option>
-                        <option value="768x1024">768x1024 (Portrait)</option>
+                        <option value="1:1">1:1 (Square)</option>
+                        <option value="3:4">3:4 (Portrait)</option>
+                        <option value="4:3">4:3 (Landscape)</option>
+                        <option value="16:9">16:9 (Wide Landscape)</option>
+                        <option value="9:16">9:16 (Tall Portrait)</option>
+                        <option value="2:3">2:3 (Portrait)</option>
+                        <option value="3:2">3:2 (Landscape)</option>
+                        <option value="21:9">21:9 (Ultra Wide)</option>
                       </select>
                     </div>
                     <div>
