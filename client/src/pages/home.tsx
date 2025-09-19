@@ -751,20 +751,24 @@ export default function Home() {
               <CardContent className="p-6">
                 <div className="flex items-start space-x-3">
                   <i className="fas fa-exclamation-circle text-red-500 mt-1"></i>
-                  <div className="flex-1">
-                    <h3 className="text-red-800 font-semibold">Generation Failed</h3>
-                    <p className="text-red-700 text-sm mt-1" data-testid="text-error-message">
-                      {generation.errorMessage || "Unable to process your image. Please try again."}
-                    </p>
-                    <Button 
-                      variant="ghost"
-                      className="mt-3 text-primary hover:text-blue-800 text-sm font-medium p-0 h-auto"
-                      onClick={handleGenerate}
-                      data-testid="button-retry"
-                    >
-                      <i className="fas fa-redo mr-1"></i>
-                      Try Again
-                    </Button>
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <h3 className="text-red-800 font-semibold">Generation Failed</h3>
+                      <p className="text-red-700 text-sm mt-2" data-testid="text-error-message">
+                        {generation.errorMessage || "Unable to process your image. Please try again."}
+                      </p>
+                    </div>
+                    <div>
+                      <Button 
+                        variant="ghost"
+                        className="text-primary hover:text-blue-800 text-sm font-medium p-0 h-auto"
+                        onClick={handleGenerate}
+                        data-testid="button-retry"
+                      >
+                        <i className="fas fa-redo mr-1"></i>
+                        Try Again
+                      </Button>
+                    </div>
                   </div>
                 </div>
               </CardContent>

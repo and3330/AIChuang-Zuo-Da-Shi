@@ -213,20 +213,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error("Original image URL is required for image-to-image generation");
         }
         
-        // Get image as base64 (BytePlus cannot access Replit domains directly)
-        // Use dynamic server URL instead of hardcoded localhost
-        const serverUrl = baseUrl || 'http://localhost:5000';
-        const localImageUrl = `${serverUrl}${generation.originalImageUrl}`;
+        // Get image data directly from object storage instead of HTTP fetch
+        console.log(`Getting image from object storage: ${generation.originalImageUrl}`);
         
-        console.log(`Getting image from: ${localImageUrl}`);
+        const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
         
-        const imageResponse = await fetch(localImageUrl);
-        if (!imageResponse.ok) {
-          throw new Error(`Failed to fetch image: ${imageResponse.status}`);
+        // Read the file data as buffer
+        const chunks: Buffer[] = [];
+        const stream = objectFile.createReadStream();
+        
+        for await (const chunk of stream) {
+          chunks.push(Buffer.from(chunk));
         }
         
-        const imageBuffer = await imageResponse.arrayBuffer();
-        const base64Image = Buffer.from(imageBuffer).toString('base64');
+        const imageBuffer = Buffer.concat(chunks);
+        const base64Image = imageBuffer.toString('base64');
         const dataUri = `data:image/jpeg;base64,${base64Image}`;
         
         console.log(`✅ Image converted to base64 (${base64Image.length} chars)`);
