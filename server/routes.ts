@@ -4,8 +4,8 @@ import { storage } from "./storage";
 import { insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
-// Size conversion function to map aspect ratios to pixel dimensions
-function convertAspectRatioToPixelDimensions(aspectRatio: string): string {
+// Size conversion function to map aspect ratios to SeedDance 4.5 format
+function convertAspectRatioToSize(aspectRatio: string): string {
   const sizeMap: Record<string, string> = {
     "1:1": "1024x1024",
     "3:4": "768x1024", 
@@ -16,11 +16,17 @@ function convertAspectRatioToPixelDimensions(aspectRatio: string): string {
     "3:2": "1024x683",
     "21:9": "2560x1097",
     "A4": "2480x3508",
-    "A5": "1748x2480"
+    "A5": "1748x2480",
+    "2K": "2K",
+    "4K": "4K"
   };
   
-  return sizeMap[aspectRatio] || "1024x1024"; // Default to square if unknown
+  return sizeMap[aspectRatio] || "1024x1024";
 }
+
+// New SeedDance 4.5 model endpoint
+const SEEDDANCE_MODEL = "ep-20251223142939-njrkd";
+const ARK_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
@@ -192,21 +198,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let requestBody: any;
       let apiKey: string | undefined;
       
+      // Use the same ARK_API_KEY for both text-to-image and image-to-image (SeedDance 4.5)
+      apiKey = process.env.ARK_API_KEY;
+      
       if (generation.type === "text-to-image") {
-        // Text-to-image generation
+        // Text-to-image generation with SeedDance 4.5
         const aspectRatio = generation.size || "1:1";
-        const pixelSize = convertAspectRatioToPixelDimensions(aspectRatio);
+        const sizeValue = convertAspectRatioToSize(aspectRatio);
         
         requestBody = {
-          model: "ep-20250919143350-zlx7d",
+          model: SEEDDANCE_MODEL,
           prompt: generation.prompt,
           response_format: "url",
-          size: pixelSize,
-          sequential_image_generation: "disabled",
+          size: sizeValue,
+          sequential_image_generation: "auto",
           stream: false,
-          watermark: generation.watermark
+          watermark: generation.watermark !== false
         };
-        apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY;
       } else {
         // Image-to-image generation
         if (!generation.originalImageUrl) {
@@ -233,28 +241,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`✅ Image converted to base64 (${base64Image.length} chars)`);
         
         requestBody = {
-          model: "ep-20250919143350-zlx7d",
+          model: SEEDDANCE_MODEL,
           prompt: generation.prompt,
           image: dataUri,
           response_format: "url",
-          sequential_image_generation: "disabled",
+          sequential_image_generation: "auto",
           stream: false,
           seed: generation.seed,
-          watermark: generation.watermark
+          watermark: generation.watermark !== false
         };
-        apiKey = process.env.ARK_API_KEY;
       }
 
       console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));
 
-      console.log(`Using API key for ${generation.type}: ${apiKey ? 'SET' : 'NOT SET'}`);
+      console.log(`Using ARK_API_KEY for ${generation.type}: ${apiKey ? 'SET' : 'NOT SET'}`);
       
       if (!apiKey) {
-        const missingEnvVar = generation.type === "text-to-image" ? "ARK_TEXT_TO_IMAGE_API_KEY" : "ARK_API_KEY";
-        throw new Error(`${missingEnvVar} environment variable is not set. Please configure your API key.`);
+        throw new Error(`ARK_API_KEY environment variable is not set. Please configure your API key for SeedDance 4.5.`);
       }
       
-      const response = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
+      const response = await fetch(ARK_API_ENDPOINT, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

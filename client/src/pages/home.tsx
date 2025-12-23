@@ -471,6 +471,8 @@ export default function Home() {
                         <option value="2:3">2:3 (683x1024)</option>
                         <option value="3:2">3:2 (1024x683)</option>
                         <option value="21:9">21:9 (2560x1097)</option>
+                        <option value="2K">2K (高清)</option>
+                        <option value="4K">4K (超高清)</option>
                         <option value="A4">A4 (2480x3508)</option>
                         <option value="A5">A5 (1748x2480)</option>
                       </select>
