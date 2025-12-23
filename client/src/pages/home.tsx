@@ -23,7 +23,7 @@ export default function Home() {
   const [guidanceScale, setGuidanceScale] = useState(5.5);
   const [seed, setSeed] = useState(21);
   const [watermark, setWatermark] = useState(true);
-  const [size, setSize] = useState("1:1");
+  const [size, setSize] = useState("2K");
   const [currentGenerationId, setCurrentGenerationId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
@@ -463,18 +463,18 @@ export default function Home() {
                         className="mt-2 w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                         data-testid="select-size"
                       >
-                        <option value="1:1">1:1 (1024x1024)</option>
-                        <option value="3:4">3:4 (768x1024)</option>
-                        <option value="4:3">4:3 (1024x768)</option>
-                        <option value="16:9">16:9 (1920x1080)</option>
-                        <option value="9:16">9:16 (1080x1920)</option>
-                        <option value="2:3">2:3 (683x1024)</option>
-                        <option value="3:2">3:2 (1024x683)</option>
-                        <option value="21:9">21:9 (2560x1097)</option>
-                        <option value="2K">2K (高清)</option>
-                        <option value="4K">4K (超高清)</option>
-                        <option value="A4">A4 (2480x3508)</option>
-                        <option value="A5">A5 (1748x2480)</option>
+                        <option value="2K">2K 高清 (推薦)</option>
+                        <option value="4K">4K 超高清</option>
+                        <option value="1:1">1:1 正方形 (1920x1920)</option>
+                        <option value="16:9">16:9 橫向 (2560x1440)</option>
+                        <option value="9:16">9:16 直向 (1440x2560)</option>
+                        <option value="4:3">4:3 橫向 (2240x1680)</option>
+                        <option value="3:4">3:4 直向 (1680x2240)</option>
+                        <option value="3:2">3:2 橫向 (2400x1600)</option>
+                        <option value="2:3">2:3 直向 (1600x2400)</option>
+                        <option value="21:9">21:9 超寬 (3360x1440)</option>
+                        <option value="A4">A4 列印 (2480x3508)</option>
+                        <option value="A5">A5 列印 (1920x2720)</option>
                       </select>
                     </div>
                     <div>
