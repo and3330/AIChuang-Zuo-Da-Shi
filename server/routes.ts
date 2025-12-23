@@ -240,14 +240,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         console.log(`✅ Image converted to base64 (${base64Image.length} chars)`);
         
+        const aspectRatio = generation.size || "2K";
+        const sizeValue = convertAspectRatioToSize(aspectRatio);
+        
         requestBody = {
           model: SEEDDANCE_MODEL,
           prompt: generation.prompt,
           image: dataUri,
           response_format: "url",
-          sequential_image_generation: "auto",
+          size: sizeValue,
+          sequential_image_generation: "disabled",
           stream: false,
-          seed: generation.seed,
           watermark: generation.watermark !== false
         };
       }
