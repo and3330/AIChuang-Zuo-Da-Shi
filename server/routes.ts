@@ -4,24 +4,9 @@ import { storage } from "./storage";
 import { insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
-// Size conversion function for SeedDance 4.5 (minimum 3686400 pixels required)
-function convertAspectRatioToSize(aspectRatio: string): string {
-  const sizeMap: Record<string, string> = {
-    "1:1": "1920x1920",
-    "3:4": "1680x2240", 
-    "4:3": "2240x1680",
-    "16:9": "2560x1440",
-    "9:16": "1440x2560",
-    "2:3": "1600x2400",
-    "3:2": "2400x1600",
-    "21:9": "3360x1440",
-    "A4": "2480x3508",
-    "A5": "1920x2720",
-    "2K": "2K",
-    "4K": "4K"
-  };
-  
-  return sizeMap[aspectRatio] || "2K";
+// SeedDance 4.5 API supported sizes (pass through directly)
+function convertAspectRatioToSize(size: string): string {
+  return size;
 }
 
 // New SeedDance 4.5 model endpoint

@@ -465,16 +465,11 @@ export default function Home() {
                       >
                         <option value="2K">2K 高清 (推薦)</option>
                         <option value="4K">4K 超高清</option>
-                        <option value="1:1">1:1 正方形 (1920x1920)</option>
-                        <option value="16:9">16:9 橫向 (2560x1440)</option>
-                        <option value="9:16">9:16 直向 (1440x2560)</option>
-                        <option value="4:3">4:3 橫向 (2240x1680)</option>
-                        <option value="3:4">3:4 直向 (1680x2240)</option>
-                        <option value="3:2">3:2 橫向 (2400x1600)</option>
-                        <option value="2:3">2:3 直向 (1600x2400)</option>
-                        <option value="21:9">21:9 超寬 (3360x1440)</option>
-                        <option value="A4">A4 列印 (2480x3508)</option>
-                        <option value="A5">A5 列印 (1920x2720)</option>
+                        <option value="1920x1920">1:1 正方形 (1920x1920)</option>
+                        <option value="2560x1440">16:9 橫向 (2560x1440)</option>
+                        <option value="1440x2560">9:16 直向 (1440x2560)</option>
+                        <option value="2048x1536">4:3 橫向 (2048x1536)</option>
+                        <option value="1536x2048">3:4 直向 (1536x2048)</option>
                       </select>
                     </div>
                     <div>
