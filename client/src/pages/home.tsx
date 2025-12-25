@@ -18,8 +18,8 @@ export default function Home() {
   const [mode, setMode] = useState<"image-to-image" | "text-to-image">("image-to-image");
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
   const [uploadedImagePath, setUploadedImagePath] = useState<string>("");
-  const [prompt, setPrompt] = useState("Make the bubbles heart-shaped");
-  const [textPrompt, setTextPrompt] = useState("A beautiful landscape with mountains and a lake at sunset");
+  const [prompt, setPrompt] = useState("把泡泡變成愛心形狀");
+  const [textPrompt, setTextPrompt] = useState("一幅美麗的日落山水風景畫，有山脈和湖泊");
   const [guidanceScale, setGuidanceScale] = useState(5.5);
   const [seed, setSeed] = useState(21);
   const [watermark, setWatermark] = useState(true);
@@ -29,7 +29,7 @@ export default function Home() {
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [isBatchMode, setIsBatchMode] = useState(false);
   const [batchCount, setBatchCount] = useState(2);
-  const [batchPrompts, setBatchPrompts] = useState<string[]>(["Make the bubbles heart-shaped", "Change the sky to sunset colors"]);
+  const [batchPrompts, setBatchPrompts] = useState<string[]>(["把泡泡變成愛心形狀", "把天空改成日落顏色"]);
   const [currentBatchId, setCurrentBatchId] = useState<string>("");
   const [batchGenerations, setBatchGenerations] = useState<ImageGeneration[]>([]);
   
@@ -110,22 +110,22 @@ export default function Home() {
         setUploadedImageUrl(data.objectPath); // Use our backend proxy path
         setUploadedImagePath(data.objectPath);
         toast({
-          title: "Image uploaded successfully",
-          description: "You can now generate AI edits.",
+          title: "圖片上傳成功",
+          description: "現在可以開始 AI 編輯。",
         });
       } catch (error) {
         console.error("Error setting object path:", error);
         toast({
-          title: "Upload error",
-          description: "Failed to process uploaded image.",
+          title: "上傳錯誤",
+          description: "處理上傳圖片失敗。",
           variant: "destructive",
         });
       }
     } else {
       console.error("Upload failed:", result);
       toast({
-        title: "Upload failed",
-        description: "Failed to upload image.",
+        title: "上傳失敗",
+        description: "圖片上傳失敗。",
         variant: "destructive",
       });
     }
@@ -145,8 +145,8 @@ export default function Home() {
         // Invalidate batch cache
         queryClient.invalidateQueries({ queryKey: ["/api/batch-generations", data.batchId] });
         toast({
-          title: "Batch generation started",
-          description: `Processing ${data.totalCount} images...`,
+          title: "批次生成已開始",
+          description: `正在處理 ${data.totalCount} 張圖片...`,
         });
       } else {
         // Single generation response
@@ -155,8 +155,8 @@ export default function Home() {
         // Invalidate any existing cache for this generation
         queryClient.invalidateQueries({ queryKey: ["/api/image-generations", data.id] });
         toast({
-          title: "Generation started",
-          description: "Your image is being processed...",
+          title: "生成已開始",
+          description: "正在處理您的圖片...",
         });
       }
       // Invalidate stats to update the count and cost
@@ -165,8 +165,8 @@ export default function Home() {
     onError: (error) => {
       console.error("Generation error:", error);
       toast({
-        title: "Generation failed",
-        description: "Failed to start image generation.",
+        title: "生成失敗",
+        description: "無法開始圖片生成。",
         variant: "destructive",
       });
     },
@@ -186,7 +186,7 @@ export default function Home() {
     if (count > newPrompts.length) {
       // Add more prompts
       for (let i = newPrompts.length; i < count; i++) {
-        newPrompts.push(`Variation ${i + 1}`);
+        newPrompts.push(`變化 ${i + 1}`);
       }
     } else {
       // Remove excess prompts
@@ -200,8 +200,8 @@ export default function Home() {
     if (mode === "image-to-image") {
       if (!uploadedImagePath) {
         toast({
-          title: "Missing image",
-          description: "Please upload an image first.",
+          title: "缺少圖片",
+          description: "請先上傳圖片。",
           variant: "destructive",
         });
         return;
@@ -212,8 +212,8 @@ export default function Home() {
         const validPrompts = batchPrompts.filter(p => p.trim());
         if (validPrompts.length < 2) {
           toast({
-            title: "Missing prompts",
-            description: "Please enter at least 2 prompts for batch generation.",
+            title: "缺少描述",
+            description: "批次生成需要至少輸入 2 個描述。",
             variant: "destructive",
           });
           return;
@@ -231,8 +231,8 @@ export default function Home() {
         // Single generation
         if (!prompt.trim()) {
           toast({
-            title: "Missing prompt",
-            description: "Please enter a prompt.",
+            title: "缺少描述",
+            description: "請輸入描述。",
             variant: "destructive",
           });
           return;
@@ -250,8 +250,8 @@ export default function Home() {
     } else {
       if (!textPrompt.trim()) {
         toast({
-          title: "Missing prompt",
-          description: "Please enter a text prompt for image generation.",
+          title: "缺少描述",
+          description: "請輸入文字描述來生成圖片。",
           variant: "destructive",
         });
         return;
@@ -271,8 +271,8 @@ export default function Home() {
   const handleUploadError = (error: Error) => {
     console.error("Upload error:", error);
     toast({
-      title: "Upload failed",
-      description: error.message || "Failed to upload image.",
+      title: "上傳失敗",
+      description: error.message || "圖片上傳失敗。",
       variant: "destructive",
     });
   };
@@ -299,10 +299,10 @@ export default function Home() {
               <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
                 <i className="fas fa-magic text-white text-sm"></i>
               </div>
-              <h1 className="text-xl font-semibold text-secondary">AI Image Editor</h1>
+              <h1 className="text-xl font-semibold text-secondary">AI 圖片生成器</h1>
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">Powered by BytePlus</span>
+              <span className="text-sm text-gray-500">技術支援：BytePlus</span>
               <button className="text-secondary hover:text-primary transition-colors">
                 <i className="fas fa-question-circle"></i>
               </button>
@@ -322,7 +322,7 @@ export default function Home() {
                     <i className="fas fa-images text-primary text-xl"></i>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Total Images Generated</p>
+                    <p className="text-sm text-gray-600">生成圖片總數</p>
                     <p className="text-2xl font-bold text-secondary" data-testid="text-total-generations">
                       {stats?.totalGenerations ?? 0}
                     </p>
@@ -333,11 +333,11 @@ export default function Home() {
                     <i className="fas fa-dollar-sign text-green-600 text-xl"></i>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">Total Cost</p>
+                    <p className="text-sm text-gray-600">總費用</p>
                     <p className="text-2xl font-bold text-secondary" data-testid="text-total-cost">
                       ${(stats?.totalCost ?? 0).toFixed(2)}
                     </p>
-                    <p className="text-xs text-gray-500">$0.03 per image</p>
+                    <p className="text-xs text-gray-500">每張圖片 $0.03</p>
                   </div>
                 </div>
               </div>
@@ -348,7 +348,7 @@ export default function Home() {
             <CardContent className="p-6">
               <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
                 <i className="fas fa-magic text-primary mr-2"></i>
-                Choose Generation Mode
+                選擇生成模式
               </h2>
               <div className="flex space-x-4">
                 <button
@@ -362,8 +362,8 @@ export default function Home() {
                 >
                   <div className="text-center">
                     <i className="fas fa-image text-2xl mb-2"></i>
-                    <div className="font-semibold">Image to Image</div>
-                    <div className="text-sm opacity-80">Edit existing images with AI</div>
+                    <div className="font-semibold">圖片生圖片</div>
+                    <div className="text-sm opacity-80">使用 AI 編輯現有圖片</div>
                   </div>
                 </button>
                 <button
@@ -377,8 +377,8 @@ export default function Home() {
                 >
                   <div className="text-center">
                     <i className="fas fa-pencil-alt text-2xl mb-2"></i>
-                    <div className="font-semibold">Text to Image</div>
-                    <div className="text-sm opacity-80">Create images from text descriptions</div>
+                    <div className="font-semibold">文字生圖片</div>
+                    <div className="text-sm opacity-80">用文字描述創建圖片</div>
                   </div>
                 </button>
               </div>
@@ -391,7 +391,7 @@ export default function Home() {
               <CardContent className="p-6">
                 <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
                   <i className="fas fa-upload text-primary mr-2"></i>
-                  Upload Your Image
+                  上傳您的圖片
                 </h2>
               
               {!uploadedImageUrl ? (
@@ -403,18 +403,18 @@ export default function Home() {
                   onError={handleUploadError}
                   className="w-full"
                 >
-                  Drop your image here or click to browse
+                  拖放圖片到此處或點擊瀏覽
                 </UnifiedUploader>
               ) : (
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-secondary">Selected Image:</span>
+                    <span className="text-sm font-medium text-secondary">已選擇的圖片：</span>
                     <button 
                       className="text-red-500 hover:text-red-700 text-sm"
                       onClick={removeImage}
                       data-testid="button-remove-image"
                     >
-                      <i className="fas fa-times mr-1"></i>Remove
+                      <i className="fas fa-times mr-1"></i>移除
                     </button>
                   </div>
                   <div className="relative bg-gray-100 rounded-lg overflow-hidden">
@@ -434,29 +434,29 @@ export default function Home() {
               <CardContent className="p-6">
                 <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
                   <i className="fas fa-pencil-alt text-primary mr-2"></i>
-                  Text to Image Generation
+                  文字生成圖片
                 </h2>
                 
                 <div className="space-y-4">
                   <div>
                     <Label htmlFor="textPromptInput" className="text-sm font-medium text-secondary">
-                      Describe the image you want to create
+                      描述您想要創建的圖片
                     </Label>
                     <Textarea 
                       id="textPromptInput"
                       rows={4}
                       className="mt-2 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-                      placeholder="e.g., A beautiful landscape with mountains and a lake at sunset, realistic style, high quality..."
+                      placeholder="例如：美麗的日落山水風景，寫實風格，高品質..."
                       value={textPrompt}
                       onChange={(e) => setTextPrompt(e.target.value)}
                       data-testid="textarea-text-prompt"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Be detailed and specific about what you want to see in the generated image</p>
+                    <p className="text-xs text-gray-500 mt-1">請詳細具體地描述您想在生成圖片中看到的內容</p>
                   </div>
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
-                      <Label className="text-sm font-medium text-secondary">Image Size</Label>
+                      <Label className="text-sm font-medium text-secondary">圖片尺寸</Label>
                       <select 
                         value={size} 
                         onChange={(e) => setSize(e.target.value)}
@@ -473,7 +473,7 @@ export default function Home() {
                       </select>
                     </div>
                     <div>
-                      <Label className="text-sm font-medium text-secondary">Guidance Scale</Label>
+                      <Label className="text-sm font-medium text-secondary">引導強度</Label>
                       <Input 
                         type="number" 
                         min="1" 
@@ -498,13 +498,13 @@ export default function Home() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold text-secondary flex items-center">
                   <i className="fas fa-edit text-primary mr-2"></i>
-                  Describe Your Modifications
+                  描述您想要的修改
                 </h2>
                 
                 {/* Batch Mode Toggle */}
                 <div className="flex items-center space-x-3">
                   <Label htmlFor="batchToggle" className="text-sm font-medium text-secondary">
-                    Batch Generation
+                    批次生成
                   </Label>
                   <input
                     id="batchToggle"
@@ -527,18 +527,18 @@ export default function Home() {
                   /* Single Generation Mode */
                   <div>
                     <Label htmlFor="promptInput" className="text-sm font-medium text-secondary">
-                      What changes would you like to make?
+                      您想要做什麼修改？
                     </Label>
                     <Textarea 
                       id="promptInput"
                       rows={3}
                       className="mt-2 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-                      placeholder="e.g., Make the bubbles heart-shaped, change the sky to sunset colors, add flying birds..."
+                      placeholder="例如：把泡泡變成愛心形狀、把天空改成日落顏色、加入飛鳥..."
                       value={prompt}
                       onChange={(e) => setPrompt(e.target.value)}
                       data-testid="textarea-prompt"
                     />
-                    <p className="text-xs text-gray-500 mt-1">Be specific about the changes you want to see in your image</p>
+                    <p className="text-xs text-gray-500 mt-1">請具體描述您想在圖片中看到的修改</p>
                   </div>
                 ) : (
                   /* Batch Generation Mode */
@@ -546,7 +546,7 @@ export default function Home() {
                     {/* Batch Count Selection */}
                     <div>
                       <Label className="text-sm font-medium text-secondary mb-2 block">
-                        How many images would you like to generate?
+                        您想生成多少張圖片？
                       </Label>
                       <div className="flex items-center space-x-4">
                         <Input
@@ -561,9 +561,9 @@ export default function Home() {
                           className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
                           data-testid="input-batch-count"
                         />
-                        <span className="text-sm text-gray-500">images (2-10)</span>
+                        <span className="text-sm text-gray-500">張圖片 (2-10)</span>
                         <div className="text-sm text-gray-600">
-                          Total cost: <span className="font-semibold text-primary" data-testid="text-batch-cost">${(batchCount * 0.03).toFixed(2)}</span>
+                          總費用：<span className="font-semibold text-primary" data-testid="text-batch-cost">${(batchCount * 0.03).toFixed(2)}</span>
                         </div>
                       </div>
                     </div>
@@ -571,24 +571,24 @@ export default function Home() {
                     {/* Dynamic Prompt Fields */}
                     <div className="space-y-3">
                       <Label className="text-sm font-medium text-secondary">
-                        Describe each variation:
+                        描述每個變化：
                       </Label>
                       {batchPrompts.slice(0, batchCount).map((batchPrompt, index) => (
                         <div key={index}>
                           <Label className="text-xs text-gray-600 mb-1 block">
-                            Image {index + 1} description:
+                            圖片 {index + 1} 描述：
                           </Label>
                           <Textarea
                             rows={2}
                             className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none text-sm"
-                            placeholder={`e.g., ${index === 0 ? 'Make the bubbles heart-shaped' : index === 1 ? 'Change the sky to sunset colors' : `Variation ${index + 1}`}`}
+                            placeholder={`例如：${index === 0 ? '把泡泡變成愛心形狀' : index === 1 ? '把天空改成日落顏色' : `變化 ${index + 1}`}`}
                             value={batchPrompt}
                             onChange={(e) => updateBatchPrompt(index, e.target.value)}
                             data-testid={`textarea-batch-prompt-${index}`}
                           />
                         </div>
                       ))}
-                      <p className="text-xs text-gray-500">Each image will be generated with its specific description while keeping the same base image and settings</p>
+                      <p className="text-xs text-gray-500">每張圖片會依照其特定描述生成，同時保持相同的基礎圖片和設定</p>
                     </div>
                   </div>
                 )}
@@ -601,13 +601,13 @@ export default function Home() {
                     data-testid="button-advanced-settings"
                   >
                     <i className="fas fa-cog mr-2"></i>
-                    Advanced Settings
+                    進階設定
                     <i className="fas fa-chevron-down ml-2 transform group-open:rotate-180 transition-transform"></i>
                   </summary>
                   <div className="mt-4 space-y-4 p-4 bg-gray-50 rounded-lg">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div>
-                        <Label className="text-sm font-medium text-secondary">Guidance Scale</Label>
+                        <Label className="text-sm font-medium text-secondary">引導強度</Label>
                         <Input 
                           type="range" 
                           min="1" 
@@ -625,7 +625,7 @@ export default function Home() {
                         </div>
                       </div>
                       <div>
-                        <Label className="text-sm font-medium text-secondary">Seed</Label>
+                        <Label className="text-sm font-medium text-secondary">種子值</Label>
                         <Input 
                           type="number" 
                           value={seed} 
@@ -635,7 +635,7 @@ export default function Home() {
                           onChange={(e) => setSeed(parseInt(e.target.value) || 0)}
                           data-testid="input-seed"
                         />
-                        <p className="text-xs text-gray-500 mt-1">For reproducible results</p>
+                        <p className="text-xs text-gray-500 mt-1">用於重現相同結果</p>
                       </div>
                     </div>
                     <div className="flex items-center space-x-2">
@@ -645,7 +645,7 @@ export default function Home() {
                         onCheckedChange={(checked) => setWatermark(checked as boolean)}
                         data-testid="checkbox-watermark"
                       />
-                      <Label htmlFor="watermark" className="text-sm text-secondary">Include watermark</Label>
+                      <Label htmlFor="watermark" className="text-sm text-secondary">加入浮水印</Label>
                     </div>
                   </div>
                 </details>
@@ -671,12 +671,12 @@ export default function Home() {
               <i className="fas fa-magic"></i>
               <span>
                 {isGenerating 
-                  ? (isBatchMode && mode === "image-to-image" ? `Generating ${batchCount} images...` : "Generating...") 
+                  ? (isBatchMode && mode === "image-to-image" ? `正在生成 ${batchCount} 張圖片...` : "生成中...") 
                   : mode === "text-to-image" 
-                    ? "Generate Image" 
+                    ? "生成圖片" 
                     : isBatchMode 
-                      ? `Generate ${batchCount} AI Edits` 
-                      : "Generate AI Edit"
+                      ? `生成 ${batchCount} 張 AI 編輯` 
+                      : "生成 AI 編輯"
                 }
               </span>
             </Button>
@@ -690,8 +690,8 @@ export default function Home() {
                   <div className="w-16 h-16 mx-auto">
                     <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary border-t-transparent"></div>
                   </div>
-                  <h3 className="text-lg font-semibold text-secondary">Processing Your Image</h3>
-                  <p className="text-gray-500">This may take a few moments...</p>
+                  <h3 className="text-lg font-semibold text-secondary">正在處理您的圖片</h3>
+                  <p className="text-gray-500">這可能需要一些時間...</p>
                   <div className="w-full bg-gray-200 rounded-full h-2 max-w-md mx-auto">
                     <div className="bg-primary h-2 rounded-full animate-pulse" style={{width: "45%"}}></div>
                   </div>
@@ -708,9 +708,9 @@ export default function Home() {
                   <i className="fas fa-exclamation-circle text-red-500 mt-1"></i>
                   <div className="flex-1 space-y-3">
                     <div>
-                      <h3 className="text-red-800 font-semibold">Generation Failed</h3>
+                      <h3 className="text-red-800 font-semibold">生成失敗</h3>
                       <p className="text-red-700 text-sm mt-2" data-testid="text-error-message">
-                        {generation.errorMessage || "Unable to process your image. Please try again."}
+                        {generation.errorMessage || "無法處理您的圖片，請重試。"}
                       </p>
                     </div>
                     <div>
@@ -721,7 +721,7 @@ export default function Home() {
                         data-testid="button-retry"
                       >
                         <i className="fas fa-redo mr-1"></i>
-                        Try Again
+                        重試
                       </Button>
                     </div>
                   </div>
@@ -736,7 +736,7 @@ export default function Home() {
               <CardContent className="p-6">
                 <h2 className="text-lg font-semibold text-secondary mb-6 flex items-center">
                   <i className="fas fa-images text-primary mr-2"></i>
-                  {generation.type === "text-to-image" ? "Generated Result" : "Before & After Comparison"}
+                  {generation.type === "text-to-image" ? "生成結果" : "修改前後對比"}
                 </h2>
                 
                 {generation.type === "text-to-image" ? (
@@ -745,7 +745,7 @@ export default function Home() {
                     <div className="w-full max-w-2xl space-y-3">
                       <h3 className="text-sm font-medium text-secondary flex items-center justify-center">
                         <i className="fas fa-sparkles text-accent mr-2"></i>
-                        AI Generated Image
+                        AI 生成的圖片
                       </h3>
                       <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
                         <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
@@ -812,7 +812,7 @@ export default function Home() {
                     <div className="space-y-3">
                       <h3 className="text-sm font-medium text-secondary flex items-center">
                         <i className="fas fa-image text-gray-500 mr-2"></i>
-                        Original Image
+                        原始圖片
                       </h3>
                       <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square">
                         <img 
@@ -828,7 +828,7 @@ export default function Home() {
                     <div className="space-y-3">
                       <h3 className="text-sm font-medium text-secondary flex items-center">
                         <i className="fas fa-sparkles text-accent mr-2"></i>
-                        AI Generated Result
+                        AI 生成結果
                       </h3>
                       <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
                         <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
@@ -903,7 +903,7 @@ export default function Home() {
                     data-testid="button-download"
                   >
                     <i className="fas fa-download mr-2"></i>
-                    Download Result
+                    下載結果
                   </Button>
                   <Button 
                     variant="secondary"
@@ -912,7 +912,7 @@ export default function Home() {
                     data-testid="button-generate-again"
                   >
                     <i className="fas fa-redo mr-2"></i>
-                    Generate Again
+                    再次生成
                   </Button>
                   <Button 
                     variant="secondary"
@@ -920,7 +920,7 @@ export default function Home() {
                     onClick={() => {
                       if (navigator.share) {
                         navigator.share({
-                          title: 'AI Generated Image',
+                          title: 'AI 生成的圖片',
                           url: generation.generatedImageUrl!
                         });
                       }
@@ -928,7 +928,7 @@ export default function Home() {
                     data-testid="button-share"
                   >
                     <i className="fas fa-share-alt mr-2"></i>
-                    Share
+                    分享
                   </Button>
                 </div>
 
@@ -937,28 +937,28 @@ export default function Home() {
                   <details className="group">
                     <summary className="cursor-pointer text-sm font-medium text-gray-600 hover:text-primary flex items-center" data-testid="button-generation-details">
                       <i className="fas fa-info-circle mr-2"></i>
-                      Generation Details
+                      生成詳情
                       <i className="fas fa-chevron-down ml-2 transform group-open:rotate-180 transition-transform"></i>
                     </summary>
                     <div className="mt-3 text-sm text-gray-600 space-y-2">
                       <div className="flex justify-between">
-                        <span>Model:</span>
+                        <span>模型：</span>
                         <span className="font-mono text-xs" data-testid="text-model">ep-20250824201751-nm8dh</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Prompt:</span>
+                        <span>描述：</span>
                         <span data-testid="text-used-prompt">"{generation.prompt}"</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Guidance Scale:</span>
+                        <span>引導強度：</span>
                         <span data-testid="text-used-guidance-scale">{generation.guidanceScale}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Seed:</span>
+                        <span>種子值：</span>
                         <span data-testid="text-used-seed">{generation.seed}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span>Processing Time:</span>
+                        <span>處理時間：</span>
                         <span data-testid="text-processing-time">{generation.processingTime?.toFixed(1)}s</span>
                       </div>
                     </div>
@@ -975,14 +975,14 @@ export default function Home() {
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-lg font-semibold text-secondary flex items-center">
                     <i className="fas fa-images text-primary mr-2"></i>
-                    Batch Generation Results
+                    批次生成結果
                   </h2>
                   <div className="flex items-center space-x-4">
                     <div className="text-sm text-gray-600" data-testid="batch-progress">
-                      {batchData.completedCount} of {batchData.totalCount} complete
+                      已完成 {batchData.completedCount} / {batchData.totalCount}
                     </div>
                     <div className="text-sm font-semibold text-primary" data-testid="batch-total-cost">
-                      Total: ${batchData.totalCost.toFixed(2)}
+                      總計：${batchData.totalCost.toFixed(2)}
                     </div>
                   </div>
                 </div>
@@ -991,7 +991,7 @@ export default function Home() {
                 {batchData.completedCount < batchData.totalCount && (
                   <div className="mb-6">
                     <div className="flex justify-between text-sm text-gray-600 mb-2">
-                      <span>Processing Progress</span>
+                      <span>處理進度</span>
                       <span>{Math.round((batchData.completedCount / batchData.totalCount) * 100)}%</span>
                     </div>
                     <div className="w-full bg-gray-200 rounded-full h-2">
@@ -1007,7 +1007,7 @@ export default function Home() {
                 <div className="mb-6 p-4 bg-gray-50 rounded-lg">
                   <h3 className="text-sm font-medium text-secondary mb-3 flex items-center">
                     <i className="fas fa-image text-gray-500 mr-2"></i>
-                    Base Image Used for All Variations
+                    所有變化使用的基礎圖片
                   </h3>
                   <div className="w-32 h-32 bg-gray-100 rounded-lg overflow-hidden">
                     <img 
@@ -1025,22 +1025,22 @@ export default function Home() {
                     <div key={gen.id} className="space-y-3">
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-medium text-secondary">
-                          Image {index + 1}
+                          圖片 {index + 1}
                         </h3>
                         <div className="flex items-center space-x-2">
                           {gen.status === "completed" && (
                             <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
-                              <i className="fas fa-check mr-1"></i>Complete
+                              <i className="fas fa-check mr-1"></i>完成
                             </span>
                           )}
                           {gen.status === "processing" && (
                             <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                              <i className="fas fa-spinner fa-spin mr-1"></i>Processing
+                              <i className="fas fa-spinner fa-spin mr-1"></i>處理中
                             </span>
                           )}
                           {gen.status === "failed" && (
                             <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
-                              <i className="fas fa-exclamation mr-1"></i>Failed
+                              <i className="fas fa-exclamation mr-1"></i>失敗
                             </span>
                           )}
                         </div>
@@ -1087,21 +1087,21 @@ export default function Home() {
                           <div className="w-full h-full flex items-center justify-center">
                             <div className="text-center space-y-2">
                               <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto"></div>
-                              <p className="text-xs text-gray-500">Processing...</p>
+                              <p className="text-xs text-gray-500">處理中...</p>
                             </div>
                           </div>
                         ) : gen.status === "failed" ? (
                           <div className="w-full h-full flex items-center justify-center">
                             <div className="text-center space-y-2">
                               <i className="fas fa-exclamation-triangle text-red-400 text-2xl"></i>
-                              <p className="text-xs text-red-600">Generation failed</p>
+                              <p className="text-xs text-red-600">生成失敗</p>
                             </div>
                           </div>
                         ) : (
                           <div className="w-full h-full flex items-center justify-center">
                             <div className="text-center space-y-2">
                               <i className="fas fa-clock text-gray-400 text-2xl"></i>
-                              <p className="text-xs text-gray-500">Waiting...</p>
+                              <p className="text-xs text-gray-500">等待中...</p>
                             </div>
                           </div>
                         )}
@@ -1109,7 +1109,7 @@ export default function Home() {
 
                       {/* Prompt Display */}
                       <div className="p-3 bg-gray-50 rounded-lg">
-                        <p className="text-xs text-gray-600 font-medium mb-1">Prompt:</p>
+                        <p className="text-xs text-gray-600 font-medium mb-1">描述：</p>
                         <p className="text-sm text-gray-800" data-testid={`text-batch-prompt-${index}`}>
                           "{gen.prompt}"
                         </p>
@@ -1130,7 +1130,7 @@ export default function Home() {
                             data-testid={`button-download-${index}`}
                           >
                             <i className="fas fa-download mr-1"></i>
-                            Download
+                            下載
                           </Button>
                         </div>
                       )}
@@ -1159,7 +1159,7 @@ export default function Home() {
                         data-testid="button-download-all"
                       >
                         <i className="fas fa-download mr-2"></i>
-                        Download All ({batchData.completedCount} images)
+                        下載全部 ({batchData.completedCount} 張圖片)
                       </Button>
                       <Button 
                         variant="secondary"
@@ -1168,7 +1168,7 @@ export default function Home() {
                         data-testid="button-generate-batch-again"
                       >
                         <i className="fas fa-redo mr-2"></i>
-                        Generate Again
+                        再次生成
                       </Button>
                     </div>
                   </div>
@@ -1184,13 +1184,13 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="text-center space-y-4">
             <div className="flex justify-center items-center space-x-6 text-sm text-gray-500">
-              <a href="#" className="hover:text-primary transition-colors">Privacy Policy</a>
-              <a href="#" className="hover:text-primary transition-colors">Terms of Service</a>
-              <a href="#" className="hover:text-primary transition-colors">API Documentation</a>
-              <a href="#" className="hover:text-primary transition-colors">Support</a>
+              <a href="#" className="hover:text-primary transition-colors">隱私政策</a>
+              <a href="#" className="hover:text-primary transition-colors">服務條款</a>
+              <a href="#" className="hover:text-primary transition-colors">API 文件</a>
+              <a href="#" className="hover:text-primary transition-colors">技術支援</a>
             </div>
             <p className="text-xs text-gray-400">
-              Powered by BytePlus AI Image Generation API • Made with ❤️ for creators
+              技術支援：BytePlus AI 圖片生成 API
             </p>
           </div>
         </div>

@@ -95,13 +95,13 @@ export function UnifiedUploader({
   const validateFile = useCallback((file: File): { valid: boolean; error?: string } => {
     // Check file type
     if (!["image/jpeg", "image/png"].includes(file.type)) {
-      return { valid: false, error: "Only JPG and PNG files are supported" };
+      return { valid: false, error: "僅支援 JPG 和 PNG 檔案格式" };
     }
 
     // Check file size
     if (file.size > maxFileSize) {
       const maxSizeMB = Math.round(maxFileSize / (1024 * 1024));
-      return { valid: false, error: `File size must be less than ${maxSizeMB}MB` };
+      return { valid: false, error: `檔案大小必須小於 ${maxSizeMB}MB` };
     }
 
     return { valid: true };
@@ -234,28 +234,28 @@ export function UnifiedUploader({
             {isUploading ? (
               <div className="space-y-2">
                 <p className="text-lg font-medium text-secondary">
-                  Uploading {selectedFile?.name}...
+                  正在上傳 {selectedFile?.name}...
                 </p>
                 <div className="max-w-xs mx-auto">
                   <Progress value={uploadProgress} className="h-2" />
                 </div>
                 <p className="text-sm text-gray-500">
-                  {Math.round(uploadProgress)}% complete
+                  已完成 {Math.round(uploadProgress)}%
                   {selectedFile && ` • ${formatFileSize(selectedFile.size)}`}
                 </p>
               </div>
             ) : isDragOver ? (
               <div>
-                <p className="text-lg font-medium text-primary">Drop your image here</p>
-                <p className="text-sm text-blue-600 mt-1">Release to upload</p>
+                <p className="text-lg font-medium text-primary">將圖片放到這裡</p>
+                <p className="text-sm text-blue-600 mt-1">放開以上傳</p>
               </div>
             ) : (
               <div>
                 <p className="text-lg font-medium text-secondary">
-                  {children || "Drop your image here or click to browse"}
+                  {children || "拖放圖片到此處或點擊瀏覽"}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  <span className="text-primary font-medium">Click to browse</span> or drag and drop
+                  <span className="text-primary font-medium">點擊瀏覽</span> 或拖放檔案
                 </p>
               </div>
             )}
@@ -264,7 +264,7 @@ export function UnifiedUploader({
           {/* File Constraints */}
           {!isUploading && (
             <p className="text-xs text-gray-400">
-              Supports JPG, PNG up to {Math.round(maxFileSize / (1024 * 1024))}MB
+              支援 JPG、PNG 格式，最大 {Math.round(maxFileSize / (1024 * 1024))}MB
             </p>
           )}
         </div>
