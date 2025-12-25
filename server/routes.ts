@@ -216,38 +216,68 @@ export async function registerRoutes(app: Express): Promise<Server> {
           throw new Error("Original image URL is required for image-to-image generation");
         }
         
-        // Get image data directly from object storage instead of HTTP fetch
-        console.log(`Getting image from object storage: ${generation.originalImageUrl}`);
-        
-        const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
-        
-        // Read the file data as buffer
-        const chunks: Buffer[] = [];
-        const stream = objectFile.createReadStream();
-        
-        for await (const chunk of stream) {
-          chunks.push(Buffer.from(chunk));
+        // Helper function to convert image URL to base64 data URI
+        async function getImageAsDataUri(imageUrl: string): Promise<string> {
+          console.log(`Getting image from object storage: ${imageUrl}`);
+          const objectFile = await objectStorageService.getObjectEntityFile(imageUrl);
+          const chunks: Buffer[] = [];
+          const stream = objectFile.createReadStream();
+          
+          for await (const chunk of stream) {
+            chunks.push(Buffer.from(chunk));
+          }
+          
+          const imageBuffer = Buffer.concat(chunks);
+          const base64Image = imageBuffer.toString('base64');
+          return `data:image/jpeg;base64,${base64Image}`;
         }
         
-        const imageBuffer = Buffer.concat(chunks);
-        const base64Image = imageBuffer.toString('base64');
-        const dataUri = `data:image/jpeg;base64,${base64Image}`;
+        // Get primary image as base64
+        const primaryDataUri = await getImageAsDataUri(generation.originalImageUrl);
+        console.log(`✅ Primary image converted to base64`);
         
-        console.log(`✅ Image converted to base64 (${base64Image.length} chars)`);
+        // Check for multi-image input
+        const hasMultipleImages = generation.additionalImageUrls && generation.additionalImageUrls.length > 0;
+        
+        let imageParam: string | string[];
+        
+        if (hasMultipleImages) {
+          // Multi-image input: convert all additional images
+          const additionalDataUris: string[] = [];
+          for (const additionalUrl of generation.additionalImageUrls!) {
+            const dataUri = await getImageAsDataUri(additionalUrl);
+            additionalDataUris.push(dataUri);
+            console.log(`✅ Additional image converted to base64`);
+          }
+          imageParam = [primaryDataUri, ...additionalDataUris];
+          console.log(`Using multi-image input with ${imageParam.length} images`);
+        } else {
+          imageParam = primaryDataUri;
+        }
         
         const aspectRatio = generation.size || "2K";
         const sizeValue = convertAspectRatioToSize(aspectRatio);
         
+        // Check if sequential generation is enabled for image-to-image
+        const isSequentialI2I = generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
+        
         requestBody = {
           model: SEEDDANCE_MODEL,
           prompt: generation.prompt,
-          image: dataUri,
+          image: imageParam,
           response_format: "url",
           size: sizeValue,
-          sequential_image_generation: "disabled",
-          stream: false,
+          sequential_image_generation: isSequentialI2I ? "auto" : "disabled",
+          stream: isSequentialI2I,
           watermark: generation.watermark !== false
         };
+        
+        // Add max_images option for sequential generation
+        if (isSequentialI2I) {
+          requestBody.sequential_image_generation_options = {
+            max_images: generation.maxImages
+          };
+        }
       }
 
       console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));
@@ -283,8 +313,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      // Check if this is a streaming response (for sequential generation)
-      const isSequential = generation.type === "text-to-image" && generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
+      // Check if this is a streaming response (for sequential generation - both text-to-image and image-to-image)
+      const isSequential = generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
       
       if (isSequential) {
         // Handle streaming response for sequential generation

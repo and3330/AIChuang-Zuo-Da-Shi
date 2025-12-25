@@ -34,6 +34,10 @@ export default function Home() {
   const [batchGenerations, setBatchGenerations] = useState<ImageGeneration[]>([]);
   const [isSequentialMode, setIsSequentialMode] = useState(false);
   const [sequentialCount, setSequentialCount] = useState(4);
+  const [isI2ISequentialMode, setIsI2ISequentialMode] = useState(false);
+  const [i2iSequentialCount, setI2ISequentialCount] = useState(4);
+  const [additionalImages, setAdditionalImages] = useState<{url: string, path: string}[]>([]);
+  const [isMultiImageMode, setIsMultiImageMode] = useState(false);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -230,7 +234,7 @@ export default function Home() {
           watermark,
         });
       } else {
-        // Single generation
+        // Single generation (with optional sequential and multi-image modes)
         if (!prompt.trim()) {
           toast({
             title: "缺少描述",
@@ -240,14 +244,28 @@ export default function Home() {
           return;
         }
 
-        generateMutation.mutate({
+        const mutationData: any = {
           type: "image-to-image",
           originalImageUrl: uploadedImagePath,
           prompt: prompt.trim(),
           guidanceScale,
           seed,
           watermark,
-        });
+          size,
+        };
+
+        // Add sequential generation options
+        if (isI2ISequentialMode) {
+          mutationData.sequentialGeneration = true;
+          mutationData.maxImages = i2iSequentialCount;
+        }
+
+        // Add multi-image support
+        if (isMultiImageMode && additionalImages.length > 0) {
+          mutationData.additionalImageUrls = additionalImages.map(img => img.path);
+        }
+
+        generateMutation.mutate(mutationData);
       }
     } else {
       if (!textPrompt.trim()) {
@@ -287,6 +305,35 @@ export default function Home() {
     setCurrentGenerationId("");
     setCurrentBatchId("");
     setBatchGenerations([]);
+    setAdditionalImages([]);
+    setIsMultiImageMode(false);
+  };
+
+  const handleAdditionalUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
+    if (result.successful && result.successful[0]) {
+      const uploadURL = result.successful[0].uploadURL;
+      try {
+        const response = await apiRequest("PUT", "/api/objects/set-path", {
+          imageURL: uploadURL,
+        });
+        const data = await response.json();
+        setAdditionalImages(prev => [...prev, { url: data.objectPath, path: data.objectPath }]);
+        toast({
+          title: "參考圖片上傳成功",
+          description: `已新增第 ${additionalImages.length + 2} 張參考圖片。`,
+        });
+      } catch (error) {
+        toast({
+          title: "上傳錯誤",
+          description: "處理上傳圖片失敗。",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
+  const removeAdditionalImage = (index: number) => {
+    setAdditionalImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const isGenerating = generateMutation.isPending || 
@@ -559,44 +606,187 @@ export default function Home() {
                   描述您想要的修改
                 </h2>
                 
-                {/* Batch Mode Toggle */}
-                <div className="flex items-center space-x-3">
-                  <Label htmlFor="batchToggle" className="text-sm font-medium text-secondary">
-                    批次生成
-                  </Label>
-                  <input
-                    id="batchToggle"
-                    type="checkbox"
-                    checked={isBatchMode}
-                    onChange={(e) => {
-                      setIsBatchMode(e.target.checked);
-                      if (e.target.checked) {
-                        updateBatchCount(batchCount); // Initialize batch prompts
-                      }
-                    }}
-                    className="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
-                    data-testid="checkbox-batch-mode"
-                  />
+                {/* Generation Mode Toggles */}
+                <div className="flex items-center space-x-6">
+                  {/* Multi-Image Mode Toggle */}
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="multiImageToggle" className="text-sm font-medium text-secondary">
+                      多圖輸入
+                    </Label>
+                    <input
+                      id="multiImageToggle"
+                      type="checkbox"
+                      checked={isMultiImageMode}
+                      onChange={(e) => {
+                        setIsMultiImageMode(e.target.checked);
+                        if (!e.target.checked) {
+                          setAdditionalImages([]);
+                        }
+                        if (e.target.checked) {
+                          setIsBatchMode(false);
+                          setIsI2ISequentialMode(false);
+                        }
+                      }}
+                      className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 focus:ring-2"
+                      data-testid="checkbox-multi-image-mode"
+                    />
+                  </div>
+
+                  {/* Sequential Mode Toggle */}
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="i2iSequentialToggle" className="text-sm font-medium text-secondary">
+                      序列生成
+                    </Label>
+                    <input
+                      id="i2iSequentialToggle"
+                      type="checkbox"
+                      checked={isI2ISequentialMode}
+                      onChange={(e) => {
+                        setIsI2ISequentialMode(e.target.checked);
+                        if (e.target.checked) {
+                          setIsBatchMode(false);
+                          setIsMultiImageMode(false);
+                          setAdditionalImages([]);
+                        }
+                      }}
+                      className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                      data-testid="checkbox-i2i-sequential-mode"
+                    />
+                  </div>
+
+                  {/* Batch Mode Toggle */}
+                  <div className="flex items-center space-x-2">
+                    <Label htmlFor="batchToggle" className="text-sm font-medium text-secondary">
+                      批次生成
+                    </Label>
+                    <input
+                      id="batchToggle"
+                      type="checkbox"
+                      checked={isBatchMode}
+                      onChange={(e) => {
+                        setIsBatchMode(e.target.checked);
+                        if (e.target.checked) {
+                          updateBatchCount(batchCount);
+                          setIsI2ISequentialMode(false);
+                          setIsMultiImageMode(false);
+                          setAdditionalImages([]);
+                        }
+                      }}
+                      className="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
+                      data-testid="checkbox-batch-mode"
+                    />
+                  </div>
                 </div>
               </div>
               
               <div className="space-y-4">
                 {!isBatchMode ? (
                   /* Single Generation Mode */
-                  <div>
-                    <Label htmlFor="promptInput" className="text-sm font-medium text-secondary">
-                      您想要做什麼修改？
-                    </Label>
-                    <Textarea 
-                      id="promptInput"
-                      rows={3}
-                      className="mt-2 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-                      placeholder="例如：把泡泡變成愛心形狀、把天空改成日落顏色、加入飛鳥..."
-                      value={prompt}
-                      onChange={(e) => setPrompt(e.target.value)}
-                      data-testid="textarea-prompt"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">請具體描述您想在圖片中看到的修改</p>
+                  <div className="space-y-4">
+                    <div>
+                      <Label htmlFor="promptInput" className="text-sm font-medium text-secondary">
+                        您想要做什麼修改？
+                      </Label>
+                      <Textarea 
+                        id="promptInput"
+                        rows={3}
+                        className="mt-2 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
+                        placeholder={isMultiImageMode 
+                          ? "例如：用圖片 2 的服裝替換圖片 1 中人物的衣服" 
+                          : "例如：把泡泡變成愛心形狀、把天空改成日落顏色、加入飛鳥..."}
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        data-testid="textarea-prompt"
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        {isMultiImageMode 
+                          ? "使用「圖片 1」「圖片 2」等來引用上傳的圖片" 
+                          : "請具體描述您想在圖片中看到的修改"}
+                      </p>
+                    </div>
+
+                    {/* Multi-Image Upload Section */}
+                    {isMultiImageMode && (
+                      <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                        <Label className="text-sm font-medium text-secondary mb-3 block">
+                          <i className="fas fa-images text-green-600 mr-2"></i>
+                          參考圖片（圖片 2、3、4...）
+                        </Label>
+                        <p className="text-xs text-green-700 mb-3">
+                          上傳額外的參考圖片，可用於服裝替換、風格融合等多圖融合效果
+                        </p>
+                        
+                        {/* Additional Images Grid */}
+                        <div className="grid grid-cols-4 gap-3 mb-3">
+                          {additionalImages.map((img, index) => (
+                            <div key={index} className="relative">
+                              <img 
+                                src={img.url} 
+                                alt={`參考圖片 ${index + 2}`} 
+                                className="w-full aspect-square object-cover rounded-lg border border-green-300"
+                              />
+                              <div className="absolute top-1 left-1 bg-green-600 text-white text-xs px-1.5 py-0.5 rounded-full">
+                                {index + 2}
+                              </div>
+                              <button
+                                onClick={() => removeAdditionalImage(index)}
+                                className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                                data-testid={`button-remove-additional-${index}`}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                          
+                          {/* Add More Images Button */}
+                          {additionalImages.length < 4 && (
+                            <UnifiedUploader
+                              getUploadParameters={handleGetUploadParameters}
+                              onComplete={handleAdditionalUploadComplete}
+                              onError={handleUploadError}
+                              allowedFileTypes={["image/jpeg", "image/png", "image/webp"]}
+                              maxFileSize={10 * 1024 * 1024}
+                              className="w-full aspect-square border-2 border-dashed border-green-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-green-500 hover:bg-green-100 transition-colors"
+                            />
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">
+                          最多可上傳 4 張參考圖片（已上傳 {additionalImages.length} 張）
+                        </p>
+                      </div>
+                    )}
+
+                    {/* I2I Sequential Options */}
+                    {isI2ISequentialMode && (
+                      <div className="p-4 bg-purple-50 border border-purple-200 rounded-lg">
+                        <Label className="text-sm font-medium text-secondary mb-2 block">
+                          <i className="fas fa-layer-group text-purple-600 mr-2"></i>
+                          序列圖片數量
+                        </Label>
+                        <div className="flex items-center space-x-4">
+                          <Input
+                            type="number"
+                            min="2"
+                            max="10"
+                            value={i2iSequentialCount}
+                            onChange={(e) => {
+                              const value = Math.min(10, Math.max(2, parseInt(e.target.value) || 2));
+                              setI2ISequentialCount(value);
+                            }}
+                            className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            data-testid="input-i2i-sequential-count"
+                          />
+                          <span className="text-sm text-gray-500">張圖片 (2-10)</span>
+                          <div className="text-sm text-gray-600">
+                            預估費用：<span className="font-semibold text-purple-600" data-testid="text-i2i-sequential-cost">${(i2iSequentialCount * 0.03).toFixed(2)}</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-purple-600 mt-2">
+                          <i className="fas fa-info-circle mr-1"></i>
+                          基於您的圖片生成一系列連貫的變化版本，適合視覺系統設計、包裝系列等
+                        </p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   /* Batch Generation Mode */
@@ -712,6 +902,37 @@ export default function Home() {
           </Card>
           )}
 
+          {/* Watermark Toggle - Prominent Position */}
+          <Card className="bg-surface rounded-xl shadow-sm border border-gray-200">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <i className="fas fa-stamp text-gray-500"></i>
+                  <div>
+                    <Label className="text-sm font-medium text-secondary">浮水印設定</Label>
+                    <p className="text-xs text-gray-500">
+                      {watermark ? "生成圖片會包含 BytePlus 浮水印" : "生成圖片將不包含浮水印"}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <span className={`text-sm ${!watermark ? 'text-primary font-medium' : 'text-gray-400'}`}>無浮水印</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={watermark}
+                    onClick={() => setWatermark(!watermark)}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${watermark ? 'bg-primary' : 'bg-gray-300'}`}
+                    data-testid="toggle-watermark-prominent"
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${watermark ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                  <span className={`text-sm ${watermark ? 'text-primary font-medium' : 'text-gray-400'}`}>加浮水印</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Generate Button */}
           <div className="flex justify-center">
             <Button
@@ -733,14 +954,20 @@ export default function Home() {
                       ? `正在生成 ${batchCount} 張圖片...` 
                       : isSequentialMode && mode === "text-to-image"
                         ? `正在生成 ${sequentialCount} 張圖片...`
-                        : "生成中...") 
+                        : isI2ISequentialMode && mode === "image-to-image"
+                          ? `正在生成 ${i2iSequentialCount} 張圖片...`
+                          : "生成中...") 
                   : mode === "text-to-image" 
                     ? isSequentialMode 
                       ? `生成 ${sequentialCount} 張序列圖片` 
                       : "生成圖片" 
                     : isBatchMode 
                       ? `生成 ${batchCount} 張 AI 編輯` 
-                      : "生成 AI 編輯"
+                      : isI2ISequentialMode
+                        ? `生成 ${i2iSequentialCount} 張序列變化`
+                        : isMultiImageMode
+                          ? "生成多圖融合"
+                          : "生成 AI 編輯"
                 }
               </span>
             </Button>
