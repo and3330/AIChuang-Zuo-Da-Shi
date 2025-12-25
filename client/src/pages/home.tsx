@@ -624,7 +624,6 @@ export default function Home() {
                         }
                         if (e.target.checked) {
                           setIsBatchMode(false);
-                          setIsI2ISequentialMode(false);
                         }
                       }}
                       className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 focus:ring-2"
@@ -645,8 +644,6 @@ export default function Home() {
                         setIsI2ISequentialMode(e.target.checked);
                         if (e.target.checked) {
                           setIsBatchMode(false);
-                          setIsMultiImageMode(false);
-                          setAdditionalImages([]);
                         }
                       }}
                       className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
@@ -713,7 +710,8 @@ export default function Home() {
                           參考圖片（圖片 2、3、4...）
                         </Label>
                         <p className="text-xs text-green-700 mb-3">
-                          上傳額外的參考圖片，可用於服裝替換、風格融合等多圖融合效果
+                          上傳額外的參考圖片，可用於服裝替換、風格融合、角色一致性等多圖效果
+                          {isI2ISequentialMode && "，搭配序列生成可創建連貫的圖片系列"}
                         </p>
                         
                         {/* Additional Images Grid */}
@@ -783,7 +781,9 @@ export default function Home() {
                         </div>
                         <p className="text-xs text-purple-600 mt-2">
                           <i className="fas fa-info-circle mr-1"></i>
-                          基於您的圖片生成一系列連貫的變化版本，適合視覺系統設計、包裝系列等
+                          {isMultiImageMode 
+                            ? "使用多張參考圖片生成一系列連貫的圖片，例如：女孩和玩偶在遊樂園的早中晚三個時段" 
+                            : "基於您的圖片生成一系列連貫的變化版本，適合視覺系統設計、包裝系列等"}
                         </p>
                       </div>
                     )}
@@ -963,11 +963,13 @@ export default function Home() {
                       : "生成圖片" 
                     : isBatchMode 
                       ? `生成 ${batchCount} 張 AI 編輯` 
-                      : isI2ISequentialMode
-                        ? `生成 ${i2iSequentialCount} 張序列變化`
-                        : isMultiImageMode
-                          ? "生成多圖融合"
-                          : "生成 AI 編輯"
+                      : isI2ISequentialMode && isMultiImageMode
+                        ? `多圖序列生成 ${i2iSequentialCount} 張`
+                        : isI2ISequentialMode
+                          ? `生成 ${i2iSequentialCount} 張序列變化`
+                          : isMultiImageMode
+                            ? "生成多圖融合"
+                            : "生成 AI 編輯"
                 }
               </span>
             </Button>
