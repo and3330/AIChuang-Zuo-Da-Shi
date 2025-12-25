@@ -721,7 +721,7 @@ export default function Home() {
                           {additionalImages.map((img, index) => (
                             <div key={index} className="relative">
                               <img 
-                                src={img.url} 
+                                src={img.path.startsWith('/') ? img.path : `/${img.path}`} 
                                 alt={`參考圖片 ${index + 2}`} 
                                 className="w-full aspect-square object-cover rounded-lg border border-green-300"
                               />
