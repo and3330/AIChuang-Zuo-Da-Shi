@@ -191,15 +191,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const aspectRatio = generation.size || "1:1";
         const sizeValue = convertAspectRatioToSize(aspectRatio);
         
+        // Check if sequential generation is enabled
+        const isSequential = generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
+        
         requestBody = {
           model: SEEDDANCE_MODEL,
           prompt: generation.prompt,
           response_format: "url",
           size: sizeValue,
-          sequential_image_generation: "auto",
-          stream: false,
+          sequential_image_generation: isSequential ? "auto" : "disabled",
+          stream: isSequential,
           watermark: generation.watermark !== false
         };
+        
+        // Add max_images option for sequential generation
+        if (isSequential) {
+          requestBody.sequential_image_generation_options = {
+            max_images: generation.maxImages
+          };
+        }
       } else {
         // Image-to-image generation
         if (!generation.originalImageUrl) {
@@ -273,24 +283,74 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return;
       }
 
-      const result = await response.json();
-      const generatedImageUrl = result.data?.[0]?.url;
-
-      if (!generatedImageUrl) {
+      // Check if this is a streaming response (for sequential generation)
+      const isSequential = generation.type === "text-to-image" && generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
+      
+      if (isSequential) {
+        // Handle streaming response for sequential generation
+        const responseText = await response.text();
+        const lines = responseText.split('\n').filter(line => line.trim());
+        const generatedImageUrls: string[] = [];
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const jsonStr = line.slice(6); // Remove 'data: ' prefix
+            if (jsonStr === '[DONE]') continue;
+            
+            try {
+              const data = JSON.parse(jsonStr);
+              if (data.data && Array.isArray(data.data)) {
+                for (const item of data.data) {
+                  if (item.url) {
+                    generatedImageUrls.push(item.url);
+                  }
+                }
+              }
+            } catch (e) {
+              console.log(`Failed to parse streaming line: ${jsonStr}`);
+            }
+          }
+        }
+        
+        console.log(`Sequential generation completed with ${generatedImageUrls.length} images`);
+        
+        if (generatedImageUrls.length === 0) {
+          await storage.updateImageGeneration(generationId, {
+            status: "failed",
+            errorMessage: "No generated images in streaming response",
+            processingTime
+          });
+          return;
+        }
+        
         await storage.updateImageGeneration(generationId, {
-          status: "failed",
-          errorMessage: "No generated image URL in response",
-          processingTime
+          status: "completed",
+          generatedImageUrl: generatedImageUrls[0],
+          generatedImageUrls,
+          processingTime,
+          cost: 0.03 * generatedImageUrls.length
         });
-        return;
-      }
+      } else {
+        // Handle normal non-streaming response
+        const result = await response.json();
+        const generatedImageUrl = result.data?.[0]?.url;
 
-      await storage.updateImageGeneration(generationId, {
-        status: "completed",
-        generatedImageUrl,
-        processingTime,
-        cost: 0.03
-      });
+        if (!generatedImageUrl) {
+          await storage.updateImageGeneration(generationId, {
+            status: "failed",
+            errorMessage: "No generated image URL in response",
+            processingTime
+          });
+          return;
+        }
+
+        await storage.updateImageGeneration(generationId, {
+          status: "completed",
+          generatedImageUrl,
+          processingTime,
+          cost: 0.03
+        });
+      }
 
     } catch (error) {
       console.error("Error processing image generation:", error);

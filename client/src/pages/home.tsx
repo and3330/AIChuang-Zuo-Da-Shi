@@ -32,6 +32,8 @@ export default function Home() {
   const [batchPrompts, setBatchPrompts] = useState<string[]>(["把泡泡變成愛心形狀", "把天空改成日落顏色"]);
   const [currentBatchId, setCurrentBatchId] = useState<string>("");
   const [batchGenerations, setBatchGenerations] = useState<ImageGeneration[]>([]);
+  const [isSequentialMode, setIsSequentialMode] = useState(false);
+  const [sequentialCount, setSequentialCount] = useState(4);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -264,6 +266,8 @@ export default function Home() {
         seed,
         watermark,
         size,
+        sequentialGeneration: isSequentialMode,
+        maxImages: isSequentialMode ? sequentialCount : 1,
       });
     }
   };
@@ -432,10 +436,27 @@ export default function Home() {
           ) : (
             <Card className="bg-surface rounded-xl shadow-sm border border-gray-200">
               <CardContent className="p-6">
-                <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
-                  <i className="fas fa-pencil-alt text-primary mr-2"></i>
-                  文字生成圖片
-                </h2>
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-secondary flex items-center">
+                    <i className="fas fa-pencil-alt text-primary mr-2"></i>
+                    文字生成圖片
+                  </h2>
+                  
+                  {/* Sequential Generation Toggle */}
+                  <div className="flex items-center space-x-3">
+                    <Label htmlFor="sequentialToggle" className="text-sm font-medium text-secondary">
+                      序列生成
+                    </Label>
+                    <input
+                      id="sequentialToggle"
+                      type="checkbox"
+                      checked={isSequentialMode}
+                      onChange={(e) => setIsSequentialMode(e.target.checked)}
+                      className="w-4 h-4 text-primary bg-gray-100 border-gray-300 rounded focus:ring-primary focus:ring-2"
+                      data-testid="checkbox-sequential-mode"
+                    />
+                  </div>
+                </div>
                 
                 <div className="space-y-4">
                   <div>
@@ -446,13 +467,50 @@ export default function Home() {
                       id="textPromptInput"
                       rows={4}
                       className="mt-2 w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent resize-none"
-                      placeholder="例如：美麗的日落山水風景，寫實風格，高品質..."
+                      placeholder={isSequentialMode 
+                        ? "例如：生成一個四季變化的庭院角落系列，包含春、夏、秋、冬四個季節，統一風格呈現..." 
+                        : "例如：美麗的日落山水風景，寫實風格，高品質..."}
                       value={textPrompt}
                       onChange={(e) => setTextPrompt(e.target.value)}
                       data-testid="textarea-text-prompt"
                     />
-                    <p className="text-xs text-gray-500 mt-1">請詳細具體地描述您想在生成圖片中看到的內容</p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {isSequentialMode 
+                        ? "請描述您想要的系列圖片主題，AI 會自動生成連貫的多張圖片" 
+                        : "請詳細具體地描述您想在生成圖片中看到的內容"}
+                    </p>
                   </div>
+
+                  {/* Sequential Count Selection */}
+                  {isSequentialMode && (
+                    <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <Label className="text-sm font-medium text-secondary mb-2 block">
+                        生成圖片數量
+                      </Label>
+                      <div className="flex items-center space-x-4">
+                        <Input
+                          type="number"
+                          min="2"
+                          max="10"
+                          value={sequentialCount}
+                          onChange={(e) => {
+                            const value = Math.min(10, Math.max(2, parseInt(e.target.value) || 2));
+                            setSequentialCount(value);
+                          }}
+                          className="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent"
+                          data-testid="input-sequential-count"
+                        />
+                        <span className="text-sm text-gray-500">張圖片 (2-10)</span>
+                        <div className="text-sm text-gray-600">
+                          預估費用：<span className="font-semibold text-primary" data-testid="text-sequential-cost">${(sequentialCount * 0.03).toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <p className="text-xs text-blue-600 mt-2">
+                        <i className="fas fa-info-circle mr-1"></i>
+                        序列生成會創建一組連貫的圖片系列，適合製作四季變化、時間流逝等主題
+                      </p>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div>
@@ -671,9 +729,15 @@ export default function Home() {
               <i className="fas fa-magic"></i>
               <span>
                 {isGenerating 
-                  ? (isBatchMode && mode === "image-to-image" ? `正在生成 ${batchCount} 張圖片...` : "生成中...") 
+                  ? (isBatchMode && mode === "image-to-image" 
+                      ? `正在生成 ${batchCount} 張圖片...` 
+                      : isSequentialMode && mode === "text-to-image"
+                        ? `正在生成 ${sequentialCount} 張圖片...`
+                        : "生成中...") 
                   : mode === "text-to-image" 
-                    ? "生成圖片" 
+                    ? isSequentialMode 
+                      ? `生成 ${sequentialCount} 張序列圖片` 
+                      : "生成圖片" 
                     : isBatchMode 
                       ? `生成 ${batchCount} 張 AI 編輯` 
                       : "生成 AI 編輯"
@@ -740,71 +804,151 @@ export default function Home() {
                 </h2>
                 
                 {generation.type === "text-to-image" ? (
-                  /* Text-to-Image Layout: Single centered image */
-                  <div className="flex justify-center">
-                    <div className="w-full max-w-2xl space-y-3">
-                      <h3 className="text-sm font-medium text-secondary flex items-center justify-center">
-                        <i className="fas fa-sparkles text-accent mr-2"></i>
-                        AI 生成的圖片
-                      </h3>
-                      <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
-                        <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
-                          <DialogTrigger asChild>
-                            <div 
-                              className="relative cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg"
-                              onClick={() => setIsLightboxOpen(true)}
-                              data-testid="lightbox-trigger"
-                              role="button"
-                              tabIndex={0}
-                              aria-label="Click to view full-size image"
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  setIsLightboxOpen(true);
-                                }
+                  /* Text-to-Image Layout: Single or Multiple Images */
+                  generation.generatedImageUrls && generation.generatedImageUrls.length > 1 ? (
+                    /* Sequential Generation: Multiple Images Grid */
+                    <div className="space-y-6">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-medium text-secondary flex items-center">
+                          <i className="fas fa-sparkles text-accent mr-2"></i>
+                          序列生成結果 ({generation.generatedImageUrls.length} 張圖片)
+                        </h3>
+                        <div className="text-sm text-gray-600">
+                          總費用：<span className="font-semibold text-primary">${(generation.cost || 0).toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                        {generation.generatedImageUrls.map((url, index) => (
+                          <div key={index} className="space-y-2">
+                            <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
+                              <img 
+                                src={url} 
+                                alt={`序列圖片 ${index + 1}`}
+                                className="w-full h-full object-cover transition-all duration-200 hover:scale-105"
+                                data-testid={`img-sequential-${index}`}
+                              />
+                              <div className="absolute top-2 left-2">
+                                <span className="bg-primary text-white text-xs px-2 py-1 rounded-full font-medium">
+                                  {index + 1}
+                                </span>
+                              </div>
+                            </div>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full text-xs"
+                              onClick={() => {
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = `sequential-image-${index + 1}.png`;
+                                link.click();
                               }}
+                              data-testid={`button-download-sequential-${index}`}
                             >
-                              <img 
-                                src={generation.generatedImageUrl} 
-                                alt="AI generated result" 
-                                className="w-full h-full object-cover transition-all duration-200" 
-                                data-testid="img-generated"
-                              />
-                              {/* Zoom icon overlay */}
-                              <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
-                                <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white bg-opacity-90 rounded-full p-3 transform scale-75 group-hover:scale-100 transition-transform">
-                                  <i className="fas fa-search-plus text-gray-700 text-xl" aria-hidden="true"></i>
-                                </div>
-                              </div>
-                              {/* NEW badge */}
-                              <div className="absolute top-3 right-3 z-10">
-                                <span className="bg-accent text-white text-xs px-2 py-1 rounded-full font-medium">NEW</span>
-                              </div>
-                            </div>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 bg-transparent border-0 shadow-none">
-                            <div className="relative flex items-center justify-center w-full h-full">
-                              <img 
-                                src={generation.generatedImageUrl} 
-                                alt="AI generated result - Full size" 
-                                className="max-w-full max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
-                                data-testid="img-lightbox"
-                              />
-                              {/* Close button - positioned outside the image */}
-                              <button
-                                onClick={() => setIsLightboxOpen(false)}
-                                className="absolute top-4 right-4 bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-700 hover:text-gray-900 rounded-full p-2 transition-all duration-200 shadow-lg z-10"
-                                aria-label="Close lightbox"
-                                data-testid="button-close-lightbox"
-                              >
-                                <i className="fas fa-times text-lg" aria-hidden="true"></i>
-                              </button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
+                              <i className="fas fa-download mr-1"></i>
+                              下載
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      
+                      {/* Download All & Generate Again Buttons */}
+                      <div className="flex justify-center space-x-4 pt-4">
+                        <Button 
+                          className="bg-primary hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-medium"
+                          onClick={() => {
+                            generation.generatedImageUrls?.forEach((url, index) => {
+                              setTimeout(() => {
+                                const link = document.createElement('a');
+                                link.href = url;
+                                link.download = `sequential-image-${index + 1}.png`;
+                                link.click();
+                              }, index * 300);
+                            });
+                          }}
+                          data-testid="button-download-all-sequential"
+                        >
+                          <i className="fas fa-download mr-2"></i>
+                          下載全部 ({generation.generatedImageUrls.length} 張圖片)
+                        </Button>
+                        <Button 
+                          variant="secondary"
+                          className="bg-gray-100 hover:bg-gray-200 text-secondary px-6 py-2 rounded-lg font-medium"
+                          onClick={handleGenerate}
+                          data-testid="button-generate-again-sequential"
+                        >
+                          <i className="fas fa-redo mr-2"></i>
+                          再次生成
+                        </Button>
                       </div>
                     </div>
-                  </div>
+                  ) : (
+                    /* Single Image */
+                    <div className="flex justify-center">
+                      <div className="w-full max-w-2xl space-y-3">
+                        <h3 className="text-sm font-medium text-secondary flex items-center justify-center">
+                          <i className="fas fa-sparkles text-accent mr-2"></i>
+                          AI 生成的圖片
+                        </h3>
+                        <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
+                          <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
+                            <DialogTrigger asChild>
+                              <div 
+                                className="relative cursor-pointer transition-all duration-200 hover:scale-105 hover:shadow-lg"
+                                onClick={() => setIsLightboxOpen(true)}
+                                data-testid="lightbox-trigger"
+                                role="button"
+                                tabIndex={0}
+                                aria-label="Click to view full-size image"
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' || e.key === ' ') {
+                                    e.preventDefault();
+                                    setIsLightboxOpen(true);
+                                  }
+                                }}
+                              >
+                                <img 
+                                  src={generation.generatedImageUrl} 
+                                  alt="AI generated result" 
+                                  className="w-full h-full object-cover transition-all duration-200" 
+                                  data-testid="img-generated"
+                                />
+                                {/* Zoom icon overlay */}
+                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all duration-200 flex items-center justify-center">
+                                  <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 bg-white bg-opacity-90 rounded-full p-3 transform scale-75 group-hover:scale-100 transition-transform">
+                                    <i className="fas fa-search-plus text-gray-700 text-xl" aria-hidden="true"></i>
+                                  </div>
+                                </div>
+                                {/* NEW badge */}
+                                <div className="absolute top-3 right-3 z-10">
+                                  <span className="bg-accent text-white text-xs px-2 py-1 rounded-full font-medium">NEW</span>
+                                </div>
+                              </div>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 bg-transparent border-0 shadow-none">
+                              <div className="relative flex items-center justify-center w-full h-full">
+                                <img 
+                                  src={generation.generatedImageUrl} 
+                                  alt="AI generated result - Full size" 
+                                  className="max-w-full max-h-[95vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+                                  data-testid="img-lightbox"
+                                />
+                                {/* Close button - positioned outside the image */}
+                                <button
+                                  onClick={() => setIsLightboxOpen(false)}
+                                  className="absolute top-4 right-4 bg-white bg-opacity-90 hover:bg-opacity-100 text-gray-700 hover:text-gray-900 rounded-full p-2 transition-all duration-200 shadow-lg z-10"
+                                  aria-label="Close lightbox"
+                                  data-testid="button-close-lightbox"
+                                >
+                                  <i className="fas fa-times text-lg" aria-hidden="true"></i>
+                                </button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </div>
+                    </div>
+                  )
                 ) : (
                   /* Image-to-Image Layout: Before & After grid */
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

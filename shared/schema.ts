@@ -52,7 +52,9 @@ export const insertTextToImageSchema = createInsertSchema(imageGenerations).pick
   watermark: true,
   size: true,
 }).extend({
-  type: z.literal("text-to-image")
+  type: z.literal("text-to-image"),
+  sequentialGeneration: z.boolean().optional(),
+  maxImages: z.number().min(2).max(10).optional(),
 });
 
 // Image-to-image specific schema  
@@ -83,4 +85,8 @@ export type InsertImageGeneration = z.infer<typeof insertImageGenerationSchema>;
 export type InsertTextToImage = z.infer<typeof insertTextToImageSchema>;
 export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
 export type InsertBatchImageToImage = z.infer<typeof insertBatchImageToImageSchema>;
-export type ImageGeneration = typeof imageGenerations.$inferSelect;
+export type ImageGeneration = typeof imageGenerations.$inferSelect & {
+  generatedImageUrls?: string[];
+  sequentialGeneration?: boolean;
+  maxImages?: number;
+};
