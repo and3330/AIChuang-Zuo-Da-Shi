@@ -65,8 +65,12 @@ export const insertImageToImageSchema = createInsertSchema(imageGenerations).pic
   seed: true,
   watermark: true,
   batchId: true,
+  size: true,
 }).extend({
-  type: z.literal("image-to-image")
+  type: z.literal("image-to-image"),
+  sequentialGeneration: z.boolean().optional(),
+  maxImages: z.number().min(2).max(10).optional(),
+  additionalImageUrls: z.array(z.string()).optional(),
 });
 
 // Batch image generation schema
@@ -89,4 +93,5 @@ export type ImageGeneration = typeof imageGenerations.$inferSelect & {
   generatedImageUrls?: string[];
   sequentialGeneration?: boolean;
   maxImages?: number;
+  additionalImageUrls?: string[];
 };

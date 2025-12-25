@@ -41,7 +41,7 @@ export class MemStorage implements IStorage {
     return user;
   }
 
-  async createImageGeneration(insertGeneration: InsertImageGeneration & { sequentialGeneration?: boolean; maxImages?: number }): Promise<ImageGeneration> {
+  async createImageGeneration(insertGeneration: InsertImageGeneration & { sequentialGeneration?: boolean; maxImages?: number; additionalImageUrls?: string[] }): Promise<ImageGeneration> {
     const id = randomUUID();
     const generation: ImageGeneration = {
       id,
@@ -54,7 +54,7 @@ export class MemStorage implements IStorage {
       guidanceScale: insertGeneration.guidanceScale ?? 5.5,
       seed: insertGeneration.seed ?? 21,
       watermark: insertGeneration.watermark ?? true,
-      size: insertGeneration.size ?? "1:1",
+      size: insertGeneration.size ?? "2K",
       status: "pending",
       errorMessage: null,
       processingTime: null,
@@ -63,6 +63,7 @@ export class MemStorage implements IStorage {
       updatedAt: new Date(),
       sequentialGeneration: insertGeneration.sequentialGeneration ?? false,
       maxImages: insertGeneration.maxImages ?? 1,
+      additionalImageUrls: insertGeneration.additionalImageUrls ?? [],
     };
     this.imageGenerations.set(id, generation);
     return generation;
