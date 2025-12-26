@@ -54,7 +54,7 @@ export const insertTextToImageSchema = createInsertSchema(imageGenerations).pick
 }).extend({
   type: z.literal("text-to-image"),
   sequentialGeneration: z.boolean().optional(),
-  maxImages: z.number().min(2).max(10).optional(),
+  maxImages: z.number().min(2).max(10).optional().nullable(),
 });
 
 // Image-to-image specific schema  
@@ -69,7 +69,7 @@ export const insertImageToImageSchema = createInsertSchema(imageGenerations).pic
 }).extend({
   type: z.literal("image-to-image"),
   sequentialGeneration: z.boolean().optional(),
-  maxImages: z.number().min(2).max(10).optional(),
+  maxImages: z.number().min(2).max(10).optional().nullable(),
   additionalImageUrls: z.array(z.string()).optional(),
 });
 

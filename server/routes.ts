@@ -217,7 +217,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         
         // Helper function to convert image URL to base64 data URI
-        async function getImageAsDataUri(imageUrl: string): Promise<string> {
+        const getImageAsDataUri = async (imageUrl: string): Promise<string> => {
           console.log(`Getting image from object storage: ${imageUrl}`);
           const objectFile = await objectStorageService.getObjectEntityFile(imageUrl);
           const chunks: Buffer[] = [];
@@ -230,7 +230,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const imageBuffer = Buffer.concat(chunks);
           const base64Image = imageBuffer.toString('base64');
           return `data:image/jpeg;base64,${base64Image}`;
-        }
+        };
         
         // Get primary image as base64
         const primaryDataUri = await getImageAsDataUri(generation.originalImageUrl);

@@ -285,7 +285,7 @@ export default function Home() {
         watermark,
         size,
         sequentialGeneration: isSequentialMode,
-        maxImages: isSequentialMode ? sequentialCount : 1,
+        maxImages: isSequentialMode ? sequentialCount : undefined,
       });
     }
   };
