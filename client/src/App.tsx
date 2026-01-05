@@ -26,7 +26,7 @@ function LoginPage({ onLogin }: { onLogin: () => void }) {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    if (username === "1" && password === "55688") {
+    if (username === "1" && password === "1") {
       sessionStorage.setItem("authenticated", "true");
       onLogin();
     } else {
