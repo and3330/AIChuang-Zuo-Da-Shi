@@ -930,10 +930,9 @@ export default function Home() {
                           {/* Add More Images Button */}
                           {additionalImages.length < 4 && (
                             <UnifiedUploader
-                              getUploadParameters={handleGetUploadParameters}
+                              onGetUploadParameters={handleGetUploadParameters}
                               onComplete={handleAdditionalUploadComplete}
                               onError={handleUploadError}
-                              allowedFileTypes={["image/jpeg", "image/png", "image/webp"]}
                               maxFileSize={10 * 1024 * 1024}
                               className="w-full aspect-square border-2 border-dashed border-green-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-green-500 hover:bg-green-100 transition-colors"
                             />
@@ -1254,7 +1253,7 @@ export default function Home() {
           )}
 
           {/* Video Result Section */}
-          {videoGeneration?.status === "completed" && videoGeneration.videoUrl && (
+          {videoGeneration?.status === "completed" && videoGeneration.generatedVideoUrl && (
             <Card className="bg-surface rounded-xl shadow-sm border border-purple-200" data-testid="video-result-section">
               <CardContent className="p-6">
                 <h2 className="text-lg font-semibold text-secondary mb-6 flex items-center">
@@ -1267,7 +1266,7 @@ export default function Home() {
                     <video 
                       controls
                       className="w-full max-h-96"
-                      src={videoGeneration.videoUrl}
+                      src={videoGeneration.generatedVideoUrl}
                       data-testid="video-result"
                     >
                       您的瀏覽器不支援影片播放。
@@ -1289,7 +1288,7 @@ export default function Home() {
                       className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-medium"
                       onClick={() => {
                         const link = document.createElement('a');
-                        link.href = videoGeneration.videoUrl!;
+                        link.href = videoGeneration.generatedVideoUrl!;
                         link.download = `generated-video-${videoGeneration.id}.mp4`;
                         link.click();
                       }}
@@ -1302,7 +1301,7 @@ export default function Home() {
                       variant="outline"
                       className="border-purple-300 text-purple-600 hover:bg-purple-50 px-6 py-2 rounded-lg font-medium"
                       onClick={() => {
-                        setVideoGenerationId(null);
+                        setCurrentVideoGenerationId("");
                         setVideoPrompt("");
                       }}
                       data-testid="button-generate-new-video"

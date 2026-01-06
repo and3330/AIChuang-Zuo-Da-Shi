@@ -548,13 +548,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Extract video URL - the actual structure is content.video_url as a string
           if (pollResult.content?.video_url && typeof pollResult.content.video_url === "string") {
-            videoUrl = pollResult.content.video_url;
+            // Decode HTML entities (API returns &amp; instead of &)
+            videoUrl = pollResult.content.video_url.replace(/&amp;/g, '&');
           }
           // Alternative: content as array with video_url objects
           else if (pollResult.content && Array.isArray(pollResult.content)) {
             for (const item of pollResult.content) {
               if (item.type === "video_url" && item.video_url?.url) {
-                videoUrl = item.video_url.url;
+                videoUrl = item.video_url.url.replace(/&amp;/g, '&');
                 break;
               }
             }
