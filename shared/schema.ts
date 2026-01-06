@@ -83,15 +83,43 @@ export const insertBatchImageToImageSchema = z.object({
   watermark: z.boolean().optional(),
 });
 
+// Image-to-video specific schema
+export const insertImageToVideoSchema = z.object({
+  type: z.literal("image-to-video"),
+  originalImageUrl: z.string(),
+  prompt: z.string(),
+  duration: z.number().min(5).max(10).optional().default(5),
+  cameraFixed: z.boolean().optional().default(false),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertImageGeneration = z.infer<typeof insertImageGenerationSchema>;
 export type InsertTextToImage = z.infer<typeof insertTextToImageSchema>;
 export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
 export type InsertBatchImageToImage = z.infer<typeof insertBatchImageToImageSchema>;
+export type InsertImageToVideo = z.infer<typeof insertImageToVideoSchema>;
 export type ImageGeneration = typeof imageGenerations.$inferSelect & {
   generatedImageUrls?: string[];
   sequentialGeneration?: boolean;
   maxImages?: number;
   additionalImageUrls?: string[];
+};
+
+// Video generation type (for in-memory storage)
+export type VideoGeneration = {
+  id: string;
+  taskId: string | null;
+  type: "image-to-video";
+  originalImageUrl: string;
+  generatedVideoUrl: string | null;
+  prompt: string;
+  duration: number;
+  cameraFixed: boolean;
+  status: "pending" | "processing" | "completed" | "failed";
+  errorMessage: string | null;
+  processingTime: number | null;
+  cost: number;
+  createdAt: Date;
+  updatedAt: Date;
 };
