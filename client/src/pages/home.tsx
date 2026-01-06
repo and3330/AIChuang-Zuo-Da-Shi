@@ -12,10 +12,10 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import type { UploadResult } from "@uppy/core";
-import type { ImageGeneration } from "@shared/schema";
+import type { ImageGeneration, VideoGeneration } from "@shared/schema";
 
 export default function Home() {
-  const [mode, setMode] = useState<"image-to-image" | "text-to-image">("image-to-image");
+  const [mode, setMode] = useState<"image-to-image" | "text-to-image" | "image-to-video">("image-to-image");
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
   const [uploadedImagePath, setUploadedImagePath] = useState<string>("");
   const [prompt, setPrompt] = useState("把泡泡變成愛心形狀");
@@ -38,6 +38,12 @@ export default function Home() {
   const [i2iSequentialCount, setI2ISequentialCount] = useState(4);
   const [additionalImages, setAdditionalImages] = useState<{url: string, path: string}[]>([]);
   const [isMultiImageMode, setIsMultiImageMode] = useState(false);
+  
+  // Video generation state
+  const [videoPrompt, setVideoPrompt] = useState("高速穿越障礙物或美麗的自然風景，帶來沉浸式的飛行體驗");
+  const [videoDuration, setVideoDuration] = useState(5);
+  const [cameraFixed, setCameraFixed] = useState(false);
+  const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -85,6 +91,22 @@ export default function Home() {
       const data = query.state.data;
       const hasProcessing = data?.generations.some(g => g.status === "pending" || g.status === "processing");
       return hasProcessing ? 2000 : false;
+    },
+  });
+
+  // Poll for video generation status
+  const { data: videoGeneration, isLoading: isVideoPolling } = useQuery<VideoGeneration>({
+    queryKey: ["/api/video-generations", currentVideoGenerationId],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/video-generations/${currentVideoGenerationId}`);
+      return response.json();
+    },
+    enabled: !!currentVideoGenerationId,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: (query) => {
+      const gen = query.state.data as VideoGeneration | undefined;
+      return (gen?.status === "pending" || gen?.status === "processing") ? 3000 : false;
     },
   });
 
@@ -173,6 +195,31 @@ export default function Home() {
       toast({
         title: "生成失敗",
         description: "無法開始圖片生成。",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Video generation mutation
+  const videoGenerateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", "/api/video-generations", data);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      setCurrentVideoGenerationId(data.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/video-generations", data.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      toast({
+        title: "影片生成已開始",
+        description: "正在處理您的影片，這可能需要 1-3 分鐘...",
+      });
+    },
+    onError: (error) => {
+      console.error("Video generation error:", error);
+      toast({
+        title: "影片生成失敗",
+        description: "無法開始影片生成。",
         variant: "destructive",
       });
     },
@@ -267,7 +314,7 @@ export default function Home() {
 
         generateMutation.mutate(mutationData);
       }
-    } else {
+    } else if (mode === "text-to-image") {
       if (!textPrompt.trim()) {
         toast({
           title: "缺少描述",
@@ -286,6 +333,32 @@ export default function Home() {
         size,
         sequentialGeneration: isSequentialMode,
         maxImages: isSequentialMode ? sequentialCount : undefined,
+      });
+    } else if (mode === "image-to-video") {
+      if (!uploadedImagePath) {
+        toast({
+          title: "缺少圖片",
+          description: "請先上傳圖片。",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (!videoPrompt.trim()) {
+        toast({
+          title: "缺少描述",
+          description: "請輸入影片動態描述。",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      videoGenerateMutation.mutate({
+        type: "image-to-video",
+        originalImageUrl: uploadedImagePath,
+        prompt: videoPrompt.trim(),
+        duration: videoDuration,
+        cameraFixed: cameraFixed,
       });
     }
   };
@@ -336,9 +409,10 @@ export default function Home() {
     setAdditionalImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const isGenerating = generateMutation.isPending || 
+  const isGenerating = generateMutation.isPending || videoGenerateMutation.isPending ||
     (generation?.status === "pending" || generation?.status === "processing") ||
-    (batchData?.generations.some(g => g.status === "pending" || g.status === "processing"));
+    (batchData?.generations.some(g => g.status === "pending" || g.status === "processing")) ||
+    (videoGeneration?.status === "pending" || videoGeneration?.status === "processing");
 
   return (
     <div className="bg-background min-h-screen font-inter">
@@ -401,10 +475,10 @@ export default function Home() {
                 <i className="fas fa-magic text-primary mr-2"></i>
                 選擇生成模式
               </h2>
-              <div className="flex space-x-4">
+              <div className="grid grid-cols-3 gap-4">
                 <button
                   onClick={() => setMode("image-to-image")}
-                  className={`flex-1 p-4 rounded-lg border-2 transition-all duration-200 ${
+                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${
                     mode === "image-to-image"
                       ? "border-primary bg-blue-50 text-primary"
                       : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
@@ -419,7 +493,7 @@ export default function Home() {
                 </button>
                 <button
                   onClick={() => setMode("text-to-image")}
-                  className={`flex-1 p-4 rounded-lg border-2 transition-all duration-200 ${
+                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${
                     mode === "text-to-image"
                       ? "border-primary bg-blue-50 text-primary"
                       : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
@@ -430,6 +504,21 @@ export default function Home() {
                     <i className="fas fa-pencil-alt text-2xl mb-2"></i>
                     <div className="font-semibold">文字生圖片</div>
                     <div className="text-sm opacity-80">用文字描述創建圖片</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setMode("image-to-video")}
+                  className={`p-4 rounded-lg border-2 transition-all duration-200 ${
+                    mode === "image-to-video"
+                      ? "border-purple-500 bg-purple-50 text-purple-600"
+                      : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                  }`}
+                  data-testid="mode-image-to-video"
+                >
+                  <div className="text-center">
+                    <i className="fas fa-video text-2xl mb-2"></i>
+                    <div className="font-semibold">圖片生影片</div>
+                    <div className="text-sm opacity-80">將圖片轉換成動態影片</div>
                   </div>
                 </button>
               </div>
@@ -475,6 +564,108 @@ export default function Home() {
                       className="w-full h-48 object-cover" 
                       data-testid="img-uploaded-preview"
                     />
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+          ) : mode === "image-to-video" ? (
+            <Card className="bg-surface rounded-xl shadow-sm border border-purple-200">
+              <CardContent className="p-6">
+                <h2 className="text-lg font-semibold text-secondary mb-4 flex items-center">
+                  <i className="fas fa-video text-purple-600 mr-2"></i>
+                  圖片生影片
+                </h2>
+              
+              {!uploadedImageUrl ? (
+                <UnifiedUploader
+                  maxNumberOfFiles={1}
+                  maxFileSize={10485760}
+                  onGetUploadParameters={handleGetUploadParameters}
+                  onComplete={handleUploadComplete}
+                  onError={handleUploadError}
+                  className="w-full"
+                >
+                  拖放圖片到此處或點擊瀏覽
+                </UnifiedUploader>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium text-secondary">來源圖片：</span>
+                    <button 
+                      className="text-red-500 hover:text-red-700 text-sm"
+                      onClick={removeImage}
+                      data-testid="button-remove-video-source"
+                    >
+                      <i className="fas fa-times mr-1"></i>移除
+                    </button>
+                  </div>
+                  <div className="relative bg-gray-100 rounded-lg overflow-hidden">
+                    <img 
+                      src={uploadedImageUrl} 
+                      alt="Video source image" 
+                      className="w-full h-48 object-cover" 
+                      data-testid="img-video-source-preview"
+                    />
+                  </div>
+
+                  {/* Video Prompt */}
+                  <div>
+                    <Label htmlFor="videoPromptInput" className="text-sm font-medium text-secondary">
+                      描述影片動態效果
+                    </Label>
+                    <Textarea 
+                      id="videoPromptInput"
+                      placeholder="例如：高速穿越障礙物，帶來沉浸式的飛行體驗"
+                      value={videoPrompt}
+                      onChange={(e) => setVideoPrompt(e.target.value)}
+                      className="mt-2 w-full min-h-[100px] px-4 py-3 text-sm border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                      data-testid="input-video-prompt"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      描述您希望圖片如何變成動態影片
+                    </p>
+                  </div>
+
+                  {/* Video Options */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="videoDuration" className="text-sm font-medium text-secondary">
+                        影片長度（秒）
+                      </Label>
+                      <select
+                        id="videoDuration"
+                        value={videoDuration}
+                        onChange={(e) => setVideoDuration(parseInt(e.target.value))}
+                        className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        data-testid="select-video-duration"
+                      >
+                        <option value={5}>5 秒</option>
+                        <option value={10}>10 秒</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="cameraFixed" className="text-sm font-medium text-secondary">
+                        鏡頭設定
+                      </Label>
+                      <select
+                        id="cameraFixed"
+                        value={cameraFixed ? "true" : "false"}
+                        onChange={(e) => setCameraFixed(e.target.value === "true")}
+                        className="mt-2 w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        data-testid="select-camera-fixed"
+                      >
+                        <option value="false">動態鏡頭</option>
+                        <option value="true">固定鏡頭</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                    <p className="text-sm text-purple-700">
+                      <i className="fas fa-info-circle mr-2"></i>
+                      影片生成需要 1-3 分鐘，預估費用：$0.10
+                    </p>
                   </div>
                 </div>
               )}
@@ -942,34 +1133,39 @@ export default function Home() {
                 (mode === "image-to-image" && !isBatchMode && !prompt.trim()) ||
                 (mode === "image-to-image" && isBatchMode && batchPrompts.filter(p => p.trim()).length < 2) ||
                 (mode === "text-to-image" && !textPrompt.trim()) ||
+                (mode === "image-to-video" && (!uploadedImagePath || !videoPrompt.trim())) ||
                 isGenerating
               }
-              className="bg-primary hover:bg-blue-800 text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center space-x-3"
+              className={`${mode === "image-to-video" ? "bg-purple-600 hover:bg-purple-700" : "bg-primary hover:bg-blue-800"} text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center space-x-3`}
               data-testid="button-generate"
             >
-              <i className="fas fa-magic"></i>
+              <i className={`fas ${mode === "image-to-video" ? "fa-video" : "fa-magic"}`}></i>
               <span>
                 {isGenerating 
-                  ? (isBatchMode && mode === "image-to-image" 
-                      ? `正在生成 ${batchCount} 張圖片...` 
-                      : isSequentialMode && mode === "text-to-image"
-                        ? `正在生成 ${sequentialCount} 張圖片...`
-                        : isI2ISequentialMode && mode === "image-to-image"
-                          ? `正在生成 ${i2iSequentialCount} 張圖片...`
-                          : "生成中...") 
-                  : mode === "text-to-image" 
-                    ? isSequentialMode 
-                      ? `生成 ${sequentialCount} 張序列圖片` 
-                      : "生成圖片" 
-                    : isBatchMode 
-                      ? `生成 ${batchCount} 張 AI 編輯` 
-                      : isI2ISequentialMode && isMultiImageMode
-                        ? `多圖序列生成 ${i2iSequentialCount} 張`
-                        : isI2ISequentialMode
-                          ? `生成 ${i2iSequentialCount} 張序列變化`
-                          : isMultiImageMode
-                            ? "生成多圖融合"
-                            : "生成 AI 編輯"
+                  ? (mode === "image-to-video"
+                      ? "正在生成影片..."
+                      : isBatchMode && mode === "image-to-image" 
+                        ? `正在生成 ${batchCount} 張圖片...` 
+                        : isSequentialMode && mode === "text-to-image"
+                          ? `正在生成 ${sequentialCount} 張圖片...`
+                          : isI2ISequentialMode && mode === "image-to-image"
+                            ? `正在生成 ${i2iSequentialCount} 張圖片...`
+                            : "生成中...") 
+                  : mode === "image-to-video"
+                    ? "生成影片"
+                    : mode === "text-to-image" 
+                      ? isSequentialMode 
+                        ? `生成 ${sequentialCount} 張序列圖片` 
+                        : "生成圖片" 
+                      : isBatchMode 
+                        ? `生成 ${batchCount} 張 AI 編輯` 
+                        : isI2ISequentialMode && isMultiImageMode
+                          ? `多圖序列生成 ${i2iSequentialCount} 張`
+                          : isI2ISequentialMode
+                            ? `生成 ${i2iSequentialCount} 張序列變化`
+                            : isMultiImageMode
+                              ? "生成多圖融合"
+                              : "生成 AI 編輯"
                 }
               </span>
             </Button>
@@ -977,16 +1173,20 @@ export default function Home() {
 
           {/* Loading State */}
           {isGenerating && (
-            <Card className="bg-surface rounded-xl shadow-sm border border-gray-200" data-testid="loading-state">
+            <Card className={`bg-surface rounded-xl shadow-sm border ${mode === "image-to-video" ? "border-purple-200" : "border-gray-200"}`} data-testid="loading-state">
               <CardContent className="p-8">
                 <div className="text-center space-y-4">
                   <div className="w-16 h-16 mx-auto">
-                    <div className="animate-spin rounded-full h-16 w-16 border-4 border-primary border-t-transparent"></div>
+                    <div className={`animate-spin rounded-full h-16 w-16 border-4 ${mode === "image-to-video" ? "border-purple-600" : "border-primary"} border-t-transparent`}></div>
                   </div>
-                  <h3 className="text-lg font-semibold text-secondary">正在處理您的圖片</h3>
-                  <p className="text-gray-500">這可能需要一些時間...</p>
+                  <h3 className="text-lg font-semibold text-secondary">
+                    {mode === "image-to-video" ? "正在生成影片" : "正在處理您的圖片"}
+                  </h3>
+                  <p className="text-gray-500">
+                    {mode === "image-to-video" ? "影片生成需要 1-3 分鐘，請耐心等待..." : "這可能需要一些時間..."}
+                  </p>
                   <div className="w-full bg-gray-200 rounded-full h-2 max-w-md mx-auto">
-                    <div className="bg-primary h-2 rounded-full animate-pulse" style={{width: "45%"}}></div>
+                    <div className={`${mode === "image-to-video" ? "bg-purple-600" : "bg-primary"} h-2 rounded-full animate-pulse`} style={{width: "45%"}}></div>
                   </div>
                 </div>
               </CardContent>
@@ -1017,6 +1217,99 @@ export default function Home() {
                         重試
                       </Button>
                     </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Video Error State */}
+          {videoGeneration?.status === "failed" && (
+            <Card className="bg-red-50 border border-red-200 rounded-xl" data-testid="video-error-state">
+              <CardContent className="p-6">
+                <div className="flex items-start space-x-3">
+                  <i className="fas fa-exclamation-circle text-red-500 mt-1"></i>
+                  <div className="flex-1 space-y-3">
+                    <div>
+                      <h3 className="text-red-800 font-semibold">影片生成失敗</h3>
+                      <p className="text-red-700 text-sm mt-2" data-testid="text-video-error-message">
+                        {videoGeneration.errorMessage || "無法生成影片，請重試。"}
+                      </p>
+                    </div>
+                    <div>
+                      <Button 
+                        variant="ghost"
+                        className="text-purple-600 hover:text-purple-800 text-sm font-medium p-0 h-auto"
+                        onClick={handleGenerate}
+                        data-testid="button-video-retry"
+                      >
+                        <i className="fas fa-redo mr-1"></i>
+                        重試
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Video Result Section */}
+          {videoGeneration?.status === "completed" && videoGeneration.videoUrl && (
+            <Card className="bg-surface rounded-xl shadow-sm border border-purple-200" data-testid="video-result-section">
+              <CardContent className="p-6">
+                <h2 className="text-lg font-semibold text-secondary mb-6 flex items-center">
+                  <i className="fas fa-video text-purple-600 mr-2"></i>
+                  影片生成結果
+                </h2>
+                
+                <div className="space-y-4">
+                  <div className="bg-gray-100 rounded-lg overflow-hidden">
+                    <video 
+                      controls
+                      className="w-full max-h-96"
+                      src={videoGeneration.videoUrl}
+                      data-testid="video-result"
+                    >
+                      您的瀏覽器不支援影片播放。
+                    </video>
+                  </div>
+                  
+                  <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg">
+                    <div className="text-sm text-purple-700">
+                      <i className="fas fa-info-circle mr-2"></i>
+                      影片長度：{videoGeneration.duration || 5} 秒
+                    </div>
+                    <div className="text-sm font-semibold text-purple-700">
+                      費用：${(videoGeneration.cost || 0.10).toFixed(2)}
+                    </div>
+                  </div>
+
+                  <div className="flex justify-center space-x-4">
+                    <Button 
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-lg font-medium"
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = videoGeneration.videoUrl!;
+                        link.download = `generated-video-${videoGeneration.id}.mp4`;
+                        link.click();
+                      }}
+                      data-testid="button-download-video"
+                    >
+                      <i className="fas fa-download mr-2"></i>
+                      下載影片
+                    </Button>
+                    <Button 
+                      variant="outline"
+                      className="border-purple-300 text-purple-600 hover:bg-purple-50 px-6 py-2 rounded-lg font-medium"
+                      onClick={() => {
+                        setVideoGenerationId(null);
+                        setVideoPrompt("");
+                      }}
+                      data-testid="button-generate-new-video"
+                    >
+                      <i className="fas fa-plus mr-2"></i>
+                      生成新影片
+                    </Button>
                   </div>
                 </div>
               </CardContent>
