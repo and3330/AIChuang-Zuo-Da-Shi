@@ -544,7 +544,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`Poll attempt ${attempts}: status = ${pollResult.status}`);
 
         if (pollResult.status === "succeeded") {
-          // Extract video URL from response
+          // Log full response for debugging
+          console.log("Video task succeeded, full response:", JSON.stringify(pollResult, null, 2));
+          
+          // Extract video URL from response - try multiple possible structures
           if (pollResult.content && Array.isArray(pollResult.content)) {
             for (const item of pollResult.content) {
               if (item.type === "video_url" && item.video_url?.url) {
@@ -553,6 +556,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             }
           }
+          
+          // Alternative: check output field
+          if (!videoUrl && pollResult.output?.video_url) {
+            videoUrl = pollResult.output.video_url;
+          }
+          
+          // Alternative: check result field
+          if (!videoUrl && pollResult.result?.video_url) {
+            videoUrl = pollResult.result.video_url;
+          }
+          
+          // Alternative: check data field
+          if (!videoUrl && pollResult.data?.video_url) {
+            videoUrl = pollResult.data.video_url;
+          }
+          
           break;
         } else if (pollResult.status === "failed") {
           throw new Error(pollResult.error?.message || "Video generation failed");
