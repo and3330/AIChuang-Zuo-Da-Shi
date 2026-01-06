@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema } from "@shared/schema";
+import { insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
 // SeedDance 4.5 API supported sizes (pass through directly)
@@ -12,6 +12,10 @@ function convertAspectRatioToSize(size: string): string {
 // New SeedDance 4.5 model endpoint
 const SEEDDANCE_MODEL = "ep-20251223142939-njrkd";
 const ARK_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
+
+// Image-to-Video API endpoint and model
+const VIDEO_MODEL = "ep-20250813120833-g4mpb";
+const VIDEO_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
@@ -385,6 +389,195 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("Error processing image generation:", error);
       await storage.updateImageGeneration(generationId, {
+        status: "failed",
+        errorMessage: error instanceof Error ? error.message : "Unknown error",
+        processingTime: 0
+      });
+    }
+  }
+
+  // ===== VIDEO GENERATION ROUTES =====
+
+  // Create video generation request
+  app.post("/api/video-generations", async (req, res) => {
+    try {
+      const validatedData = insertImageToVideoSchema.parse(req.body);
+      const generation = await storage.createVideoGeneration(validatedData);
+      
+      // Start processing in background
+      processVideoGeneration(generation.id, objectStorageService).catch(console.error);
+      
+      res.json(generation);
+    } catch (error) {
+      console.error("Error creating video generation:", error);
+      res.status(500).json({ error: "Failed to create video generation" });
+    }
+  });
+
+  // Get video generation by ID
+  app.get("/api/video-generations/:id", async (req, res) => {
+    try {
+      const generation = await storage.getVideoGeneration(req.params.id);
+      if (!generation) {
+        return res.status(404).json({ error: "Video generation not found" });
+      }
+      res.json(generation);
+    } catch (error) {
+      console.error("Error getting video generation:", error);
+      res.status(500).json({ error: "Failed to get video generation" });
+    }
+  });
+
+  // Get all video generations
+  app.get("/api/video-generations", async (req, res) => {
+    try {
+      const generations = await storage.getAllVideoGenerations();
+      res.json(generations);
+    } catch (error) {
+      console.error("Error getting video generations:", error);
+      res.status(500).json({ error: "Failed to get video generations" });
+    }
+  });
+
+  // Process video generation (async task-based API)
+  async function processVideoGeneration(generationId: string, objectStorageService: ObjectStorageService) {
+    try {
+      await storage.updateVideoGeneration(generationId, { status: "processing" });
+      
+      const generation = await storage.getVideoGeneration(generationId);
+      if (!generation) return;
+
+      const startTime = Date.now();
+      const apiKey = process.env.ARK_API_KEY;
+      
+      if (!apiKey) {
+        throw new Error("ARK_API_KEY environment variable is not set");
+      }
+
+      // Get image as base64 data URI
+      console.log(`Getting image from object storage: ${generation.originalImageUrl}`);
+      const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
+      const chunks: Buffer[] = [];
+      const stream = objectFile.createReadStream();
+      
+      for await (const chunk of stream) {
+        chunks.push(Buffer.from(chunk));
+      }
+      
+      const imageBuffer = Buffer.concat(chunks);
+      const base64Image = imageBuffer.toString('base64');
+      const imageDataUri = `data:image/jpeg;base64,${base64Image}`;
+
+      // Build prompt with duration and camera options
+      let promptText = generation.prompt;
+      promptText += ` --duration ${generation.duration}`;
+      promptText += ` --camerafixed ${generation.cameraFixed}`;
+
+      // Create video generation task
+      const requestBody = {
+        model: VIDEO_MODEL,
+        content: [
+          {
+            type: "text",
+            text: promptText
+          },
+          {
+            type: "image_url",
+            image_url: {
+              url: imageDataUri
+            }
+          }
+        ]
+      };
+
+      console.log(`Creating video generation task...`);
+      console.log(`Prompt: ${promptText}`);
+
+      const createResponse = await fetch(VIDEO_API_ENDPOINT, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      if (!createResponse.ok) {
+        const errorText = await createResponse.text();
+        console.log(`❌ Video API Error ${createResponse.status}:`, errorText);
+        throw new Error(`Video API error: ${createResponse.status} - ${errorText}`);
+      }
+
+      const createResult = await createResponse.json();
+      const taskId = createResult.id;
+      
+      if (!taskId) {
+        throw new Error("No task ID returned from video generation API");
+      }
+
+      console.log(`✅ Video task created with ID: ${taskId}`);
+      await storage.updateVideoGeneration(generationId, { taskId });
+
+      // Poll for task completion
+      let attempts = 0;
+      const maxAttempts = 120; // 10 minutes (5 second intervals)
+      let videoUrl: string | null = null;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 5000)); // Wait 5 seconds
+        attempts++;
+
+        const pollResponse = await fetch(`${VIDEO_API_ENDPOINT}/${taskId}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          }
+        });
+
+        if (!pollResponse.ok) {
+          console.log(`Poll attempt ${attempts} failed: ${pollResponse.status}`);
+          continue;
+        }
+
+        const pollResult = await pollResponse.json();
+        console.log(`Poll attempt ${attempts}: status = ${pollResult.status}`);
+
+        if (pollResult.status === "succeeded") {
+          // Extract video URL from response
+          if (pollResult.content && Array.isArray(pollResult.content)) {
+            for (const item of pollResult.content) {
+              if (item.type === "video_url" && item.video_url?.url) {
+                videoUrl = item.video_url.url;
+                break;
+              }
+            }
+          }
+          break;
+        } else if (pollResult.status === "failed") {
+          throw new Error(pollResult.error?.message || "Video generation failed");
+        }
+        // Continue polling if status is "running" or "pending"
+      }
+
+      const processingTime = (Date.now() - startTime) / 1000;
+
+      if (!videoUrl) {
+        throw new Error("Video generation timed out or no video URL returned");
+      }
+
+      console.log(`✅ Video generation completed: ${videoUrl}`);
+      
+      await storage.updateVideoGeneration(generationId, {
+        status: "completed",
+        generatedVideoUrl: videoUrl,
+        processingTime,
+        cost: 0.10 // Video generation cost estimate
+      });
+
+    } catch (error) {
+      console.error("Error processing video generation:", error);
+      await storage.updateVideoGeneration(generationId, {
         status: "failed",
         errorMessage: error instanceof Error ? error.message : "Unknown error",
         processingTime: 0
