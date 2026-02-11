@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Switch, Route } from "wouter";
+import { Switch, Route, Link } from "wouter";
 import { queryClient, apiRequest, getQueryFn } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import Home from "@/pages/home";
 import AccountPage from "@/pages/account";
 import TransactionsPage from "@/pages/transactions";
+import LandingPage from "@/pages/landing";
 import NotFound from "@/pages/not-found";
 import type { User } from "@shared/schema";
 
@@ -80,6 +81,9 @@ function AuthPage() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
       <Card className="w-full max-w-md mx-4 shadow-xl">
         <CardHeader className="text-center pb-2">
+          <Link href="/" className="text-sm text-gray-400 hover:text-purple-600 mb-3 inline-flex items-center gap-1">
+            <i className="fas fa-arrow-left"></i> 返回首頁
+          </Link>
           <div className="flex items-center justify-center gap-2 mb-2">
             <span className="text-3xl">✨</span>
             <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
@@ -204,7 +208,12 @@ function AppContent() {
   }
 
   if (!user) {
-    return <AuthPage />;
+    return (
+      <Switch>
+        <Route path="/login" component={AuthPage} />
+        <Route component={LandingPage} />
+      </Switch>
+    );
   }
 
   return (
