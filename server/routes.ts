@@ -1,9 +1,14 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import bcrypt from "bcryptjs";
+import Stripe from "stripe";
 import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2026-01-28.clover" as any,
+});
 
 declare module "express-session" {
   interface SessionData {
@@ -196,6 +201,104 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Error getting balance:", error);
       res.status(500).json({ error: "获取余额失败" });
     }
+  });
+
+  // ===== STRIPE PAYMENT ROUTES =====
+
+  app.post("/api/stripe/create-checkout", requireAuth, async (req, res) => {
+    try {
+      const { amount } = req.body;
+      if (!amount || !Number.isInteger(amount) || amount < 10) {
+        return res.status(400).json({ error: "充值金額最少 10 積分" });
+      }
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) {
+        return res.status(404).json({ error: "用戶不存在" });
+      }
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host;
+      const baseUrl = `${protocol}://${host}`;
+
+      const session = await stripe.checkout.sessions.create({
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            price_data: {
+              currency: "twd",
+              product_data: {
+                name: `AI 創意工坊 - ${amount} 積分`,
+                description: `充值 ${amount} 積分（1 積分 = 1 元新台幣）`,
+              },
+              unit_amount: amount * 100,
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        success_url: `${baseUrl}/account?payment=success&amount=${amount}`,
+        cancel_url: `${baseUrl}/account?payment=cancelled`,
+        metadata: {
+          userId: user.id,
+          credits: amount.toString(),
+        },
+      });
+
+      res.json({ url: session.url });
+    } catch (error: any) {
+      console.error("Error creating checkout session:", error);
+      res.status(500).json({ error: "無法建立付款頁面" });
+    }
+  });
+
+  app.post("/api/stripe/webhook", async (req, res) => {
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    let event: Stripe.Event;
+
+    try {
+      if (webhookSecret) {
+        const sig = req.headers["stripe-signature"] as string;
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+      } else {
+        const rawBody = Buffer.isBuffer(req.body) ? req.body.toString("utf8") : req.body;
+        event = typeof rawBody === "string" ? JSON.parse(rawBody) : rawBody;
+      }
+    } catch (err: any) {
+      console.error("Webhook signature verification failed:", err.message);
+      return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    if (event.type === "checkout.session.completed") {
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (session.payment_status !== "paid") {
+        return res.json({ received: true });
+      }
+      const userId = session.metadata?.userId;
+      const credits = parseInt(session.metadata?.credits || "0");
+
+      if (userId && credits > 0) {
+        try {
+          const user = await storage.getUser(userId);
+          if (user) {
+            const newBalance = (user.credits || 0) + credits;
+            await storage.updateUserCredits(user.id, newBalance);
+            await storage.createCreditTransaction({
+              userId: user.id,
+              type: "topup",
+              amount: credits,
+              balance: newBalance,
+              description: `Stripe 付款充值 ${credits} 積分`,
+            });
+            console.log(`Stripe webhook: credited ${credits} to user ${userId}`);
+          }
+        } catch (error) {
+          console.error("Error processing Stripe webhook:", error);
+        }
+      }
+    }
+
+    res.json({ received: true });
   });
 
   // ===== OBJECT STORAGE ROUTES (no auth) =====

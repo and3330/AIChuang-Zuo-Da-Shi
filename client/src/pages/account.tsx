@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useUser } from "@/App";
@@ -9,7 +9,8 @@ import { useToast } from "@/hooks/use-toast";
 import { Link, useLocation } from "wouter";
 import type { User } from "@shared/schema";
 
-function NavigationHeader({ user }: { user: User }) {
+function NavigationHeader() {
+  const { user } = useUser();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
 
@@ -18,6 +19,8 @@ function NavigationHeader({ user }: { user: User }) {
     queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     setLocation("/");
   };
+
+  if (!user) return null;
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
@@ -73,6 +76,23 @@ export default function AccountPage() {
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null);
   const [customAmount, setCustomAmount] = useState("");
   const [isTopingUp, setIsTopingUp] = useState(false);
+  const [location, setLocation] = useLocation();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const payment = params.get("payment");
+    const amount = params.get("amount");
+    if (payment === "success" && amount) {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/credits/balance"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/credits/transactions"] });
+      toast({ title: "付款成功", description: `已成功充值 ${amount} 積分，積分將在幾秒內到帳` });
+      window.history.replaceState({}, "", "/account");
+    } else if (payment === "cancelled") {
+      toast({ title: "付款已取消", description: "您可以隨時重新充值", variant: "destructive" });
+      window.history.replaceState({}, "", "/account");
+    }
+  }, []);
 
   if (!user) return null;
 
@@ -81,18 +101,19 @@ export default function AccountPage() {
   const finalAmount = selectedAmount ?? (customAmount ? parseInt(customAmount) : 0);
 
   const handleTopup = async () => {
-    if (!finalAmount || finalAmount <= 0) {
-      toast({ title: "錯誤", description: "請選擇或輸入有效的充值金額", variant: "destructive" });
+    if (!finalAmount || finalAmount < 10) {
+      toast({ title: "錯誤", description: "充值金額最少 10 積分", variant: "destructive" });
       return;
     }
     setIsTopingUp(true);
     try {
-      await apiRequest("POST", "/api/credits/topup", { amount: finalAmount });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/credits/balance"] });
-      toast({ title: "充值成功", description: `已成功充值 ${finalAmount} 積分` });
-      setSelectedAmount(null);
-      setCustomAmount("");
+      const response = await apiRequest("POST", "/api/stripe/create-checkout", { amount: finalAmount });
+      const data = await response.json();
+      if (data.url) {
+        window.location.href = data.url;
+      } else {
+        toast({ title: "錯誤", description: "無法建立付款頁面", variant: "destructive" });
+      }
     } catch (err: any) {
       toast({ title: "充值失敗", description: err?.message || "請稍後再試", variant: "destructive" });
     } finally {
@@ -108,7 +129,7 @@ export default function AccountPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
-      <NavigationHeader user={user} />
+      <NavigationHeader />
 
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
         <Card className="shadow-lg">
@@ -188,19 +209,19 @@ export default function AccountPage() {
                 />
                 <Button
                   onClick={handleTopup}
-                  disabled={isTopingUp || !finalAmount || finalAmount <= 0}
+                  disabled={isTopingUp || !finalAmount || finalAmount < 10}
                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-8"
                 >
                   {isTopingUp ? (
-                    <><i className="fas fa-spinner fa-spin mr-2"></i>處理中...</>
+                    <><i className="fas fa-spinner fa-spin mr-2"></i>跳轉付款中...</>
                   ) : (
-                    <><i className="fas fa-credit-card mr-2"></i>充值</>
+                    <><i className="fas fa-credit-card mr-2"></i>前往付款 (Stripe)</>
                   )}
                 </Button>
               </div>
               <p className="text-xs text-gray-400 mt-2">
                 <i className="fas fa-info-circle mr-1"></i>
-                1 積分 = 1 元新台幣
+                1 積分 = 1 元新台幣，最低充值 10 積分。透過 Stripe 安全支付，支援信用卡/金融卡
               </p>
             </div>
           </CardContent>
