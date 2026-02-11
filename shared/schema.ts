@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, real, integer } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -7,23 +7,57 @@ export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
+  email: text("email").notNull().unique(),
+  credits: integer("credits").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const creditTransactions = pgTable("credit_transactions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  type: text("type").notNull(), // 'topup' | 'consume' | 'refund'
+  amount: integer("amount").notNull(),
+  balance: integer("balance").notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const imageGenerations = pgTable("image_generations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  batchId: varchar("batch_id"), // For grouping related generations together
-  type: text("type").notNull().default("image-to-image"), // image-to-image, text-to-image
-  originalImageUrl: text("original_image_url"), // Optional for text-to-image
+  userId: varchar("user_id").notNull(),
+  batchId: varchar("batch_id"),
+  type: text("type").notNull().default("image-to-image"),
+  originalImageUrl: text("original_image_url"),
   generatedImageUrl: text("generated_image_url"),
   prompt: text("prompt").notNull(),
   guidanceScale: real("guidance_scale").default(5.5),
   seed: real("seed").default(21),
   watermark: boolean("watermark").default(true),
-  size: text("size").default("1:1"), // For text-to-image (aspect ratio)
-  status: text("status").notNull().default("pending"), // pending, processing, completed, failed
+  size: text("size").default("1:1"),
+  status: text("status").notNull().default("pending"),
   errorMessage: text("error_message"),
   processingTime: real("processing_time"),
   cost: real("cost").default(0.03),
+  creditsUsed: integer("credits_used").default(3),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const videoGenerations = pgTable("video_generations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  taskId: text("task_id"),
+  type: text("type").notNull().default("image-to-video"),
+  originalImageUrl: text("original_image_url").notNull(),
+  generatedVideoUrl: text("generated_video_url"),
+  prompt: text("prompt").notNull(),
+  duration: integer("duration").default(5),
+  cameraFixed: boolean("camera_fixed").default(false),
+  status: text("status").notNull().default("pending"),
+  errorMessage: text("error_message"),
+  processingTime: real("processing_time"),
+  cost: real("cost").default(0.10),
+  creditsUsed: integer("credits_used").default(10),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -31,6 +65,17 @@ export const imageGenerations = pgTable("image_generations", {
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
+  email: true,
+});
+
+export const loginSchema = z.object({
+  username: z.string(),
+  password: z.string(),
+});
+
+export const insertCreditTransactionSchema = createInsertSchema(creditTransactions).omit({
+  id: true,
+  createdAt: true,
 });
 
 export const insertImageGenerationSchema = createInsertSchema(imageGenerations).pick({
@@ -44,7 +89,6 @@ export const insertImageGenerationSchema = createInsertSchema(imageGenerations).
   size: true,
 });
 
-// Text-to-image specific schema
 export const insertTextToImageSchema = createInsertSchema(imageGenerations).pick({
   prompt: true,
   guidanceScale: true,
@@ -57,7 +101,6 @@ export const insertTextToImageSchema = createInsertSchema(imageGenerations).pick
   maxImages: z.number().min(2).max(10).optional().nullable(),
 });
 
-// Image-to-image specific schema  
 export const insertImageToImageSchema = createInsertSchema(imageGenerations).pick({
   originalImageUrl: true,
   prompt: true,
@@ -73,7 +116,6 @@ export const insertImageToImageSchema = createInsertSchema(imageGenerations).pic
   additionalImageUrls: z.array(z.string()).optional(),
 });
 
-// Batch image generation schema
 export const insertBatchImageToImageSchema = z.object({
   type: z.literal("image-to-image"),
   originalImageUrl: z.string(),
@@ -83,7 +125,6 @@ export const insertBatchImageToImageSchema = z.object({
   watermark: z.boolean().optional(),
 });
 
-// Image-to-video specific schema
 export const insertImageToVideoSchema = z.object({
   type: z.literal("image-to-video"),
   originalImageUrl: z.string(),
@@ -94,6 +135,8 @@ export const insertImageToVideoSchema = z.object({
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
+export type CreditTransaction = typeof creditTransactions.$inferSelect;
 export type InsertImageGeneration = z.infer<typeof insertImageGenerationSchema>;
 export type InsertTextToImage = z.infer<typeof insertTextToImageSchema>;
 export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
@@ -105,21 +148,7 @@ export type ImageGeneration = typeof imageGenerations.$inferSelect & {
   maxImages?: number;
   additionalImageUrls?: string[];
 };
-
-// Video generation type (for in-memory storage)
-export type VideoGeneration = {
-  id: string;
-  taskId: string | null;
-  type: "image-to-video";
-  originalImageUrl: string;
-  generatedVideoUrl: string | null;
-  prompt: string;
-  duration: number;
-  cameraFixed: boolean;
-  status: "pending" | "processing" | "completed" | "failed";
-  errorMessage: string | null;
-  processingTime: number | null;
-  cost: number;
-  createdAt: Date;
-  updatedAt: Date;
+export type VideoGeneration = typeof videoGenerations.$inferSelect & {
+  generatedImageUrls?: string[];
+  sequentialGeneration?: boolean;
 };

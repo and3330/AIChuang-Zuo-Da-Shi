@@ -1,35 +1,44 @@
-import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo } from "@shared/schema";
+import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type CreditTransaction } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  
-  createImageGeneration(generation: InsertImageGeneration): Promise<ImageGeneration>;
-  createBatchImageGenerations(batchData: InsertBatchImageToImage): Promise<ImageGeneration[]>;
+  updateUserCredits(userId: string, credits: number): Promise<User | undefined>;
+
+  createCreditTransaction(transaction: { userId: string; type: string; amount: number; balance: number; description: string | null }): Promise<CreditTransaction>;
+  getCreditTransactions(userId: string): Promise<CreditTransaction[]>;
+
+  createImageGeneration(generation: InsertImageGeneration & { userId: string; sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration>;
+  createBatchImageGenerations(batchData: InsertBatchImageToImage & { userId: string }): Promise<ImageGeneration[]>;
   getImageGeneration(id: string): Promise<ImageGeneration | undefined>;
   getImageGenerationsByBatchId(batchId: string): Promise<ImageGeneration[]>;
   updateImageGeneration(id: string, updates: Partial<ImageGeneration>): Promise<ImageGeneration | undefined>;
   getAllImageGenerations(): Promise<ImageGeneration[]>;
-  getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
-  
-  // Video generation methods
-  createVideoGeneration(generation: InsertImageToVideo): Promise<VideoGeneration>;
+  getUserImageGenerations(userId: string): Promise<ImageGeneration[]>;
+  getUserStats(userId: string): Promise<{ totalGenerations: number; totalCost: number; totalCreditsUsed: number }>;
+
+  createVideoGeneration(generation: InsertImageToVideo & { userId: string }): Promise<VideoGeneration>;
   getVideoGeneration(id: string): Promise<VideoGeneration | undefined>;
   updateVideoGeneration(id: string, updates: Partial<VideoGeneration>): Promise<VideoGeneration | undefined>;
   getAllVideoGenerations(): Promise<VideoGeneration[]>;
+  getUserVideoGenerations(userId: string): Promise<VideoGeneration[]>;
+  getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
 }
 
 export class MemStorage implements IStorage {
   private users: Map<string, User>;
   private imageGenerations: Map<string, ImageGeneration>;
   private videoGenerations: Map<string, VideoGeneration>;
+  private creditTransactions: Map<string, CreditTransaction>;
 
   constructor() {
     this.users = new Map();
     this.imageGenerations = new Map();
     this.videoGenerations = new Map();
+    this.creditTransactions = new Map();
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -42,17 +51,60 @@ export class MemStorage implements IStorage {
     );
   }
 
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find(
+      (user) => user.email === email,
+    );
+  }
+
   async createUser(insertUser: InsertUser): Promise<User> {
     const id = randomUUID();
-    const user: User = { ...insertUser, id };
+    const user: User = {
+      id,
+      username: insertUser.username,
+      password: insertUser.password,
+      email: insertUser.email,
+      credits: 0,
+      createdAt: new Date(),
+    };
     this.users.set(id, user);
     return user;
   }
 
-  async createImageGeneration(insertGeneration: InsertImageGeneration & { sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration> {
+  async updateUserCredits(userId: string, credits: number): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+    const updated: User = { ...user, credits };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
+  async createCreditTransaction(transaction: { userId: string; type: string; amount: number; balance: number; description: string | null }): Promise<CreditTransaction> {
+    const id = randomUUID();
+    const creditTransaction: CreditTransaction = {
+      id,
+      userId: transaction.userId,
+      type: transaction.type,
+      amount: transaction.amount,
+      balance: transaction.balance,
+      description: transaction.description,
+      createdAt: new Date(),
+    };
+    this.creditTransactions.set(id, creditTransaction);
+    return creditTransaction;
+  }
+
+  async getCreditTransactions(userId: string): Promise<CreditTransaction[]> {
+    return Array.from(this.creditTransactions.values())
+      .filter(t => t.userId === userId)
+      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+  }
+
+  async createImageGeneration(insertGeneration: InsertImageGeneration & { userId: string; sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration> {
     const id = randomUUID();
     const generation: ImageGeneration = {
       id,
+      userId: insertGeneration.userId,
       batchId: insertGeneration.batchId ?? null,
       type: insertGeneration.type ?? "image-to-image",
       originalImageUrl: insertGeneration.originalImageUrl ?? null,
@@ -62,11 +114,12 @@ export class MemStorage implements IStorage {
       guidanceScale: insertGeneration.guidanceScale ?? 5.5,
       seed: insertGeneration.seed ?? 21,
       watermark: insertGeneration.watermark ?? true,
-      size: insertGeneration.size ?? "2K",
+      size: insertGeneration.size ?? "1:1",
       status: "pending",
       errorMessage: null,
       processingTime: null,
-      cost: 0,
+      cost: 0.03,
+      creditsUsed: 3,
       createdAt: new Date(),
       updatedAt: new Date(),
       sequentialGeneration: insertGeneration.sequentialGeneration ?? false,
@@ -77,12 +130,13 @@ export class MemStorage implements IStorage {
     return generation;
   }
 
-  async createBatchImageGenerations(batchData: InsertBatchImageToImage): Promise<ImageGeneration[]> {
+  async createBatchImageGenerations(batchData: InsertBatchImageToImage & { userId: string }): Promise<ImageGeneration[]> {
     const batchId = randomUUID();
     const generations: ImageGeneration[] = [];
-    
+
     for (const prompt of batchData.prompts) {
       const generation = await this.createImageGeneration({
+        userId: batchData.userId,
         type: batchData.type,
         batchId,
         originalImageUrl: batchData.originalImageUrl,
@@ -93,7 +147,7 @@ export class MemStorage implements IStorage {
       });
       generations.push(generation);
     }
-    
+
     return generations;
   }
 
@@ -126,20 +180,28 @@ export class MemStorage implements IStorage {
     );
   }
 
-  async getStats(): Promise<{ totalGenerations: number; totalCost: number }> {
-    const imageGens = Array.from(this.imageGenerations.values());
-    const videoGens = Array.from(this.videoGenerations.values());
-    const totalGenerations = imageGens.length + videoGens.length;
-    const imageCost = imageGens.reduce((sum, gen) => sum + (gen.cost || 0), 0);
-    const videoCost = videoGens.reduce((sum, gen) => sum + (gen.cost || 0), 0);
-    return { totalGenerations, totalCost: imageCost + videoCost };
+  async getUserImageGenerations(userId: string): Promise<ImageGeneration[]> {
+    return Array.from(this.imageGenerations.values())
+      .filter(gen => gen.userId === userId)
+      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
   }
 
-  // Video generation methods
-  async createVideoGeneration(insertGeneration: InsertImageToVideo): Promise<VideoGeneration> {
+  async getUserStats(userId: string): Promise<{ totalGenerations: number; totalCost: number; totalCreditsUsed: number }> {
+    const userImages = Array.from(this.imageGenerations.values()).filter(gen => gen.userId === userId);
+    const userVideos = Array.from(this.videoGenerations.values()).filter(gen => gen.userId === userId);
+    const totalGenerations = userImages.length + userVideos.length;
+    const imageCost = userImages.reduce((sum, gen) => sum + (gen.cost || 0), 0);
+    const videoCost = userVideos.reduce((sum, gen) => sum + (gen.cost || 0), 0);
+    const imageCredits = userImages.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
+    const videoCredits = userVideos.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
+    return { totalGenerations, totalCost: imageCost + videoCost, totalCreditsUsed: imageCredits + videoCredits };
+  }
+
+  async createVideoGeneration(insertGeneration: InsertImageToVideo & { userId: string }): Promise<VideoGeneration> {
     const id = randomUUID();
     const generation: VideoGeneration = {
       id,
+      userId: insertGeneration.userId,
       taskId: null,
       type: "image-to-video",
       originalImageUrl: insertGeneration.originalImageUrl,
@@ -150,7 +212,8 @@ export class MemStorage implements IStorage {
       status: "pending",
       errorMessage: null,
       processingTime: null,
-      cost: 0,
+      cost: 0.10,
+      creditsUsed: 10,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -179,6 +242,21 @@ export class MemStorage implements IStorage {
     return Array.from(this.videoGenerations.values()).sort(
       (a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
     );
+  }
+
+  async getUserVideoGenerations(userId: string): Promise<VideoGeneration[]> {
+    return Array.from(this.videoGenerations.values())
+      .filter(gen => gen.userId === userId)
+      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+  }
+
+  async getStats(): Promise<{ totalGenerations: number; totalCost: number }> {
+    const allImages = Array.from(this.imageGenerations.values());
+    const allVideos = Array.from(this.videoGenerations.values());
+    const totalGenerations = allImages.length + allVideos.length;
+    const imageCost = allImages.reduce((sum, gen) => sum + (gen.cost || 0), 0);
+    const videoCost = allVideos.reduce((sum, gen) => sum + (gen.cost || 0), 0);
+    return { totalGenerations, totalCost: imageCost + videoCost };
   }
 }
 

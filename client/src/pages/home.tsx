@@ -1,6 +1,8 @@
 import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useUser } from "@/App";
+import { NavigationHeader } from "@/pages/account";
 import { UnifiedUploader } from "@/components/UnifiedUploader";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +17,7 @@ import type { UploadResult } from "@uppy/core";
 import type { ImageGeneration, VideoGeneration } from "@shared/schema";
 
 export default function Home() {
+  const { user } = useUser();
   const [mode, setMode] = useState<"image-to-image" | "text-to-image" | "image-to-video">("image-to-image");
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
   const [uploadedImagePath, setUploadedImagePath] = useState<string>("");
@@ -49,9 +52,9 @@ export default function Home() {
   const queryClient = useQueryClient();
 
   // Fetch statistics
-  const { data: stats } = useQuery<{ totalGenerations: number; totalCost: number }>({
+  const { data: stats } = useQuery<{ totalGenerations: number; totalCost: number; totalCreditsUsed: number }>({
     queryKey: ["/api/stats"],
-    refetchInterval: 5000, // Refresh stats every 5 seconds
+    refetchInterval: 5000,
   });
 
   // Poll for generation status (single generation)
@@ -187,8 +190,8 @@ export default function Home() {
           description: "正在處理您的圖片...",
         });
       }
-      // Invalidate stats to update the count and cost
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
     onError: (error) => {
       console.error("Generation error:", error);
@@ -210,6 +213,7 @@ export default function Home() {
       setCurrentVideoGenerationId(data.id);
       queryClient.invalidateQueries({ queryKey: ["/api/video-generations", data.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({
         title: "影片生成已開始",
         description: "正在處理您的影片，這可能需要 1-3 分鐘...",
@@ -414,40 +418,52 @@ export default function Home() {
     (batchData?.generations.some(g => g.status === "pending" || g.status === "processing")) ||
     (videoGeneration?.status === "pending" || videoGeneration?.status === "processing");
 
+  const getCreditsNeeded = () => {
+    if (mode === "image-to-video") {
+      return videoDuration === 5 ? 10 : 18;
+    }
+    if (mode === "text-to-image") {
+      return isSequentialMode ? 3 * sequentialCount : 3;
+    }
+    if (isBatchMode) {
+      return 3 * batchPrompts.filter(p => p.trim()).length;
+    }
+    if (isI2ISequentialMode) {
+      return 3 * i2iSequentialCount;
+    }
+    return 3;
+  };
+
+  const creditsNeeded = getCreditsNeeded();
+  const hasEnoughCredits = (user?.credits ?? 0) >= creditsNeeded;
+
   return (
     <div className="bg-background min-h-screen font-inter">
-      {/* Header */}
-      <header className="bg-surface shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                <i className="fas fa-magic text-white text-sm"></i>
-              </div>
-              <h1 className="text-xl font-semibold text-secondary">AI 圖片生成器</h1>
-            </div>
-            <div className="flex items-center space-x-4">
-              <span className="text-sm text-gray-500">技術支援：BytePlus</span>
-              <button className="text-secondary hover:text-primary transition-colors">
-                <i className="fas fa-question-circle"></i>
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+      <NavigationHeader />
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-8">
-          {/* Cost Statistics Card */}
+          {/* Stats Card */}
           <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl shadow-sm">
             <CardContent className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="flex items-center space-x-4">
+                  <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center">
+                    <i className="fas fa-coins text-yellow-500 text-xl"></i>
+                  </div>
+                  <div>
+                    <p className="text-sm text-gray-600">積分餘額</p>
+                    <p className="text-2xl font-bold text-secondary">
+                      {user?.credits ?? 0}
+                    </p>
+                  </div>
+                </div>
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center">
                     <i className="fas fa-images text-primary text-xl"></i>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">生成圖片總數</p>
+                    <p className="text-sm text-gray-600">已生成次數</p>
                     <p className="text-2xl font-bold text-secondary" data-testid="text-total-generations">
                       {stats?.totalGenerations ?? 0}
                     </p>
@@ -455,14 +471,13 @@ export default function Home() {
                 </div>
                 <div className="flex items-center space-x-4">
                   <div className="w-12 h-12 bg-white rounded-xl shadow-sm flex items-center justify-center">
-                    <i className="fas fa-dollar-sign text-green-600 text-xl"></i>
+                    <i className="fas fa-receipt text-green-600 text-xl"></i>
                   </div>
                   <div>
-                    <p className="text-sm text-gray-600">總費用</p>
+                    <p className="text-sm text-gray-600">已消費積分</p>
                     <p className="text-2xl font-bold text-secondary" data-testid="text-total-cost">
-                      ${(stats?.totalCost ?? 0).toFixed(2)}
+                      {stats?.totalCreditsUsed ?? 0}
                     </p>
-                    <p className="text-xs text-gray-500">每張圖片 $0.03</p>
                   </div>
                 </div>
               </div>
@@ -1133,7 +1148,8 @@ export default function Home() {
                 (mode === "image-to-image" && isBatchMode && batchPrompts.filter(p => p.trim()).length < 2) ||
                 (mode === "text-to-image" && !textPrompt.trim()) ||
                 (mode === "image-to-video" && (!uploadedImagePath || !videoPrompt.trim())) ||
-                isGenerating
+                isGenerating ||
+                !hasEnoughCredits
               }
               className={`${mode === "image-to-video" ? "bg-purple-600 hover:bg-purple-700" : "bg-primary hover:bg-blue-800"} text-white font-semibold px-8 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200 flex items-center space-x-3`}
               data-testid="button-generate"
@@ -1166,9 +1182,19 @@ export default function Home() {
                               ? "生成多圖融合"
                               : "生成 AI 編輯"
                 }
+                {!isGenerating && ` (${creditsNeeded} 積分)`}
               </span>
             </Button>
           </div>
+          {!hasEnoughCredits && (
+            <div className="flex justify-center">
+              <p className="text-red-500 text-sm mt-1">
+                <i className="fas fa-exclamation-triangle mr-1"></i>
+                積分不足！需要 {creditsNeeded} 積分，目前餘額 {user?.credits ?? 0} 積分。
+                <a href="/account" className="text-blue-600 underline ml-1">前往充值</a>
+              </p>
+            </div>
+          )}
 
           {/* Loading State */}
           {isGenerating && (
