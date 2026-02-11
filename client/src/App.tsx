@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Switch, Route, Link } from "wouter";
+import { Switch, Route, Link, Redirect } from "wouter";
 import { queryClient, apiRequest, getQueryFn } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -188,6 +188,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/account" component={AccountPage} />
       <Route path="/transactions" component={TransactionsPage} />
+      <Route path="/login">{() => <Redirect to="/" />}</Route>
       <Route component={NotFound} />
     </Switch>
   );
