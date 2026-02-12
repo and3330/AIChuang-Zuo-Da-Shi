@@ -49,6 +49,13 @@ function NavigationHeader() {
                   <i className="fas fa-history mr-1"></i> 交易記錄
                 </Button>
               </Link>
+              {user.isAdmin && (
+                <Link href="/admin">
+                  <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
+                    <i className="fas fa-cog mr-1"></i> 管理後台
+                  </Button>
+                </Link>
+              )}
             </nav>
             <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
               <span className="text-sm text-gray-600">{user.username}</span>

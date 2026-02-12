@@ -14,6 +14,7 @@ declare module "express-session" {
   interface SessionData {
     userId: string;
     username: string;
+    isAdmin: boolean;
   }
 }
 
@@ -56,6 +57,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);
       const user = await storage.createUser({ ...validatedData, password: hashedPassword });
 
+      const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+      if (adminEmails.includes(validatedData.email.toLowerCase())) {
+        await storage.setUserAdmin(user.id, true);
+      }
+
       const welcomeCredits = 10;
       const updatedUser = await storage.updateUserCredits(user.id, welcomeCredits);
 
@@ -67,15 +73,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         description: "注册欢迎奖励",
       });
 
+      const finalUser = await storage.getUser(user.id);
       req.session.userId = user.id;
       req.session.username = user.username;
+      req.session.isAdmin = finalUser?.isAdmin || false;
 
       res.json({
         user: {
-          id: updatedUser!.id,
-          username: updatedUser!.username,
-          email: updatedUser!.email,
-          credits: updatedUser!.credits,
+          id: finalUser!.id,
+          username: finalUser!.username,
+          email: finalUser!.email,
+          credits: finalUser!.credits,
+          isAdmin: finalUser!.isAdmin || false,
         },
       });
     } catch (error) {
@@ -99,6 +108,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       req.session.userId = user.id;
       req.session.username = user.username;
+      req.session.isAdmin = user.isAdmin || false;
 
       res.json({
         user: {
@@ -106,6 +116,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           username: user.username,
           email: user.email,
           credits: user.credits,
+          isAdmin: user.isAdmin || false,
         },
       });
     } catch (error) {
@@ -138,6 +149,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       username: user.username,
       email: user.email,
       credits: user.credits,
+      isAdmin: user.isAdmin || false,
     });
   });
 
@@ -904,6 +916,121 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   }
+
+  function requireAdmin(req: Request, res: Response, next: NextFunction) {
+    if (!req.session.userId || !req.session.isAdmin) {
+      return res.status(403).json({ error: "需要管理員權限" });
+    }
+    next();
+  }
+
+  // ===== ADMIN ROUTES =====
+
+  app.get("/api/admin/users", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const usersWithStats = await Promise.all(
+        users.map(async (user) => {
+          const stats = await storage.getUserStats(user.id);
+          return {
+            id: user.id,
+            username: user.username,
+            email: user.email,
+            credits: user.credits || 0,
+            isAdmin: user.isAdmin || false,
+            createdAt: user.createdAt,
+            totalGenerations: stats.totalGenerations,
+            totalCreditsUsed: stats.totalCreditsUsed,
+          };
+        })
+      );
+      res.json(usersWithStats);
+    } catch (error) {
+      console.error("Error fetching users:", error);
+      res.status(500).json({ error: "獲取用戶列表失敗" });
+    }
+  });
+
+  app.get("/api/admin/users/:userId", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.params.userId);
+      if (!user) {
+        return res.status(404).json({ error: "用戶不存在" });
+      }
+      const stats = await storage.getUserStats(user.id);
+      const transactions = await storage.getCreditTransactions(user.id);
+      const imageGenerations = await storage.getUserImageGenerations(user.id);
+      const videoGenerations = await storage.getUserVideoGenerations(user.id);
+
+      res.json({
+        user: {
+          id: user.id,
+          username: user.username,
+          email: user.email,
+          credits: user.credits || 0,
+          isAdmin: user.isAdmin || false,
+          createdAt: user.createdAt,
+        },
+        stats,
+        transactions,
+        imageGenerations,
+        videoGenerations,
+      });
+    } catch (error) {
+      console.error("Error fetching user details:", error);
+      res.status(500).json({ error: "獲取用戶詳情失敗" });
+    }
+  });
+
+  app.post("/api/admin/users/:userId/credits", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { amount, description } = req.body;
+      if (!amount || typeof amount !== "number") {
+        return res.status(400).json({ error: "請提供有效的積分數量" });
+      }
+
+      const user = await storage.getUser(req.params.userId);
+      if (!user) {
+        return res.status(404).json({ error: "用戶不存在" });
+      }
+
+      const newBalance = (user.credits || 0) + amount;
+      if (newBalance < 0) {
+        return res.status(400).json({ error: "扣除後積分不能為負數" });
+      }
+
+      await storage.updateUserCredits(user.id, newBalance);
+      await storage.createCreditTransaction({
+        userId: user.id,
+        type: amount > 0 ? "topup" : "consume",
+        amount,
+        balance: newBalance,
+        description: description || (amount > 0 ? "管理員手動加值" : "管理員手動扣除"),
+      });
+
+      res.json({ credits: newBalance });
+    } catch (error) {
+      console.error("Error adjusting credits:", error);
+      res.status(500).json({ error: "調整積分失敗" });
+    }
+  });
+
+  app.get("/api/admin/stats", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const globalStats = await storage.getStats();
+      const totalCredits = users.reduce((sum, u) => sum + (u.credits || 0), 0);
+
+      res.json({
+        totalUsers: users.length,
+        totalCreditsInCirculation: totalCredits,
+        ...globalStats,
+      });
+    } catch (error) {
+      console.error("Error fetching admin stats:", error);
+      res.status(500).json({ error: "獲取統計資料失敗" });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;

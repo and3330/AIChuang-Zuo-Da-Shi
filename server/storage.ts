@@ -7,6 +7,8 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUserCredits(userId: string, credits: number): Promise<User | undefined>;
+  setUserAdmin(userId: string, isAdmin: boolean): Promise<User | undefined>;
+  getAllUsers(): Promise<User[]>;
 
   createCreditTransaction(transaction: { userId: string; type: string; amount: number; balance: number; description: string | null }): Promise<CreditTransaction>;
   getCreditTransactions(userId: string): Promise<CreditTransaction[]>;
@@ -65,10 +67,24 @@ export class MemStorage implements IStorage {
       password: insertUser.password,
       email: insertUser.email,
       credits: 0,
+      isAdmin: false,
       createdAt: new Date(),
     };
     this.users.set(id, user);
     return user;
+  }
+
+  async setUserAdmin(userId: string, isAdmin: boolean): Promise<User | undefined> {
+    const user = this.users.get(userId);
+    if (!user) return undefined;
+    const updated: User = { ...user, isAdmin };
+    this.users.set(userId, updated);
+    return updated;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return Array.from(this.users.values())
+      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
   }
 
   async updateUserCredits(userId: string, credits: number): Promise<User | undefined> {
