@@ -130,14 +130,14 @@ export const insertImageToVideoSchema = z.object({
   type: z.literal("image-to-video"),
   originalImageUrl: z.string(),
   prompt: z.string(),
-  duration: z.number().min(5).max(10).optional().default(5),
+  duration: z.number().min(2).max(12).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),
 });
 
 export const insertTextToVideoSchema = z.object({
   type: z.literal("text-to-video"),
   prompt: z.string(),
-  duration: z.number().min(5).max(10).optional().default(5),
+  duration: z.number().min(2).max(12).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),
 });
 
