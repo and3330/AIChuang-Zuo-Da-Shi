@@ -183,7 +183,7 @@ export default function LandingPage() {
                 <div className="pt-4 border-t border-white/10">
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <i className="fas fa-coins text-yellow-400"></i>
-                    <span>5 秒 20 積分 / 10 秒 36 積分</span>
+                    <span>3.4 積分/秒（2-12秒自由選擇）</span>
                   </div>
                 </div>
               </CardContent>
@@ -298,29 +298,13 @@ export default function LandingPage() {
                       <i className="fas fa-video text-blue-600"></i>
                     </div>
                     <div>
-                      <p className="font-medium text-gray-900">5 秒影片</p>
-                      <p className="text-sm text-gray-500">短片動畫生成</p>
+                      <p className="font-medium text-gray-900">影片生成（2-12秒）</p>
+                      <p className="text-sm text-gray-500">秒數自由選擇，按秒計費</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-gray-900 text-lg">20 積分</p>
-                    <p className="text-xs text-gray-400">≈ NT$20</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center justify-between p-6 hover:bg-gray-50 transition-colors">
-                  <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
-                      <i className="fas fa-film text-indigo-600"></i>
-                    </div>
-                    <div>
-                      <p className="font-medium text-gray-900">10 秒影片</p>
-                      <p className="text-sm text-gray-500">長片動畫生成</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold text-gray-900 text-lg">36 積分</p>
-                    <p className="text-xs text-gray-400">≈ NT$36</p>
+                    <p className="font-bold text-gray-900 text-lg">3.4 積分/秒</p>
+                    <p className="text-xs text-gray-400">例：5秒 ≈ NT$17</p>
                   </div>
                 </div>
               </div>

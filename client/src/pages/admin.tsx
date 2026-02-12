@@ -467,7 +467,7 @@ export default function AdminPage() {
                                 typeLabel: `影片 ${g.duration}秒`,
                                 prompt: g.prompt,
                                 status: g.status,
-                                credits: g.creditsUsed || (g.duration === 5 ? 20 : 36),
+                                credits: g.creditsUsed || Math.round((g.duration || 5) * 3.4),
                               })),
                             ]
                               .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())

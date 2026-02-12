@@ -229,7 +229,7 @@ export class MemStorage implements IStorage {
       errorMessage: null,
       processingTime: null,
       cost: 0.10,
-      creditsUsed: 10,
+      creditsUsed: Math.round((insertGeneration.duration ?? 5) * 3.4),
       createdAt: new Date(),
       updatedAt: new Date(),
     };

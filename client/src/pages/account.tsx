@@ -261,16 +261,9 @@ export default function AccountPage() {
                   <tr className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm">
                       <i className="fas fa-video text-blue-500 mr-2"></i>
-                      5秒影片
+                      影片生成（2-12秒）
                     </td>
-                    <td className="px-4 py-3 text-sm text-right font-medium">20 積分/個</td>
-                  </tr>
-                  <tr className="hover:bg-gray-50">
-                    <td className="px-4 py-3 text-sm">
-                      <i className="fas fa-film text-indigo-500 mr-2"></i>
-                      10秒影片
-                    </td>
-                    <td className="px-4 py-3 text-sm text-right font-medium">36 積分/個</td>
+                    <td className="px-4 py-3 text-sm text-right font-medium">3.4 積分/秒</td>
                   </tr>
                 </tbody>
               </table>

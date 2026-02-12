@@ -715,8 +715,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "用户不存在" });
       }
 
-      const duration = req.body.duration || 5;
-      const creditsNeeded = duration === 5 ? 20 : 36;
+      const duration = Math.max(2, Math.min(12, req.body.duration || 5));
+      const VIDEO_CREDITS_PER_SECOND = 3.4;
+      const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
 
       if ((user.credits || 0) < creditsNeeded) {
         return res.status(402).json({
@@ -908,11 +909,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`✅ Video generation completed: ${videoUrl}`);
       
+      const videoCostUsd = (generation.duration || 5) * 0.0408;
       await storage.updateVideoGeneration(generationId, {
         status: "completed",
         generatedVideoUrl: videoUrl,
         processingTime,
-        cost: 0.10
+        cost: parseFloat(videoCostUsd.toFixed(4))
       });
 
     } catch (error) {
