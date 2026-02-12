@@ -36,6 +36,7 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - POST /api/auth/login - login
 - POST /api/auth/logout - logout
 - requireAuth middleware protects all API routes
+- Admin users auto-promoted via ADMIN_EMAILS env var (comma-separated emails)
 
 ### Credit System
 - Credits checked before generation (frontend + backend validation)
@@ -49,7 +50,8 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - **home.tsx**: Main generation page with credit display, cost indicators on buttons
 - **account.tsx**: User profile, credit top-up, pricing info (exports NavigationHeader)
 - **transactions.tsx**: Transaction history with type badges
-- **Routing**: wouter (/, /account, /transactions)
+- **admin.tsx**: Admin dashboard - user management, credit adjustment, stats overview
+- **Routing**: wouter (/, /account, /transactions, /admin)
 - **State**: TanStack Query v5 for server state
 - **UI**: shadcn/ui + Tailwind CSS
 
@@ -67,10 +69,22 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - client/src/pages/home.tsx - Main generation interface
 - client/src/pages/account.tsx - Account management, NavigationHeader component
 - client/src/pages/transactions.tsx - Transaction history
+- client/src/pages/admin.tsx - Admin dashboard
+
+### Admin System
+- isAdmin field on users table, auto-set via ADMIN_EMAILS env var on registration
+- requireAdmin middleware guards all /api/admin/* routes
+- GET /api/admin/users - list all users with stats
+- GET /api/admin/users/:userId - user detail with transactions & generation history
+- POST /api/admin/users/:userId/credits - adjust user credits (add/deduct)
+- GET /api/admin/stats - platform-wide statistics
+- Admin link visible only to admin users in NavigationHeader
 
 ## Recent Changes
+- Added admin dashboard with user management, credit adjustment, transaction/generation history
+- Updated video pricing: 5-second 20 credits, 10-second 36 credits
 - Added member registration/login system with bcrypt password hashing
-- Implemented credit system with pricing: 3/image, 10/5s video, 18/10s video
+- Implemented credit system with pricing: 3/image, 20/5s video, 36/10s video
 - Added credit top-up functionality with preset amounts
 - Created transaction history page
 - Updated home page with NavigationHeader, credit balance display, cost indicators
