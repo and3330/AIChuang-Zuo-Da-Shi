@@ -183,7 +183,7 @@ export default function LandingPage() {
                 <div className="pt-4 border-t border-white/10">
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <i className="fas fa-coins text-yellow-400"></i>
-                    <span>5 秒 10 積分 / 10 秒 18 積分</span>
+                    <span>5 秒 20 積分 / 10 秒 36 積分</span>
                   </div>
                 </div>
               </CardContent>
@@ -303,8 +303,8 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-gray-900 text-lg">10 積分</p>
-                    <p className="text-xs text-gray-400">≈ NT$10</p>
+                    <p className="font-bold text-gray-900 text-lg">20 積分</p>
+                    <p className="text-xs text-gray-400">≈ NT$20</p>
                   </div>
                 </div>
 
@@ -319,8 +319,8 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-gray-900 text-lg">18 積分</p>
-                    <p className="text-xs text-gray-400">≈ NT$18</p>
+                    <p className="font-bold text-gray-900 text-lg">36 積分</p>
+                    <p className="text-xs text-gray-400">≈ NT$36</p>
                   </div>
                 </div>
               </div>

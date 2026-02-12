@@ -10,8 +10,8 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ## Pricing Model
 - Image generation: 3 credits per image
-- 5-second video: 10 credits
-- 10-second video: 18 credits
+- 5-second video: 20 credits
+- 10-second video: 36 credits
 - New user registration bonus: 10 credits
 - 1 credit = 1 TWD (New Taiwan Dollar)
 

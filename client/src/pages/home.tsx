@@ -300,7 +300,7 @@ export default function Home() {
     (videoGeneration?.status === "pending" || videoGeneration?.status === "processing");
 
   const getCreditsNeeded = () => {
-    if (mode === "image-to-video") return videoDuration === 5 ? 10 : 18;
+    if (mode === "image-to-video") return videoDuration === 5 ? 20 : 36;
     if (mode === "text-to-image") return isSequentialMode ? 3 * sequentialCount : 3;
     if (isBatchMode) return 3 * batchPrompts.filter(p => p.trim()).length;
     if (isI2ISequentialMode) return 3 * i2iSequentialCount;
@@ -475,8 +475,8 @@ export default function Home() {
                       <h3 className="font-semibold text-sm text-purple-700">圖片生影片</h3>
                       <p className="text-xs text-gray-500 mt-0.5">將靜態圖片轉化為動態影片</p>
                       <div className="flex gap-2 mt-2">
-                        <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">5 秒 = 10 積分</span>
-                        <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">10 秒 = 18 積分</span>
+                        <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">5 秒 = 20 積分</span>
+                        <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">10 秒 = 36 積分</span>
                       </div>
                     </div>
                   </div>
@@ -844,7 +844,7 @@ export default function Home() {
                             }`}
                           >
                             <div className="font-semibold">5 秒</div>
-                            <div className="text-xs mt-0.5">10 積分</div>
+                            <div className="text-xs mt-0.5">20 積分</div>
                           </button>
                           <button
                             onClick={() => setVideoDuration(10)}
@@ -855,7 +855,7 @@ export default function Home() {
                             }`}
                           >
                             <div className="font-semibold">10 秒</div>
-                            <div className="text-xs mt-0.5">18 積分</div>
+                            <div className="text-xs mt-0.5">36 積分</div>
                           </button>
                         </div>
                       </div>
@@ -890,7 +890,7 @@ export default function Home() {
 
                     <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                       <i className="fas fa-info-circle"></i>
-                      影片生成需要 1-3 分鐘，費用：{videoDuration === 5 ? 10 : 18} 積分
+                      影片生成需要 1-3 分鐘，費用：{videoDuration === 5 ? 20 : 36} 積分
                     </div>
                   </div>
                 )}
@@ -1035,7 +1035,7 @@ export default function Home() {
                 </div>
                 <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg text-sm text-purple-700">
                   <span><i className="fas fa-clock mr-1"></i>影片長度：{videoGeneration.duration || 5} 秒</span>
-                  <span className="font-semibold">費用：{(videoGeneration.duration || 5) === 5 ? 10 : 18} 積分</span>
+                  <span className="font-semibold">費用：{(videoGeneration.duration || 5) === 5 ? 20 : 36} 積分</span>
                 </div>
                 <div className="flex justify-center gap-3">
                   <Button className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg" onClick={() => {

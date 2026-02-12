@@ -704,7 +704,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const duration = req.body.duration || 5;
-      const creditsNeeded = duration === 5 ? 10 : 18;
+      const creditsNeeded = duration === 5 ? 20 : 36;
 
       if ((user.credits || 0) < creditsNeeded) {
         return res.status(402).json({
