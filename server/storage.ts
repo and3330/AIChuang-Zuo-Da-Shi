@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type CreditTransaction } from "@shared/schema";
+import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction } from "@shared/schema";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -22,7 +22,7 @@ export interface IStorage {
   getUserImageGenerations(userId: string): Promise<ImageGeneration[]>;
   getUserStats(userId: string): Promise<{ totalGenerations: number; totalCost: number; totalCreditsUsed: number }>;
 
-  createVideoGeneration(generation: InsertImageToVideo & { userId: string }): Promise<VideoGeneration>;
+  createVideoGeneration(generation: (InsertImageToVideo | InsertTextToVideo) & { userId: string }): Promise<VideoGeneration>;
   getVideoGeneration(id: string): Promise<VideoGeneration | undefined>;
   updateVideoGeneration(id: string, updates: Partial<VideoGeneration>): Promise<VideoGeneration | undefined>;
   getAllVideoGenerations(): Promise<VideoGeneration[]>;
@@ -213,14 +213,14 @@ export class MemStorage implements IStorage {
     return { totalGenerations, totalCost: imageCost + videoCost, totalCreditsUsed: imageCredits + videoCredits };
   }
 
-  async createVideoGeneration(insertGeneration: InsertImageToVideo & { userId: string }): Promise<VideoGeneration> {
+  async createVideoGeneration(insertGeneration: (InsertImageToVideo | InsertTextToVideo) & { userId: string }): Promise<VideoGeneration> {
     const id = randomUUID();
     const generation: VideoGeneration = {
       id,
       userId: insertGeneration.userId,
       taskId: null,
-      type: "image-to-video",
-      originalImageUrl: insertGeneration.originalImageUrl,
+      type: insertGeneration.type,
+      originalImageUrl: "originalImageUrl" in insertGeneration ? insertGeneration.originalImageUrl : null,
       generatedVideoUrl: null,
       prompt: insertGeneration.prompt,
       duration: insertGeneration.duration ?? 5,

@@ -49,7 +49,7 @@ export const videoGenerations = pgTable("video_generations", {
   userId: varchar("user_id").notNull(),
   taskId: text("task_id"),
   type: text("type").notNull().default("image-to-video"),
-  originalImageUrl: text("original_image_url").notNull(),
+  originalImageUrl: text("original_image_url"),
   generatedVideoUrl: text("generated_video_url"),
   prompt: text("prompt").notNull(),
   duration: integer("duration").default(5),
@@ -134,6 +134,13 @@ export const insertImageToVideoSchema = z.object({
   cameraFixed: z.boolean().optional().default(false),
 });
 
+export const insertTextToVideoSchema = z.object({
+  type: z.literal("text-to-video"),
+  prompt: z.string(),
+  duration: z.number().min(5).max(10).optional().default(5),
+  cameraFixed: z.boolean().optional().default(false),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
@@ -143,6 +150,7 @@ export type InsertTextToImage = z.infer<typeof insertTextToImageSchema>;
 export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
 export type InsertBatchImageToImage = z.infer<typeof insertBatchImageToImageSchema>;
 export type InsertImageToVideo = z.infer<typeof insertImageToVideoSchema>;
+export type InsertTextToVideo = z.infer<typeof insertTextToVideoSchema>;
 export type ImageGeneration = typeof imageGenerations.$inferSelect & {
   generatedImageUrls?: string[];
   sequentialGeneration?: boolean;

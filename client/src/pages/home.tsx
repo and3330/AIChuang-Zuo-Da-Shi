@@ -18,7 +18,7 @@ import type { ImageGeneration, VideoGeneration } from "@shared/schema";
 
 export default function Home() {
   const { user } = useUser();
-  const [mode, setMode] = useState<"image-to-image" | "text-to-image" | "image-to-video">("text-to-image");
+  const [mode, setMode] = useState<"image-to-image" | "text-to-image" | "image-to-video" | "text-to-video">("text-to-image");
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
   const [uploadedImagePath, setUploadedImagePath] = useState<string>("");
   const [prompt, setPrompt] = useState("把泡泡變成愛心形狀");
@@ -243,6 +243,17 @@ export default function Home() {
         sequentialGeneration: isSequentialMode,
         maxImages: isSequentialMode ? sequentialCount : undefined,
       });
+    } else if (mode === "text-to-video") {
+      if (!videoPrompt.trim()) {
+        toast({ title: "缺少描述", description: "請輸入影片內容描述。", variant: "destructive" });
+        return;
+      }
+      videoGenerateMutation.mutate({
+        type: "text-to-video",
+        prompt: videoPrompt.trim(),
+        duration: videoDuration,
+        cameraFixed,
+      });
     } else if (mode === "image-to-video") {
       if (!uploadedImagePath) {
         toast({ title: "缺少圖片", description: "請先上傳圖片。", variant: "destructive" });
@@ -300,7 +311,7 @@ export default function Home() {
     (videoGeneration?.status === "pending" || videoGeneration?.status === "processing");
 
   const getCreditsNeeded = () => {
-    if (mode === "image-to-video") return videoDuration === 5 ? 20 : 36;
+    if (mode === "image-to-video" || mode === "text-to-video") return videoDuration === 5 ? 20 : 36;
     if (mode === "text-to-image") return isSequentialMode ? 3 * sequentialCount : 3;
     if (isBatchMode) return 3 * batchPrompts.filter(p => p.trim()).length;
     if (isI2ISequentialMode) return 3 * i2iSequentialCount;
@@ -311,6 +322,7 @@ export default function Home() {
   const hasEnoughCredits = (user?.credits ?? 0) >= creditsNeeded;
 
   const isSeedDanceMode = mode === "image-to-image" || mode === "text-to-image";
+  const isVideoMode = mode === "image-to-video" || mode === "text-to-video";
 
   return (
     <div className="bg-gray-50 min-h-screen font-inter">
@@ -355,7 +367,7 @@ export default function Home() {
             {/* Model Tabs */}
             <div className="flex border-b border-gray-200">
               <button
-                onClick={() => { if (mode === "image-to-video") setMode("text-to-image"); }}
+                onClick={() => { if (isVideoMode) setMode("text-to-image"); }}
                 className={`flex-1 py-3 px-6 text-sm font-medium transition-all relative ${
                   isSeedDanceMode 
                     ? "text-blue-700 bg-blue-50"
@@ -370,9 +382,9 @@ export default function Home() {
                 {isSeedDanceMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
               </button>
               <button
-                onClick={() => setMode("image-to-video")}
+                onClick={() => { if (!isVideoMode) setMode("text-to-video"); }}
                 className={`flex-1 py-3 px-6 text-sm font-medium transition-all relative ${
-                  mode === "image-to-video"
+                  isVideoMode
                     ? "text-purple-700 bg-purple-50"
                     : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 }`}
@@ -382,7 +394,7 @@ export default function Home() {
                   <span className="font-semibold">Seedream</span>
                   <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">影片</span>
                 </div>
-                {mode === "image-to-video" && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600" />}
+                {isVideoMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600" />}
               </button>
             </div>
 
@@ -463,23 +475,58 @@ export default function Home() {
               </div>
             )}
 
-            {/* Seedream Info */}
-            {mode === "image-to-video" && (
+            {/* Seedream Sub-modes */}
+            {isVideoMode && (
               <div className="p-4">
-                <div className="p-4 rounded-xl border-2 border-purple-300 bg-purple-50/50">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <i className="fas fa-video text-purple-600"></i>
-                    </div>
-                    <div>
-                      <h3 className="font-semibold text-sm text-purple-700">圖片生影片</h3>
-                      <p className="text-xs text-gray-500 mt-0.5">將靜態圖片轉化為動態影片</p>
-                      <div className="flex gap-2 mt-2">
-                        <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">5 秒 = 20 積分</span>
-                        <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">10 秒 = 36 積分</span>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setMode("text-to-video")}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      mode === "text-to-video"
+                        ? "border-purple-500 bg-purple-50 shadow-sm"
+                        : "border-gray-200 hover:border-purple-200 hover:bg-purple-50/30"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        mode === "text-to-video" ? "bg-purple-100" : "bg-gray-100"
+                      }`}>
+                        <i className={`fas fa-pencil-alt ${mode === "text-to-video" ? "text-purple-600" : "text-gray-400"}`}></i>
+                      </div>
+                      <div className="text-left">
+                        <h3 className={`font-semibold text-sm ${mode === "text-to-video" ? "text-purple-700" : "text-gray-700"}`}>文字生影片</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">用文字描述創建影片</p>
+                        <div className="flex gap-1 mt-1.5 flex-wrap">
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">5秒=20積分</span>
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">10秒=36積分</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  </button>
+                  <button
+                    onClick={() => setMode("image-to-video")}
+                    className={`p-4 rounded-xl border-2 transition-all ${
+                      mode === "image-to-video"
+                        ? "border-purple-500 bg-purple-50 shadow-sm"
+                        : "border-gray-200 hover:border-purple-200 hover:bg-purple-50/30"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                        mode === "image-to-video" ? "bg-purple-100" : "bg-gray-100"
+                      }`}>
+                        <i className={`fas fa-image ${mode === "image-to-video" ? "text-purple-600" : "text-gray-400"}`}></i>
+                      </div>
+                      <div className="text-left">
+                        <h3 className={`font-semibold text-sm ${mode === "image-to-video" ? "text-purple-700" : "text-gray-700"}`}>圖片生影片</h3>
+                        <p className="text-xs text-gray-500 mt-0.5">將靜態圖片轉為影片</p>
+                        <div className="flex gap-1 mt-1.5 flex-wrap">
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">5秒=20積分</span>
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">10秒=36積分</span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 justify-center">
                   <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
@@ -787,6 +834,91 @@ export default function Home() {
             </>
           )}
 
+          {/* ============ TEXT-TO-VIDEO INPUT ============ */}
+          {mode === "text-to-video" && (
+            <Card className="bg-white rounded-xl shadow-sm border border-purple-200">
+              <CardContent className="p-6 space-y-5">
+                <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                  <i className="fas fa-pencil-alt text-purple-500"></i>
+                  文字生影片
+                </h2>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">描述影片內容</Label>
+                  <Textarea 
+                    placeholder="例如：一隻橘貓在陽光下的草地上追蝴蝶，鏡頭緩慢環繞"
+                    value={videoPrompt}
+                    onChange={(e) => setVideoPrompt(e.target.value)}
+                    className="mt-1.5 w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">詳細描述您想要的影片畫面和動態效果</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">影片長度</Label>
+                    <div className="mt-1.5 grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setVideoDuration(5)}
+                        className={`p-3 rounded-lg border-2 text-center transition-all ${
+                          videoDuration === 5 
+                            ? "border-purple-500 bg-purple-50 text-purple-700" 
+                            : "border-gray-200 text-gray-600 hover:border-purple-200"
+                        }`}
+                      >
+                        <div className="font-semibold">5 秒</div>
+                        <div className="text-xs mt-0.5">20 積分</div>
+                      </button>
+                      <button
+                        onClick={() => setVideoDuration(10)}
+                        className={`p-3 rounded-lg border-2 text-center transition-all ${
+                          videoDuration === 10 
+                            ? "border-purple-500 bg-purple-50 text-purple-700" 
+                            : "border-gray-200 text-gray-600 hover:border-purple-200"
+                        }`}
+                      >
+                        <div className="font-semibold">10 秒</div>
+                        <div className="text-xs mt-0.5">36 積分</div>
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700">鏡頭模式</Label>
+                    <div className="mt-1.5 grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setCameraFixed(false)}
+                        className={`p-3 rounded-lg border-2 text-center transition-all ${
+                          !cameraFixed 
+                            ? "border-purple-500 bg-purple-50 text-purple-700" 
+                            : "border-gray-200 text-gray-600 hover:border-purple-200"
+                        }`}
+                      >
+                        <div className="font-semibold text-sm">動態鏡頭</div>
+                        <div className="text-xs mt-0.5">自動運鏡</div>
+                      </button>
+                      <button
+                        onClick={() => setCameraFixed(true)}
+                        className={`p-3 rounded-lg border-2 text-center transition-all ${
+                          cameraFixed 
+                            ? "border-purple-500 bg-purple-50 text-purple-700" 
+                            : "border-gray-200 text-gray-600 hover:border-purple-200"
+                        }`}
+                      >
+                        <div className="font-semibold text-sm">固定鏡頭</div>
+                        <div className="text-xs mt-0.5">穩定畫面</div>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
+                  <i className="fas fa-info-circle"></i>
+                  影片生成需要 1-3 分鐘，費用：{videoDuration === 5 ? 20 : 36} 積分
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* ============ IMAGE-TO-VIDEO INPUT ============ */}
           {mode === "image-to-video" && (
             <Card className="bg-white rounded-xl shadow-sm border border-purple-200">
@@ -929,16 +1061,17 @@ export default function Home() {
                 (mode === "image-to-image" && !isBatchMode && !prompt.trim()) ||
                 (mode === "image-to-image" && isBatchMode && batchPrompts.filter(p => p.trim()).length < 2) ||
                 (mode === "text-to-image" && !textPrompt.trim()) ||
+                (mode === "text-to-video" && !videoPrompt.trim()) ||
                 (mode === "image-to-video" && (!uploadedImagePath || !videoPrompt.trim())) ||
                 isGenerating || !hasEnoughCredits
               }
-              className={`${mode === "image-to-video" ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"} text-white font-semibold px-10 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 flex items-center gap-3 text-base`}
+              className={`${isVideoMode ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"} text-white font-semibold px-10 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 flex items-center gap-3 text-base`}
             >
               {isGenerating ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>
-                    {mode === "image-to-video" ? "正在生成影片..." 
+                    {isVideoMode ? "正在生成影片..." 
                       : isBatchMode ? `正在生成 ${batchCount} 張圖片...`
                       : isSequentialMode ? `正在生成 ${sequentialCount} 張圖片...`
                       : isI2ISequentialMode ? `正在生成 ${i2iSequentialCount} 張圖片...`
@@ -947,9 +1080,9 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <i className={`fas ${mode === "image-to-video" ? "fa-video" : "fa-magic"}`}></i>
+                  <i className={`fas ${isVideoMode ? "fa-video" : "fa-magic"}`}></i>
                   <span>
-                    {mode === "image-to-video" ? "生成影片"
+                    {isVideoMode ? "生成影片"
                       : mode === "text-to-image" 
                         ? isSequentialMode ? `生成 ${sequentialCount} 張序列圖片` : "生成圖片" 
                         : isBatchMode ? `批次生成 ${batchCount} 張`
@@ -958,7 +1091,7 @@ export default function Home() {
                         : isMultiImageMode ? "多圖融合生成"
                         : "生成 AI 編輯"}
                   </span>
-                  <span className={`text-sm ${mode === "image-to-video" ? "bg-purple-500" : "bg-blue-500"} px-2.5 py-0.5 rounded-full`}>
+                  <span className={`text-sm ${isVideoMode ? "bg-purple-500" : "bg-blue-500"} px-2.5 py-0.5 rounded-full`}>
                     {creditsNeeded} 積分
                   </span>
                 </>
@@ -975,18 +1108,18 @@ export default function Home() {
 
           {/* Loading State */}
           {isGenerating && (
-            <Card className={`rounded-xl shadow-sm border ${mode === "image-to-video" ? "border-purple-200 bg-purple-50/30" : "border-blue-200 bg-blue-50/30"}`}>
+            <Card className={`rounded-xl shadow-sm border ${isVideoMode ? "border-purple-200 bg-purple-50/30" : "border-blue-200 bg-blue-50/30"}`}>
               <CardContent className="p-8">
                 <div className="text-center space-y-4">
-                  <div className={`w-14 h-14 mx-auto border-4 ${mode === "image-to-video" ? "border-purple-500" : "border-blue-500"} border-t-transparent rounded-full animate-spin`} />
+                  <div className={`w-14 h-14 mx-auto border-4 ${isVideoMode ? "border-purple-500" : "border-blue-500"} border-t-transparent rounded-full animate-spin`} />
                   <h3 className="text-lg font-semibold text-gray-800">
-                    {mode === "image-to-video" ? "正在生成影片" : "正在處理您的圖片"}
+                    {isVideoMode ? "正在生成影片" : "正在處理您的圖片"}
                   </h3>
                   <p className="text-gray-500 text-sm">
-                    {mode === "image-to-video" ? "影片生成需要 1-3 分鐘，請耐心等待..." : "這可能需要一些時間..."}
+                    {isVideoMode ? "影片生成需要 1-3 分鐘，請耐心等待..." : "這可能需要一些時間..."}
                   </p>
                   <div className="w-full bg-gray-200 rounded-full h-1.5 max-w-sm mx-auto">
-                    <div className={`${mode === "image-to-video" ? "bg-purple-500" : "bg-blue-500"} h-1.5 rounded-full animate-pulse`} style={{width: "45%"}} />
+                    <div className={`${isVideoMode ? "bg-purple-500" : "bg-blue-500"} h-1.5 rounded-full animate-pulse`} style={{width: "45%"}} />
                   </div>
                 </div>
               </CardContent>

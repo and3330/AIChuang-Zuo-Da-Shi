@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import { storage } from "./storage";
-import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema } from "@shared/schema";
+import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
@@ -736,7 +736,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         description: `视频生成消耗 ${creditsNeeded} 积分`,
       });
 
-      const validatedData = insertImageToVideoSchema.parse(req.body);
+      const videoType = req.body.type || "image-to-video";
+      const validatedData = videoType === "text-to-video" 
+        ? insertTextToVideoSchema.parse(req.body)
+        : insertImageToVideoSchema.parse(req.body);
       const generation = await storage.createVideoGeneration({ ...validatedData, userId });
 
       processVideoGeneration(generation.id, objectStorageService).catch(console.error);
@@ -785,37 +788,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
         throw new Error("ARK_API_KEY environment variable is not set");
       }
 
-      console.log(`Getting image from object storage: ${generation.originalImageUrl}`);
-      const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
-      const chunks: Buffer[] = [];
-      const stream = objectFile.createReadStream();
-      
-      for await (const chunk of stream) {
-        chunks.push(Buffer.from(chunk));
-      }
-      
-      const imageBuffer = Buffer.concat(chunks);
-      const base64Image = imageBuffer.toString('base64');
-      const imageDataUri = `data:image/jpeg;base64,${base64Image}`;
-
       let promptText = generation.prompt;
       promptText += ` --duration ${generation.duration}`;
       promptText += ` --camerafixed ${generation.cameraFixed}`;
 
+      const contentItems: any[] = [
+        {
+          type: "text",
+          text: promptText
+        }
+      ];
+
+      if (generation.originalImageUrl) {
+        console.log(`Getting image from object storage: ${generation.originalImageUrl}`);
+        const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
+        const chunks: Buffer[] = [];
+        const stream = objectFile.createReadStream();
+        
+        for await (const chunk of stream) {
+          chunks.push(Buffer.from(chunk));
+        }
+        
+        const imageBuffer = Buffer.concat(chunks);
+        const base64Image = imageBuffer.toString('base64');
+        const imageDataUri = `data:image/jpeg;base64,${base64Image}`;
+
+        contentItems.push({
+          type: "image_url",
+          image_url: {
+            url: imageDataUri
+          }
+        });
+      }
+
       const requestBody = {
         model: VIDEO_MODEL,
-        content: [
-          {
-            type: "text",
-            text: promptText
-          },
-          {
-            type: "image_url",
-            image_url: {
-              url: imageDataUri
-            }
-          }
-        ]
+        content: contentItems
       };
 
       console.log(`Creating video generation task...`);
