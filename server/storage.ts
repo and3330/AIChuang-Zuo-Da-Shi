@@ -1,4 +1,6 @@
-import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction } from "@shared/schema";
+import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, users, creditTransactions, imageGenerations, videoGenerations } from "@shared/schema";
+import { db } from "./db";
+import { eq, desc, sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -30,120 +32,99 @@ export interface IStorage {
   getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
 }
 
-export class MemStorage implements IStorage {
-  private users: Map<string, User>;
-  private imageGenerations: Map<string, ImageGeneration>;
-  private videoGenerations: Map<string, VideoGeneration>;
-  private creditTransactions: Map<string, CreditTransaction>;
+const imageGenCache = new Map<string, { sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[]; generatedImageUrls?: string[] }>();
 
-  constructor() {
-    this.users = new Map();
-    this.imageGenerations = new Map();
-    this.videoGenerations = new Map();
-    this.creditTransactions = new Map();
-  }
+function enrichImageGen(row: typeof imageGenerations.$inferSelect): ImageGeneration {
+  const cached = imageGenCache.get(row.id);
+  return {
+    ...row,
+    sequentialGeneration: cached?.sequentialGeneration ?? false,
+    maxImages: cached?.maxImages ?? 1,
+    additionalImageUrls: cached?.additionalImageUrls ?? [],
+    generatedImageUrls: cached?.generatedImageUrls ?? [],
+  };
+}
 
+export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
-    return this.users.get(id);
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user;
   }
 
   async getUserByUsername(username: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.username === username,
-    );
+    const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    return Array.from(this.users.values()).find(
-      (user) => user.email === email,
-    );
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user;
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
-    const id = randomUUID();
-    const user: User = {
-      id,
+    const [user] = await db.insert(users).values({
       username: insertUser.username,
       password: insertUser.password,
       email: insertUser.email,
       credits: 0,
       isAdmin: false,
-      createdAt: new Date(),
-    };
-    this.users.set(id, user);
+    }).returning();
+    return user;
+  }
+
+  async updateUserCredits(userId: string, credits: number): Promise<User | undefined> {
+    const [user] = await db.update(users).set({ credits }).where(eq(users.id, userId)).returning();
     return user;
   }
 
   async setUserAdmin(userId: string, isAdmin: boolean): Promise<User | undefined> {
-    const user = this.users.get(userId);
-    if (!user) return undefined;
-    const updated: User = { ...user, isAdmin };
-    this.users.set(userId, updated);
-    return updated;
+    const [user] = await db.update(users).set({ isAdmin }).where(eq(users.id, userId)).returning();
+    return user;
   }
 
   async getAllUsers(): Promise<User[]> {
-    return Array.from(this.users.values())
-      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
-  }
-
-  async updateUserCredits(userId: string, credits: number): Promise<User | undefined> {
-    const user = this.users.get(userId);
-    if (!user) return undefined;
-    const updated: User = { ...user, credits };
-    this.users.set(userId, updated);
-    return updated;
+    return db.select().from(users).orderBy(desc(users.createdAt));
   }
 
   async createCreditTransaction(transaction: { userId: string; type: string; amount: number; balance: number; description: string | null }): Promise<CreditTransaction> {
-    const id = randomUUID();
-    const creditTransaction: CreditTransaction = {
-      id,
+    const [ct] = await db.insert(creditTransactions).values({
       userId: transaction.userId,
       type: transaction.type,
       amount: transaction.amount,
       balance: transaction.balance,
       description: transaction.description,
-      createdAt: new Date(),
-    };
-    this.creditTransactions.set(id, creditTransaction);
-    return creditTransaction;
+    }).returning();
+    return ct;
   }
 
   async getCreditTransactions(userId: string): Promise<CreditTransaction[]> {
-    return Array.from(this.creditTransactions.values())
-      .filter(t => t.userId === userId)
-      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+    return db.select().from(creditTransactions).where(eq(creditTransactions.userId, userId)).orderBy(desc(creditTransactions.createdAt));
   }
 
   async createImageGeneration(insertGeneration: InsertImageGeneration & { userId: string; sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration> {
-    const id = randomUUID();
-    const generation: ImageGeneration = {
-      id,
+    const [row] = await db.insert(imageGenerations).values({
       userId: insertGeneration.userId,
       batchId: insertGeneration.batchId ?? null,
       type: insertGeneration.type ?? "image-to-image",
       originalImageUrl: insertGeneration.originalImageUrl ?? null,
-      generatedImageUrl: null,
-      generatedImageUrls: [],
       prompt: insertGeneration.prompt,
       guidanceScale: insertGeneration.guidanceScale ?? 5.5,
       seed: insertGeneration.seed ?? 21,
       watermark: insertGeneration.watermark ?? true,
       size: insertGeneration.size ?? "1:1",
       status: "pending",
-      errorMessage: null,
-      processingTime: null,
       cost: 0.03,
       creditsUsed: 3,
-      createdAt: new Date(),
-      updatedAt: new Date(),
+    }).returning();
+
+    imageGenCache.set(row.id, {
       sequentialGeneration: insertGeneration.sequentialGeneration ?? false,
       maxImages: insertGeneration.maxImages ?? 1,
       additionalImageUrls: insertGeneration.additionalImageUrls ?? [],
-    };
-    this.imageGenerations.set(id, generation);
-    return generation;
+      generatedImageUrls: [],
+    });
+
+    return enrichImageGen(row);
   }
 
   async createBatchImageGenerations(batchData: InsertBatchImageToImage & { userId: string }): Promise<ImageGeneration[]> {
@@ -151,7 +132,7 @@ export class MemStorage implements IStorage {
     const generations: ImageGeneration[] = [];
 
     for (const prompt of batchData.prompts) {
-      const generation = await this.createImageGeneration({
+      const gen = await this.createImageGeneration({
         userId: batchData.userId,
         type: batchData.type,
         batchId,
@@ -161,50 +142,57 @@ export class MemStorage implements IStorage {
         seed: batchData.seed,
         watermark: batchData.watermark,
       });
-      generations.push(generation);
+      generations.push(gen);
     }
 
     return generations;
   }
 
   async getImageGeneration(id: string): Promise<ImageGeneration | undefined> {
-    return this.imageGenerations.get(id);
+    const [row] = await db.select().from(imageGenerations).where(eq(imageGenerations.id, id));
+    if (!row) return undefined;
+    return enrichImageGen(row);
   }
 
   async getImageGenerationsByBatchId(batchId: string): Promise<ImageGeneration[]> {
-    return Array.from(this.imageGenerations.values())
-      .filter(generation => generation.batchId === batchId)
-      .sort((a, b) => (a.createdAt?.getTime() || 0) - (b.createdAt?.getTime() || 0));
+    const rows = await db.select().from(imageGenerations).where(eq(imageGenerations.batchId, batchId)).orderBy(imageGenerations.createdAt);
+    return rows.map(enrichImageGen);
   }
 
   async updateImageGeneration(id: string, updates: Partial<ImageGeneration>): Promise<ImageGeneration | undefined> {
-    const existing = this.imageGenerations.get(id);
-    if (!existing) return undefined;
+    const dbUpdates: any = { updatedAt: new Date() };
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.generatedImageUrl !== undefined) dbUpdates.generatedImageUrl = updates.generatedImageUrl;
+    if (updates.errorMessage !== undefined) dbUpdates.errorMessage = updates.errorMessage;
+    if (updates.processingTime !== undefined) dbUpdates.processingTime = updates.processingTime;
+    if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
+    if (updates.creditsUsed !== undefined) dbUpdates.creditsUsed = updates.creditsUsed;
 
-    const updated: ImageGeneration = {
-      ...existing,
-      ...updates,
-      updatedAt: new Date()
-    };
-    this.imageGenerations.set(id, updated);
-    return updated;
+    const [row] = await db.update(imageGenerations).set(dbUpdates).where(eq(imageGenerations.id, id)).returning();
+    if (!row) return undefined;
+
+    if (updates.generatedImageUrls) {
+      const cached = imageGenCache.get(id) || {};
+      cached.generatedImageUrls = updates.generatedImageUrls;
+      imageGenCache.set(id, cached);
+    }
+
+    return enrichImageGen(row);
   }
 
   async getAllImageGenerations(): Promise<ImageGeneration[]> {
-    return Array.from(this.imageGenerations.values()).sort(
-      (a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
-    );
+    const rows = await db.select().from(imageGenerations).orderBy(desc(imageGenerations.createdAt));
+    return rows.map(enrichImageGen);
   }
 
   async getUserImageGenerations(userId: string): Promise<ImageGeneration[]> {
-    return Array.from(this.imageGenerations.values())
-      .filter(gen => gen.userId === userId)
-      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+    const rows = await db.select().from(imageGenerations).where(eq(imageGenerations.userId, userId)).orderBy(desc(imageGenerations.createdAt));
+    return rows.map(enrichImageGen);
   }
 
   async getUserStats(userId: string): Promise<{ totalGenerations: number; totalCost: number; totalCreditsUsed: number }> {
-    const userImages = Array.from(this.imageGenerations.values()).filter(gen => gen.userId === userId);
-    const userVideos = Array.from(this.videoGenerations.values()).filter(gen => gen.userId === userId);
+    const userImages = await db.select().from(imageGenerations).where(eq(imageGenerations.userId, userId));
+    const userVideos = await db.select().from(videoGenerations).where(eq(videoGenerations.userId, userId));
     const totalGenerations = userImages.length + userVideos.length;
     const imageCost = userImages.reduce((sum, gen) => sum + (gen.cost || 0), 0);
     const videoCost = userVideos.reduce((sum, gen) => sum + (gen.cost || 0), 0);
@@ -214,61 +202,52 @@ export class MemStorage implements IStorage {
   }
 
   async createVideoGeneration(insertGeneration: (InsertImageToVideo | InsertTextToVideo) & { userId: string }): Promise<VideoGeneration> {
-    const id = randomUUID();
-    const generation: VideoGeneration = {
-      id,
+    const duration = insertGeneration.duration ?? 5;
+    const [row] = await db.insert(videoGenerations).values({
       userId: insertGeneration.userId,
-      taskId: null,
       type: insertGeneration.type,
       originalImageUrl: "originalImageUrl" in insertGeneration ? insertGeneration.originalImageUrl : null,
-      generatedVideoUrl: null,
       prompt: insertGeneration.prompt,
-      duration: insertGeneration.duration ?? 5,
+      duration,
       cameraFixed: insertGeneration.cameraFixed ?? false,
       status: "pending",
-      errorMessage: null,
-      processingTime: null,
       cost: 0.10,
-      creditsUsed: Math.round((insertGeneration.duration ?? 5) * 3.4),
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-    this.videoGenerations.set(id, generation);
-    return generation;
+      creditsUsed: Math.round(duration * 3.4),
+    }).returning();
+    return row as VideoGeneration;
   }
 
   async getVideoGeneration(id: string): Promise<VideoGeneration | undefined> {
-    return this.videoGenerations.get(id);
+    const [row] = await db.select().from(videoGenerations).where(eq(videoGenerations.id, id));
+    return row as VideoGeneration | undefined;
   }
 
   async updateVideoGeneration(id: string, updates: Partial<VideoGeneration>): Promise<VideoGeneration | undefined> {
-    const existing = this.videoGenerations.get(id);
-    if (!existing) return undefined;
+    const dbUpdates: any = { updatedAt: new Date() };
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.taskId !== undefined) dbUpdates.taskId = updates.taskId;
+    if (updates.generatedVideoUrl !== undefined) dbUpdates.generatedVideoUrl = updates.generatedVideoUrl;
+    if (updates.errorMessage !== undefined) dbUpdates.errorMessage = updates.errorMessage;
+    if (updates.processingTime !== undefined) dbUpdates.processingTime = updates.processingTime;
+    if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
 
-    const updated: VideoGeneration = {
-      ...existing,
-      ...updates,
-      updatedAt: new Date()
-    };
-    this.videoGenerations.set(id, updated);
-    return updated;
+    const [row] = await db.update(videoGenerations).set(dbUpdates).where(eq(videoGenerations.id, id)).returning();
+    return row as VideoGeneration | undefined;
   }
 
   async getAllVideoGenerations(): Promise<VideoGeneration[]> {
-    return Array.from(this.videoGenerations.values()).sort(
-      (a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0)
-    );
+    const rows = await db.select().from(videoGenerations).orderBy(desc(videoGenerations.createdAt));
+    return rows as VideoGeneration[];
   }
 
   async getUserVideoGenerations(userId: string): Promise<VideoGeneration[]> {
-    return Array.from(this.videoGenerations.values())
-      .filter(gen => gen.userId === userId)
-      .sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+    const rows = await db.select().from(videoGenerations).where(eq(videoGenerations.userId, userId)).orderBy(desc(videoGenerations.createdAt));
+    return rows as VideoGeneration[];
   }
 
   async getStats(): Promise<{ totalGenerations: number; totalCost: number }> {
-    const allImages = Array.from(this.imageGenerations.values());
-    const allVideos = Array.from(this.videoGenerations.values());
+    const allImages = await db.select().from(imageGenerations);
+    const allVideos = await db.select().from(videoGenerations);
     const totalGenerations = allImages.length + allVideos.length;
     const imageCost = allImages.reduce((sum, gen) => sum + (gen.cost || 0), 0);
     const videoCost = allVideos.reduce((sum, gen) => sum + (gen.cost || 0), 0);
@@ -276,4 +255,4 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export const storage = new DatabaseStorage();
