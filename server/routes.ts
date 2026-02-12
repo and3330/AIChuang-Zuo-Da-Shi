@@ -26,7 +26,7 @@ const SEEDDANCE_MODEL = "ep-20251223142939-njrkd";
 const ARK_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 
 const VIDEO_MODEL = "ep-20250813120833-g4mpb";
-const VIDEO_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
+const VIDEO_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/content_generation/tasks";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
@@ -792,6 +792,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let promptText = generation.prompt;
       promptText += ` --duration ${generation.duration}`;
       promptText += ` --camerafixed ${generation.cameraFixed}`;
+      promptText += ` --resolution 1080p`;
 
       const contentItems: any[] = [
         {

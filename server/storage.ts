@@ -32,19 +32,6 @@ export interface IStorage {
   getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
 }
 
-const imageGenCache = new Map<string, { sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[]; generatedImageUrls?: string[] }>();
-
-function enrichImageGen(row: typeof imageGenerations.$inferSelect): ImageGeneration {
-  const cached = imageGenCache.get(row.id);
-  return {
-    ...row,
-    sequentialGeneration: cached?.sequentialGeneration ?? false,
-    maxImages: cached?.maxImages ?? 1,
-    additionalImageUrls: cached?.additionalImageUrls ?? [],
-    generatedImageUrls: cached?.generatedImageUrls ?? [],
-  };
-}
-
 export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.id, id));
@@ -111,20 +98,17 @@ export class DatabaseStorage implements IStorage {
       guidanceScale: insertGeneration.guidanceScale ?? 5.5,
       seed: insertGeneration.seed ?? 21,
       watermark: insertGeneration.watermark ?? true,
-      size: insertGeneration.size ?? "1:1",
+      size: insertGeneration.size ?? "2K",
+      sequentialGeneration: insertGeneration.sequentialGeneration ?? false,
+      maxImages: insertGeneration.maxImages ?? 1,
+      additionalImageUrls: insertGeneration.additionalImageUrls ?? [],
+      generatedImageUrls: [],
       status: "pending",
       cost: 0.03,
       creditsUsed: 3,
     }).returning();
 
-    imageGenCache.set(row.id, {
-      sequentialGeneration: insertGeneration.sequentialGeneration ?? false,
-      maxImages: insertGeneration.maxImages ?? 1,
-      additionalImageUrls: insertGeneration.additionalImageUrls ?? [],
-      generatedImageUrls: [],
-    });
-
-    return enrichImageGen(row);
+    return row;
   }
 
   async createBatchImageGenerations(batchData: InsertBatchImageToImage & { userId: string }): Promise<ImageGeneration[]> {
@@ -150,13 +134,11 @@ export class DatabaseStorage implements IStorage {
 
   async getImageGeneration(id: string): Promise<ImageGeneration | undefined> {
     const [row] = await db.select().from(imageGenerations).where(eq(imageGenerations.id, id));
-    if (!row) return undefined;
-    return enrichImageGen(row);
+    return row;
   }
 
   async getImageGenerationsByBatchId(batchId: string): Promise<ImageGeneration[]> {
-    const rows = await db.select().from(imageGenerations).where(eq(imageGenerations.batchId, batchId)).orderBy(imageGenerations.createdAt);
-    return rows.map(enrichImageGen);
+    return db.select().from(imageGenerations).where(eq(imageGenerations.batchId, batchId)).orderBy(imageGenerations.createdAt);
   }
 
   async updateImageGeneration(id: string, updates: Partial<ImageGeneration>): Promise<ImageGeneration | undefined> {
@@ -167,27 +149,18 @@ export class DatabaseStorage implements IStorage {
     if (updates.processingTime !== undefined) dbUpdates.processingTime = updates.processingTime;
     if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
     if (updates.creditsUsed !== undefined) dbUpdates.creditsUsed = updates.creditsUsed;
+    if (updates.generatedImageUrls !== undefined) dbUpdates.generatedImageUrls = updates.generatedImageUrls;
 
     const [row] = await db.update(imageGenerations).set(dbUpdates).where(eq(imageGenerations.id, id)).returning();
-    if (!row) return undefined;
-
-    if (updates.generatedImageUrls) {
-      const cached = imageGenCache.get(id) || {};
-      cached.generatedImageUrls = updates.generatedImageUrls;
-      imageGenCache.set(id, cached);
-    }
-
-    return enrichImageGen(row);
+    return row;
   }
 
   async getAllImageGenerations(): Promise<ImageGeneration[]> {
-    const rows = await db.select().from(imageGenerations).orderBy(desc(imageGenerations.createdAt));
-    return rows.map(enrichImageGen);
+    return db.select().from(imageGenerations).orderBy(desc(imageGenerations.createdAt));
   }
 
   async getUserImageGenerations(userId: string): Promise<ImageGeneration[]> {
-    const rows = await db.select().from(imageGenerations).where(eq(imageGenerations.userId, userId)).orderBy(desc(imageGenerations.createdAt));
-    return rows.map(enrichImageGen);
+    return db.select().from(imageGenerations).where(eq(imageGenerations.userId, userId)).orderBy(desc(imageGenerations.createdAt));
   }
 
   async getUserStats(userId: string): Promise<{ totalGenerations: number; totalCost: number; totalCreditsUsed: number }> {
@@ -214,12 +187,12 @@ export class DatabaseStorage implements IStorage {
       cost: 0.10,
       creditsUsed: Math.round(duration * 3.4),
     }).returning();
-    return row as VideoGeneration;
+    return row;
   }
 
   async getVideoGeneration(id: string): Promise<VideoGeneration | undefined> {
     const [row] = await db.select().from(videoGenerations).where(eq(videoGenerations.id, id));
-    return row as VideoGeneration | undefined;
+    return row;
   }
 
   async updateVideoGeneration(id: string, updates: Partial<VideoGeneration>): Promise<VideoGeneration | undefined> {
@@ -232,17 +205,15 @@ export class DatabaseStorage implements IStorage {
     if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
 
     const [row] = await db.update(videoGenerations).set(dbUpdates).where(eq(videoGenerations.id, id)).returning();
-    return row as VideoGeneration | undefined;
+    return row;
   }
 
   async getAllVideoGenerations(): Promise<VideoGeneration[]> {
-    const rows = await db.select().from(videoGenerations).orderBy(desc(videoGenerations.createdAt));
-    return rows as VideoGeneration[];
+    return db.select().from(videoGenerations).orderBy(desc(videoGenerations.createdAt));
   }
 
   async getUserVideoGenerations(userId: string): Promise<VideoGeneration[]> {
-    const rows = await db.select().from(videoGenerations).where(eq(videoGenerations.userId, userId)).orderBy(desc(videoGenerations.createdAt));
-    return rows as VideoGeneration[];
+    return db.select().from(videoGenerations).where(eq(videoGenerations.userId, userId)).orderBy(desc(videoGenerations.createdAt));
   }
 
   async getStats(): Promise<{ totalGenerations: number; totalCost: number }> {

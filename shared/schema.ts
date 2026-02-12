@@ -34,7 +34,11 @@ export const imageGenerations = pgTable("image_generations", {
   guidanceScale: real("guidance_scale").default(5.5),
   seed: real("seed").default(21),
   watermark: boolean("watermark").default(true),
-  size: text("size").default("1:1"),
+  size: text("size").default("2K"),
+  sequentialGeneration: boolean("sequential_generation").default(false),
+  maxImages: integer("max_images").default(1),
+  additionalImageUrls: text("additional_image_urls").array(),
+  generatedImageUrls: text("generated_image_urls").array(),
   status: text("status").notNull().default("pending"),
   errorMessage: text("error_message"),
   processingTime: real("processing_time"),
@@ -151,13 +155,5 @@ export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
 export type InsertBatchImageToImage = z.infer<typeof insertBatchImageToImageSchema>;
 export type InsertImageToVideo = z.infer<typeof insertImageToVideoSchema>;
 export type InsertTextToVideo = z.infer<typeof insertTextToVideoSchema>;
-export type ImageGeneration = typeof imageGenerations.$inferSelect & {
-  generatedImageUrls?: string[];
-  sequentialGeneration?: boolean;
-  maxImages?: number;
-  additionalImageUrls?: string[];
-};
-export type VideoGeneration = typeof videoGenerations.$inferSelect & {
-  generatedImageUrls?: string[];
-  sequentialGeneration?: boolean;
-};
+export type ImageGeneration = typeof imageGenerations.$inferSelect;
+export type VideoGeneration = typeof videoGenerations.$inferSelect;
