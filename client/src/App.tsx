@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Switch, Route, Link, Redirect } from "wouter";
 import { queryClient, apiRequest, getQueryFn } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -31,9 +31,54 @@ function AuthPage() {
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [verificationCode, setVerificationCode] = useState("");
+  const [codeSent, setCodeSent] = useState(false);
+  const [countdown, setCountdown] = useState(0);
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSendingCode, setIsSendingCode] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const timer = setTimeout(() => setCountdown(countdown - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [countdown]);
+
+  const handleSendCode = async () => {
+    if (!email) {
+      setError("請先輸入電子郵件");
+      return;
+    }
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("請輸入有效的電子郵件地址");
+      return;
+    }
+
+    setError("");
+    setIsSendingCode(true);
+
+    try {
+      const res = await fetch("/api/auth/send-verification", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "驗證碼發送失敗");
+        return;
+      }
+      setCodeSent(true);
+      setCountdown(60);
+      toast({ title: "驗證碼已發送", description: "請查看您的電子郵件信箱" });
+    } catch {
+      setError("驗證碼發送失敗，請稍後再試");
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -49,7 +94,12 @@ function AuthPage() {
           setIsSubmitting(false);
           return;
         }
-        await apiRequest("POST", "/api/auth/register", { username, email, password });
+        if (!verificationCode || verificationCode.length !== 6) {
+          setError("請輸入 6 位數驗證碼");
+          setIsSubmitting(false);
+          return;
+        }
+        await apiRequest("POST", "/api/auth/register", { username, email, password, verificationCode });
       }
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({
@@ -60,12 +110,14 @@ function AuthPage() {
       const message = err?.message || "操作失敗，請稍後再試";
       if (message.includes("401") || message.includes("Unauthorized")) {
         setError("帳號或密碼錯誤");
-      } else if (message.includes("409") || message.includes("already exists") || message.includes("Conflict")) {
+      } else if (message.includes("已被註冊") || message.includes("already exists")) {
         setError("此帳號或電子郵件已被註冊");
+      } else if (message.includes("驗證碼")) {
+        setError("驗證碼無效或已過期，請重新獲取");
       } else if (message.includes("400")) {
         setError("請填寫所有必要欄位");
       } else {
-        setError("操作失敗，請稍後再試");
+        setError(message);
       }
     } finally {
       setIsSubmitting(false);
@@ -78,6 +130,8 @@ function AuthPage() {
     setUsername("");
     setEmail("");
     setPassword("");
+    setVerificationCode("");
+    setCodeSent(false);
   };
 
   return (
@@ -134,16 +188,55 @@ function AuthPage() {
             </div>
 
             {activeTab === "register" && (
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">電子郵件</label>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="請輸入電子郵件"
-                  required
-                />
-              </div>
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">電子郵件</label>
+                  <div className="flex gap-2">
+                    <Input
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder="請輸入電子郵件"
+                      required
+                      className="flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleSendCode}
+                      disabled={isSendingCode || countdown > 0}
+                      className="shrink-0 text-sm border-purple-300 text-purple-600 hover:bg-purple-50"
+                    >
+                      {isSendingCode
+                        ? "發送中..."
+                        : countdown > 0
+                          ? `${countdown}s`
+                          : codeSent
+                            ? "重新發送"
+                            : "取得驗證碼"}
+                    </Button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">驗證碼</label>
+                  <Input
+                    type="text"
+                    value={verificationCode}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, "").slice(0, 6);
+                      setVerificationCode(val);
+                    }}
+                    placeholder="請輸入 6 位數驗證碼"
+                    required
+                    maxLength={6}
+                    className="tracking-[0.3em] text-center text-lg font-mono"
+                  />
+                  {codeSent && (
+                    <p className="text-xs text-green-600 mt-1">驗證碼已發送至 {email}，有效期 10 分鐘</p>
+                  )}
+                </div>
+              </>
             )}
 
             <div>
@@ -170,7 +263,7 @@ function AuthPage() {
             <Button
               type="submit"
               className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-              disabled={isSubmitting}
+              disabled={isSubmitting || (activeTab === "register" && !codeSent)}
             >
               {isSubmitting
                 ? "處理中..."

@@ -28,12 +28,15 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - **creditTransactions**: id, userId, type (topup/consume/refund), amount, balance, description, createdAt
 - **imageGenerations**: id, userId, type, prompt, status, resultUrl, cost, etc.
 - **videoGenerations**: id, userId, prompt, duration, status, resultUrl, cost, etc.
+- **verificationCodes**: id, email, code, expiresAt, used, createdAt
 
 ### Authentication
 - Express session-based auth (express-session + connect-pg-simple)
 - Password hashing with bcryptjs
+- Email verification via Resend (6-digit code, 10min expiry, 60s cooldown)
+- POST /api/auth/send-verification - send verification code to email
 - GET /api/auth/me - check login state
-- POST /api/auth/register - register (sends 10 welcome credits)
+- POST /api/auth/register - register with verification code (sends 10 welcome credits)
 - POST /api/auth/login - login
 - POST /api/auth/logout - logout
 - requireAuth middleware protects all API routes
@@ -82,6 +85,7 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Admin link visible only to admin users in NavigationHeader
 
 ## Recent Changes
+- Added email verification for registration using Resend (6-digit code, 10min expiry, prevents duplicate email registration)
 - Changed video pricing to proportional per-second model: 3.4 credits/sec (API cost × 2.5), duration slider 2-12 seconds
 - Added text-to-video generation (no image required)
 - Added admin dashboard with user management, credit adjustment, transaction/generation history

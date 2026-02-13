@@ -1,6 +1,6 @@
-import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, users, creditTransactions, imageGenerations, videoGenerations } from "@shared/schema";
+import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and, gt } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -32,6 +32,12 @@ export interface IStorage {
   getUserVideoGenerations(userId: string): Promise<VideoGeneration[]>;
   getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
   atomicAddCredits(userId: string, amount: number, description: string): Promise<void>;
+
+  createVerificationCode(email: string, code: string, expiresAt: Date): Promise<VerificationCode>;
+  getValidVerificationCode(email: string, code: string): Promise<VerificationCode | undefined>;
+  getRecentVerificationCode(email: string): Promise<VerificationCode | undefined>;
+  markVerificationCodeUsed(id: string): Promise<void>;
+  deleteExpiredVerificationCodes(): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -277,6 +283,48 @@ export class DatabaseStorage implements IStorage {
     const imageCost = allImages.reduce((sum, gen) => sum + (gen.cost || 0), 0);
     const videoCost = allVideos.reduce((sum, gen) => sum + (gen.cost || 0), 0);
     return { totalGenerations, totalCost: imageCost + videoCost };
+  }
+
+  async createVerificationCode(email: string, code: string, expiresAt: Date): Promise<VerificationCode> {
+    await db.delete(verificationCodes).where(
+      and(eq(verificationCodes.email, email), eq(verificationCodes.used, false))
+    );
+    const [row] = await db.insert(verificationCodes).values({
+      email,
+      code,
+      expiresAt,
+    }).returning();
+    return row;
+  }
+
+  async getRecentVerificationCode(email: string): Promise<VerificationCode | undefined> {
+    const [row] = await db.select().from(verificationCodes)
+      .where(eq(verificationCodes.email, email))
+      .orderBy(desc(verificationCodes.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async getValidVerificationCode(email: string, code: string): Promise<VerificationCode | undefined> {
+    const [row] = await db.select().from(verificationCodes).where(
+      and(
+        eq(verificationCodes.email, email),
+        eq(verificationCodes.code, code),
+        eq(verificationCodes.used, false),
+        gt(verificationCodes.expiresAt, new Date())
+      )
+    );
+    return row;
+  }
+
+  async markVerificationCodeUsed(id: string): Promise<void> {
+    await db.update(verificationCodes).set({ used: true }).where(eq(verificationCodes.id, id));
+  }
+
+  async deleteExpiredVerificationCodes(): Promise<void> {
+    await db.delete(verificationCodes).where(
+      sql`${verificationCodes.expiresAt} < NOW() OR ${verificationCodes.used} = true`
+    );
   }
 }
 

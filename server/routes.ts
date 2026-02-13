@@ -3,10 +3,16 @@ import { createServer, type Server } from "http";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import { storage } from "./storage";
-import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema } from "@shared/schema";
+import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema } from "@shared/schema";
+import { Resend } from "resend";
 import { ObjectStorageService } from "./objectStorage";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+const resend = new Resend(process.env.RESEND_API_KEY || "");
+
+function generateVerificationCode(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
 
 declare module "express-session" {
   interface SessionData {
@@ -81,9 +87,67 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
   // ===== AUTH ROUTES =====
 
+  app.post("/api/auth/send-verification", async (req, res) => {
+    try {
+      const { email } = sendVerificationCodeSchema.parse(req.body);
+
+      const existingEmail = await storage.getUserByEmail(email);
+      if (existingEmail) {
+        return res.status(400).json({ error: "此電子郵件已被註冊" });
+      }
+
+      const recentCode = await storage.getRecentVerificationCode(email);
+      if (recentCode) {
+        const elapsed = Date.now() - new Date(recentCode.createdAt!).getTime();
+        if (elapsed < 60000) {
+          const remaining = Math.ceil((60000 - elapsed) / 1000);
+          return res.status(429).json({ error: `請等待 ${remaining} 秒後再重新發送` });
+        }
+      }
+
+      storage.deleteExpiredVerificationCodes().catch(() => {});
+
+      const code = generateVerificationCode();
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+      await storage.createVerificationCode(email, code, expiresAt);
+
+      await resend.emails.send({
+        from: "AI 創意工坊 <onboarding@resend.dev>",
+        to: email,
+        subject: "AI 創意工坊 - 註冊驗證碼",
+        html: `
+          <div style="font-family: 'Microsoft JhengHei', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: linear-gradient(135deg, #f5f3ff, #ede9fe); border-radius: 16px;">
+            <div style="text-align: center; margin-bottom: 24px;">
+              <span style="font-size: 36px;">✨</span>
+              <h1 style="font-size: 24px; background: linear-gradient(to right, #7c3aed, #2563eb); -webkit-background-clip: text; -webkit-text-fill-color: transparent; margin: 8px 0;">AI 創意工坊</h1>
+            </div>
+            <div style="background: white; border-radius: 12px; padding: 24px; text-align: center;">
+              <p style="color: #374151; font-size: 16px; margin-bottom: 8px;">您的註冊驗證碼為：</p>
+              <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #7c3aed; padding: 16px; background: #f5f3ff; border-radius: 8px; margin: 16px 0;">
+                ${code}
+              </div>
+              <p style="color: #6b7280; font-size: 14px; margin-top: 16px;">驗證碼有效期為 10 分鐘，請盡快完成註冊。</p>
+              <p style="color: #9ca3af; font-size: 12px; margin-top: 8px;">如果這不是您本人的操作，請忽略此郵件。</p>
+            </div>
+          </div>
+        `,
+      });
+
+      console.log(`Verification code sent to ${email}`);
+      res.json({ success: true, message: "驗證碼已發送至您的電子郵件" });
+    } catch (error: any) {
+      console.error("Error sending verification code:", error);
+      if (error?.statusCode === 422 || error?.message?.includes("not verified")) {
+        return res.status(400).json({ error: "郵件發送失敗，請確認電子郵件地址是否正確" });
+      }
+      res.status(500).json({ error: "驗證碼發送失敗，請稍後再試" });
+    }
+  });
+
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const validatedData = insertUserSchema.parse(req.body);
+      const validatedData = registerWithVerificationSchema.parse(req.body);
 
       const existingUsername = await storage.getUserByUsername(validatedData.username);
       if (existingUsername) {
@@ -92,11 +156,18 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
       const existingEmail = await storage.getUserByEmail(validatedData.email);
       if (existingEmail) {
-        return res.status(400).json({ error: "邮箱已被注册" });
+        return res.status(400).json({ error: "此電子郵件已被註冊" });
       }
 
+      const validCode = await storage.getValidVerificationCode(validatedData.email, validatedData.verificationCode);
+      if (!validCode) {
+        return res.status(400).json({ error: "驗證碼無效或已過期，請重新獲取" });
+      }
+
+      await storage.markVerificationCodeUsed(validCode.id);
+
       const hashedPassword = await bcrypt.hash(validatedData.password, 10);
-      const user = await storage.createUser({ ...validatedData, password: hashedPassword });
+      const user = await storage.createUser({ username: validatedData.username, email: validatedData.email, password: hashedPassword });
 
       const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
       if (adminEmails.includes(validatedData.email.toLowerCase())) {
@@ -104,7 +175,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       }
 
       const welcomeCredits = 10;
-      const updatedUser = await storage.updateUserCredits(user.id, welcomeCredits);
+      await storage.updateUserCredits(user.id, welcomeCredits);
 
       await storage.createCreditTransaction({
         userId: user.id,

@@ -67,6 +67,15 @@ export const videoGenerations = pgTable("video_generations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const verificationCodes = pgTable("verification_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  code: text("code").notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -146,7 +155,21 @@ export const insertTextToVideoSchema = z.object({
   cameraFixed: z.boolean().optional().default(false),
 });
 
+export const sendVerificationCodeSchema = z.object({
+  email: z.string().email(),
+});
+
+export const verifyCodeSchema = z.object({
+  email: z.string().email(),
+  code: z.string().length(6),
+});
+
+export const registerWithVerificationSchema = insertUserSchema.extend({
+  verificationCode: z.string().length(6),
+});
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
+export type VerificationCode = typeof verificationCodes.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type InsertCreditTransaction = z.infer<typeof insertCreditTransactionSchema>;
 export type CreditTransaction = typeof creditTransactions.$inferSelect;
