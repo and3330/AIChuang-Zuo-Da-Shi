@@ -30,6 +30,7 @@ export interface IStorage {
   getAllVideoGenerations(): Promise<VideoGeneration[]>;
   getUserVideoGenerations(userId: string): Promise<VideoGeneration[]>;
   getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
+  atomicAddCredits(userId: string, amount: number, description: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -62,6 +63,22 @@ export class DatabaseStorage implements IStorage {
   async updateUserCredits(userId: string, credits: number): Promise<User | undefined> {
     const [user] = await db.update(users).set({ credits }).where(eq(users.id, userId)).returning();
     return user;
+  }
+
+  async atomicAddCredits(userId: string, amount: number, description: string): Promise<void> {
+    const [updated] = await db.update(users)
+      .set({ credits: sql`${users.credits} + ${amount}` })
+      .where(eq(users.id, userId))
+      .returning();
+    if (updated) {
+      await db.insert(creditTransactions).values({
+        userId,
+        type: amount > 0 ? "refund" : "consume",
+        amount,
+        balance: updated.credits || 0,
+        description,
+      });
+    }
   }
 
   async setUserAdmin(userId: string, isAdmin: boolean): Promise<User | undefined> {
@@ -125,6 +142,7 @@ export class DatabaseStorage implements IStorage {
         guidanceScale: batchData.guidanceScale,
         seed: batchData.seed,
         watermark: batchData.watermark,
+        size: batchData.size,
       });
       generations.push(gen);
     }
@@ -153,6 +171,36 @@ export class DatabaseStorage implements IStorage {
 
     const [row] = await db.update(imageGenerations).set(dbUpdates).where(eq(imageGenerations.id, id)).returning();
     return row;
+  }
+
+  async failImageGenerationAndRefund(id: string, errorMessage: string, processingTime: number): Promise<boolean> {
+    const [updated] = await db.update(imageGenerations)
+      .set({ status: "failed", errorMessage, processingTime, updatedAt: new Date() })
+      .where(sql`${imageGenerations.id} = ${id} AND ${imageGenerations.status} != 'failed'`)
+      .returning();
+
+    if (!updated) return false;
+
+    if (updated.userId) {
+      const refundAmount = updated.creditsUsed || 3;
+      await this.atomicAddCredits(updated.userId, refundAmount, `圖片生成失敗退還 ${refundAmount} 積分`);
+    }
+    return true;
+  }
+
+  async failVideoGenerationAndRefund(id: string, errorMessage: string, processingTime: number): Promise<boolean> {
+    const [updated] = await db.update(videoGenerations)
+      .set({ status: "failed", errorMessage, processingTime, updatedAt: new Date() })
+      .where(sql`${videoGenerations.id} = ${id} AND ${videoGenerations.status} != 'failed'`)
+      .returning();
+
+    if (!updated) return false;
+
+    if (updated.userId) {
+      const refundAmount = updated.creditsUsed || Math.round((updated.duration || 5) * 3.4);
+      await this.atomicAddCredits(updated.userId, refundAmount, `影片生成失敗退還 ${refundAmount} 積分`);
+    }
+    return true;
   }
 
   async getAllImageGenerations(): Promise<ImageGeneration[]> {

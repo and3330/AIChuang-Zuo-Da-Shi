@@ -128,6 +128,7 @@ export const insertBatchImageToImageSchema = z.object({
   guidanceScale: z.number().optional(),
   seed: z.number().optional(),
   watermark: z.boolean().optional(),
+  size: z.string().optional(),
 });
 
 export const insertImageToVideoSchema = z.object({

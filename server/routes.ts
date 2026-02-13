@@ -433,9 +433,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         res.json(generation);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating image generation:", error);
-      res.status(500).json({ error: "Failed to create image generation" });
+      const errorMsg = error?.issues ? `驗證失敗: ${error.issues.map((i: any) => i.message).join(', ')}` :
+                       error?.message || "圖片生成請求失敗";
+      res.status(500).json({ error: errorMsg });
     }
   });
 
@@ -697,11 +699,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error) {
       console.error("Error processing image generation:", error);
-      await storage.updateImageGeneration(generationId, {
-        status: "failed",
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
-        processingTime: 0
-      });
+      try {
+        const refunded = await storage.failImageGenerationAndRefund(
+          generationId,
+          error instanceof Error ? error.message : "Unknown error",
+          0
+        );
+        if (refunded) console.log(`✅ Image generation failed and credits refunded for ${generationId}`);
+      } catch (refundError) {
+        console.error("Error in failImageGenerationAndRefund:", refundError);
+      }
     }
   }
 
@@ -746,9 +753,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       processVideoGeneration(generation.id, objectStorageService).catch(console.error);
 
       res.json(generation);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error creating video generation:", error);
-      res.status(500).json({ error: "Failed to create video generation" });
+      const errorMsg = error?.issues ? `驗證失敗: ${error.issues.map((i: any) => i.message).join(', ')}` :
+                       error?.message || "影片生成請求失敗";
+      res.status(500).json({ error: errorMsg });
     }
   });
 
@@ -920,11 +929,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
     } catch (error) {
       console.error("Error processing video generation:", error);
-      await storage.updateVideoGeneration(generationId, {
-        status: "failed",
-        errorMessage: error instanceof Error ? error.message : "Unknown error",
-        processingTime: 0
-      });
+      try {
+        const refunded = await storage.failVideoGenerationAndRefund(
+          generationId,
+          error instanceof Error ? error.message : "Unknown error",
+          0
+        );
+        if (refunded) console.log(`✅ Video generation failed and credits refunded for ${generationId}`);
+      } catch (refundError) {
+        console.error("Error in failVideoGenerationAndRefund:", refundError);
+      }
     }
   }
 

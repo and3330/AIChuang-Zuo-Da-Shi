@@ -152,8 +152,13 @@ export default function Home() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
-    onError: () => {
-      toast({ title: "生成失敗", description: "無法開始圖片生成。", variant: "destructive" });
+    onError: (error: any) => {
+      const msg = error?.message || "無法開始圖片生成。";
+      const description = msg.includes("402") ? "積分不足，請先充值。" :
+                          msg.includes("401") ? "請先登入。" :
+                          msg.includes("404") ? "用戶不存在。" :
+                          `圖片生成請求失敗：${msg}`;
+      toast({ title: "生成失敗", description, variant: "destructive" });
     },
   });
 
@@ -169,8 +174,12 @@ export default function Home() {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "影片生成已開始", description: "正在處理您的影片，這可能需要 1-3 分鐘..." });
     },
-    onError: () => {
-      toast({ title: "影片生成失敗", description: "無法開始影片生成。", variant: "destructive" });
+    onError: (error: any) => {
+      const msg = error?.message || "無法開始影片生成。";
+      const description = msg.includes("402") ? "積分不足，請先充值。" :
+                          msg.includes("401") ? "請先登入。" :
+                          `影片生成請求失敗：${msg}`;
+      toast({ title: "影片生成失敗", description, variant: "destructive" });
     },
   });
 
@@ -209,7 +218,7 @@ export default function Home() {
           type: "image-to-image",
           originalImageUrl: uploadedImagePath,
           prompts: validPrompts,
-          guidanceScale, seed, watermark,
+          guidanceScale, seed, watermark, size,
         });
       } else {
         if (!prompt.trim()) {
