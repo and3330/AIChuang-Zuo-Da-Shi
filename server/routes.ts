@@ -676,29 +676,70 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       
       if (isSequential) {
         const responseText = await response.text();
-        console.log(`Sequential raw response:`, responseText.substring(0, 500));
+        console.log(`Sequential raw response (full length ${responseText.length}):`);
+        console.log(responseText.substring(0, 2000));
+        if (responseText.length > 2000) {
+          console.log(`... (truncated, showing last 1000 chars):`);
+          console.log(responseText.substring(responseText.length - 1000));
+        }
         const lines = responseText.split('\n').filter(line => line.trim());
         const generatedImageUrls: string[] = [];
         
+        const urlRegex = /https?:\/\/[^\s"',\}]+/g;
+        
         for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const jsonStr = line.slice(6);
-            if (jsonStr === '[DONE]') continue;
+          console.log(`Parsing line: ${line.substring(0, 200)}`);
+          
+          if (line.startsWith('data: ') || line.startsWith('data:')) {
+            const jsonStr = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
+            if (jsonStr.trim() === '[DONE]') continue;
             
             try {
               const data = JSON.parse(jsonStr);
+              console.log(`Parsed streaming data keys: ${Object.keys(data).join(', ')}`);
+              
               if (data.url) {
                 generatedImageUrls.push(data.url.replace(/&amp;/g, '&'));
+                console.log(`Found URL in data.url`);
               }
               if (data.data && Array.isArray(data.data)) {
                 for (const item of data.data) {
                   if (item.url) {
                     generatedImageUrls.push(item.url.replace(/&amp;/g, '&'));
+                    console.log(`Found URL in data.data[].url`);
+                  }
+                  if (item.b64_json) {
+                    console.log(`Found b64_json in data.data[] (not URL)`);
+                  }
+                }
+              }
+              if (data.output && data.output.data && Array.isArray(data.output.data)) {
+                for (const item of data.output.data) {
+                  if (item.url) {
+                    generatedImageUrls.push(item.url.replace(/&amp;/g, '&'));
+                    console.log(`Found URL in data.output.data[].url`);
+                  }
+                }
+              }
+              if (data.choices && Array.isArray(data.choices)) {
+                for (const choice of data.choices) {
+                  if (choice.image_url) {
+                    generatedImageUrls.push(choice.image_url.replace(/&amp;/g, '&'));
+                    console.log(`Found URL in data.choices[].image_url`);
                   }
                 }
               }
             } catch (e) {
-              console.log(`Failed to parse streaming line: ${jsonStr}`);
+              console.log(`Failed to parse streaming JSON, trying regex: ${jsonStr.substring(0, 200)}`);
+              const matches = jsonStr.match(urlRegex);
+              if (matches) {
+                for (const match of matches) {
+                  if (match.includes('ark-content-generation') || match.includes('.jpeg') || match.includes('.png')) {
+                    generatedImageUrls.push(match.replace(/&amp;/g, '&'));
+                    console.log(`Found URL via regex fallback`);
+                  }
+                }
+              }
             }
           }
         }
