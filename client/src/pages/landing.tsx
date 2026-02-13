@@ -31,7 +31,15 @@ export default function LandingPage() {
         </div>
       </nav>
 
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-16">
+      <div className="fixed top-16 left-0 right-0 z-40 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white py-2 overflow-hidden">
+        <div className="animate-marquee whitespace-nowrap text-sm font-medium">
+          <span className="mx-8">📢 圖片生影片、文字生影片功能正在更新中，預計 2/24 更新至 SeedDance 2.0，敬請期待！</span>
+          <span className="mx-8">📢 圖片生影片、文字生影片功能正在更新中，預計 2/24 更新至 SeedDance 2.0，敬請期待！</span>
+          <span className="mx-8">📢 圖片生影片、文字生影片功能正在更新中，預計 2/24 更新至 SeedDance 2.0，敬請期待！</span>
+        </div>
+      </div>
+
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden pt-24">
         <div className="absolute inset-0 bg-gradient-to-br from-gray-950 via-purple-950/50 to-blue-950/50" />
         <div className="absolute inset-0">
           <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl animate-pulse" />
