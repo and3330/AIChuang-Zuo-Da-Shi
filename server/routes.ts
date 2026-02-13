@@ -25,8 +25,8 @@ function convertAspectRatioToSize(size: string): string {
 const SEEDDANCE_MODEL = "ep-20251223142939-njrkd";
 const ARK_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 
-const VIDEO_MODEL = "ep-20250813120833-g4mpb";
-const VIDEO_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/content_generation/tasks";
+const VIDEO_MODEL = process.env.ARK_VIDEO_MODEL || "seedance-1-0-pro-250528";
+const VIDEO_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
