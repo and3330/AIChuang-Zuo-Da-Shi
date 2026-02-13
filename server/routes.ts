@@ -635,6 +635,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (isSequential) {
         const responseText = await response.text();
+        console.log(`Sequential raw response:`, responseText.substring(0, 500));
         const lines = responseText.split('\n').filter(line => line.trim());
         const generatedImageUrls: string[] = [];
         
@@ -645,10 +646,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             
             try {
               const data = JSON.parse(jsonStr);
+              if (data.url) {
+                generatedImageUrls.push(data.url.replace(/&amp;/g, '&'));
+              }
               if (data.data && Array.isArray(data.data)) {
                 for (const item of data.data) {
                   if (item.url) {
-                    generatedImageUrls.push(item.url);
+                    generatedImageUrls.push(item.url.replace(/&amp;/g, '&'));
                   }
                 }
               }
