@@ -38,6 +38,47 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
 
+  const BASE_URL = process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : process.env.REPL_SLUG
+      ? `https://${process.env.REPL_SLUG}.replit.app`
+      : "https://ai-creative-workshop.replit.app";
+
+  app.get("/sitemap.xml", (_req, res) => {
+    const pages = [
+      { loc: "/", priority: "1.0", changefreq: "daily" },
+      { loc: "/login", priority: "0.8", changefreq: "monthly" },
+      { loc: "/account", priority: "0.6", changefreq: "monthly" },
+      { loc: "/transactions", priority: "0.4", changefreq: "weekly" },
+    ];
+
+    const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+${pages.map(p => `  <url>
+    <loc>${BASE_URL}${p.loc}</loc>
+    <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
+    <changefreq>${p.changefreq}</changefreq>
+    <priority>${p.priority}</priority>
+  </url>`).join("\n")}
+</urlset>`;
+
+    res.header("Content-Type", "application/xml");
+    res.send(sitemap);
+  });
+
+  app.get("/robots.txt", (_req, res) => {
+    const robots = `User-agent: *
+Allow: /
+Allow: /login
+Disallow: /admin
+Disallow: /api/
+
+Sitemap: ${BASE_URL}/sitemap.xml`;
+
+    res.header("Content-Type", "text/plain");
+    res.send(robots);
+  });
+
   // ===== AUTH ROUTES =====
 
   app.post("/api/auth/register", async (req, res) => {

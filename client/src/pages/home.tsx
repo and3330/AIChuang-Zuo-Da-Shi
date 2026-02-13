@@ -13,11 +13,17 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
+import { useSeo } from "@/hooks/use-seo";
 import type { UploadResult } from "@uppy/core";
 import type { ImageGeneration, VideoGeneration } from "@shared/schema";
 
 export default function Home() {
   const { user } = useUser();
+  useSeo({
+    title: "AI 創作工作台 - 圖片與影片生成 | AI 創意工坊",
+    description: "使用 AI 創意工坊生成高品質圖片和影片。支援文字生圖、圖片編輯、多圖融合、序列生成、批次處理、AI 影片生成等功能。",
+    keywords: "AI生成,文字生圖,圖片編輯,AI影片,批次生成,序列生成,多圖融合",
+  });
   const [mode, setMode] = useState<"image-to-image" | "text-to-image" | "image-to-video" | "text-to-video">("text-to-image");
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
   const [uploadedImagePath, setUploadedImagePath] = useState<string>("");

@@ -4,6 +4,7 @@ import { useUser } from "@/App";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Link, useLocation } from "wouter";
+import { useSeo } from "@/hooks/use-seo";
 import type { CreditTransaction, User } from "@shared/schema";
 import { NavigationHeader } from "./account";
 
@@ -15,6 +16,12 @@ const typeConfig: Record<string, { label: string; color: string; bgColor: string
 
 export default function TransactionsPage() {
   const { user } = useUser();
+
+  useSeo({
+    title: "交易記錄 - 積分使用明細 | AI 創意工坊",
+    description: "查看您在 AI 創意工坊的所有交易記錄，包含充值、消費、退款等積分使用明細。",
+    keywords: "交易記錄,積分明細,消費記錄,充值記錄",
+  });
 
   const { data: transactions, isLoading } = useQuery<CreditTransaction[]>({
     queryKey: ["/api/credits/transactions"],

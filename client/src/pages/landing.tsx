@@ -1,8 +1,15 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { useSeo } from "@/hooks/use-seo";
 
 export default function LandingPage() {
+  useSeo({
+    title: "AI 創意工坊 - AI 圖片與影片生成平台 | 文字生圖、圖片編輯、AI 影片製作",
+    description: "AI 創意工坊是專業級 AI 圖片與影片生成平台，支援文字生圖、圖片編輯、AI 影片生成、多圖融合、序列生成。使用 SeedDance 4.5 與 Seedream 原生 API，註冊即送 10 積分。",
+    keywords: "AI圖片生成,AI影片生成,文字生圖,圖片編輯,AI創作,SeedDance,Seedream,AI繪圖,人工智慧,AI創意工坊",
+  });
+
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       <nav className="fixed top-0 left-0 right-0 z-50 bg-gray-950/80 backdrop-blur-md border-b border-white/10">

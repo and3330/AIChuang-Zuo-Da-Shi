@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useSeo } from "@/hooks/use-seo";
 import { Link, useLocation } from "wouter";
 import type { User } from "@shared/schema";
 
@@ -84,6 +85,12 @@ export default function AccountPage() {
   const [customAmount, setCustomAmount] = useState("");
   const [isTopingUp, setIsTopingUp] = useState(false);
   const [location, setLocation] = useLocation();
+
+  useSeo({
+    title: "我的帳戶 - 積分管理與充值 | AI 創意工坊",
+    description: "管理您的 AI 創意工坊帳戶，查看積分餘額、充值積分、查看定價方案。圖片生成 3 積分/張，影片生成 3.4 積分/秒。",
+    keywords: "帳戶管理,積分充值,AI創作積分,定價方案",
+  });
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

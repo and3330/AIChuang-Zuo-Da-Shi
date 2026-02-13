@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
+import { useSeo } from "@/hooks/use-seo";
 import { Link } from "wouter";
 
 interface AdminUser {
@@ -74,6 +75,11 @@ export default function AdminPage() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditDescription, setCreditDescription] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
+
+  useSeo({
+    title: "管理後台 - 系統管理 | AI 創意工坊",
+    description: "AI 創意工坊管理後台，管理用戶、調整積分、查看平台統計數據。",
+  });
 
   const { data: stats, isLoading: statsLoading } = useQuery<AdminStats>({
     queryKey: ["/api/admin/stats"],
