@@ -13,6 +13,8 @@ import AccountPage from "@/pages/account";
 import TransactionsPage from "@/pages/transactions";
 import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
+import PrivacyPage from "@/pages/privacy";
+import TermsPage from "@/pages/terms";
 import NotFound from "@/pages/not-found";
 import type { User } from "@shared/schema";
 
@@ -190,6 +192,8 @@ function Router() {
       <Route path="/account" component={AccountPage} />
       <Route path="/transactions" component={TransactionsPage} />
       <Route path="/admin" component={AdminPage} />
+      <Route path="/privacy" component={PrivacyPage} />
+      <Route path="/terms" component={TermsPage} />
       <Route path="/login">{() => <Redirect to="/" />}</Route>
       <Route component={NotFound} />
     </Switch>
@@ -214,6 +218,8 @@ function AppContent() {
     return (
       <Switch>
         <Route path="/login" component={AuthPage} />
+        <Route path="/privacy" component={PrivacyPage} />
+        <Route path="/terms" component={TermsPage} />
         <Route component={LandingPage} />
       </Switch>
     );

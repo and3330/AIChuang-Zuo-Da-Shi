@@ -1469,8 +1469,8 @@ export default function Home() {
         <div className="max-w-6xl mx-auto px-4 py-6">
           <div className="text-center space-y-3">
             <div className="flex justify-center items-center gap-6 text-sm text-gray-400">
-              <a href="#" className="hover:text-blue-600 transition-colors">隱私政策</a>
-              <a href="#" className="hover:text-blue-600 transition-colors">服務條款</a>
+              <a href="/privacy" className="hover:text-blue-600 transition-colors">隱私政策</a>
+              <a href="/terms" className="hover:text-blue-600 transition-colors">服務條款</a>
               <a href="#" className="hover:text-blue-600 transition-colors">API 文件</a>
               <a href="#" className="hover:text-blue-600 transition-colors">技術支援</a>
             </div>

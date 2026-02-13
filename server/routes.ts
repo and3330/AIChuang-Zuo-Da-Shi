@@ -48,6 +48,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       { loc: "/login", priority: "0.8", changefreq: "monthly" },
       { loc: "/account", priority: "0.6", changefreq: "monthly" },
       { loc: "/transactions", priority: "0.4", changefreq: "weekly" },
+      { loc: "/privacy", priority: "0.3", changefreq: "yearly" },
+      { loc: "/terms", priority: "0.3", changefreq: "yearly" },
     ];
 
     const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
