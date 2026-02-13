@@ -6,9 +6,7 @@ import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema } from "@shared/schema";
 import { ObjectStorageService } from "./objectStorage";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2026-01-28.clover" as any,
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
 declare module "express-session" {
   interface SessionData {
@@ -261,8 +259,8 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
   app.post("/api/stripe/create-checkout", requireAuth, async (req, res) => {
     try {
       const { amount } = req.body;
-      if (!amount || !Number.isInteger(amount) || amount < 10) {
-        return res.status(400).json({ error: "充值金額最少 10 積分" });
+      if (!amount || !Number.isInteger(amount) || amount < 50) {
+        return res.status(400).json({ error: "充值金額最少 50 積分" });
       }
 
       const user = await storage.getUser(req.session.userId!);
@@ -300,8 +298,10 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
       res.json({ url: session.url });
     } catch (error: any) {
-      console.error("Error creating checkout session:", error);
-      res.status(500).json({ error: "無法建立付款頁面" });
+      console.error("Error creating checkout session:", error?.message || error);
+      console.error("Stripe error details:", JSON.stringify(error?.raw || error?.statusCode || "unknown"));
+      const message = error?.message || "無法建立付款頁面";
+      res.status(500).json({ error: message });
     }
   });
 

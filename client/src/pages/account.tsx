@@ -13,6 +13,7 @@ import type { User } from "@shared/schema";
 function NavigationHeader() {
   const { user } = useUser();
   const [, setLocation] = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const handleLogout = async () => {
@@ -58,19 +59,64 @@ function NavigationHeader() {
                 </Link>
               )}
             </nav>
-            <div className="flex items-center gap-3 pl-3 border-l border-gray-200">
-              <span className="text-sm text-gray-600">{user.username}</span>
-              <span className="flex items-center gap-1 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 text-yellow-700 px-3 py-1 rounded-full text-sm font-medium">
-                <i className="fas fa-coins text-yellow-500"></i>
-                {user.credits ?? 0}
-              </span>
-              <Button variant="outline" size="sm" onClick={handleLogout} className="text-gray-500 hover:text-red-500">
+            <div className="flex items-center gap-2 sm:gap-3 sm:pl-3 sm:border-l border-gray-200">
+              <span className="hidden sm:inline text-sm text-gray-600">{user.username}</span>
+              <Link href="/account">
+                <span className="flex items-center gap-1 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 text-yellow-700 px-3 py-1 rounded-full text-sm font-medium cursor-pointer hover:border-yellow-300">
+                  <i className="fas fa-coins text-yellow-500"></i>
+                  {user.credits ?? 0}
+                </span>
+              </Link>
+              <Button variant="ghost" size="sm" className="sm:hidden text-gray-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
+                <i className={`fas ${mobileMenuOpen ? 'fa-times' : 'fa-bars'} text-lg`}></i>
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleLogout} className="hidden sm:flex text-gray-500 hover:text-red-500">
                 <i className="fas fa-sign-out-alt mr-1"></i> 登出
               </Button>
             </div>
           </div>
         </div>
       </div>
+      {mobileMenuOpen && (
+        <div className="sm:hidden border-t border-gray-200 bg-white">
+          <div className="px-4 py-3 space-y-1">
+            <Link href="/" onClick={() => setMobileMenuOpen(false)}>
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-600">
+                <i className="fas fa-home w-5 text-center"></i>
+                <span>首頁</span>
+              </div>
+            </Link>
+            <Link href="/account" onClick={() => setMobileMenuOpen(false)}>
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-purple-600 bg-purple-50 font-medium">
+                <i className="fas fa-user w-5 text-center"></i>
+                <span>帳戶 / 充值積分</span>
+              </div>
+            </Link>
+            <Link href="/transactions" onClick={() => setMobileMenuOpen(false)}>
+              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-600">
+                <i className="fas fa-history w-5 text-center"></i>
+                <span>交易記錄</span>
+              </div>
+            </Link>
+            {user.isAdmin && (
+              <Link href="/admin" onClick={() => setMobileMenuOpen(false)}>
+                <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-600 hover:bg-red-50">
+                  <i className="fas fa-cog w-5 text-center"></i>
+                  <span>管理後台</span>
+                </div>
+              </Link>
+            )}
+            <div className="border-t border-gray-100 pt-2 mt-2">
+              <div className="flex items-center justify-between px-3 py-2">
+                <span className="text-sm text-gray-500">{user.username}</span>
+                <Button variant="outline" size="sm" onClick={handleLogout} className="text-red-500 hover:text-red-600 hover:bg-red-50">
+                  <i className="fas fa-sign-out-alt mr-1"></i> 登出
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </header>
   );
 }
@@ -115,18 +161,23 @@ export default function AccountPage() {
   const finalAmount = selectedAmount ?? (customAmount ? parseInt(customAmount) : 0);
 
   const handleTopup = async () => {
-    if (!finalAmount || finalAmount < 10) {
-      toast({ title: "錯誤", description: "充值金額最少 10 積分", variant: "destructive" });
+    if (!finalAmount || finalAmount < 50) {
+      toast({ title: "錯誤", description: "充值金額最少 50 積分", variant: "destructive" });
       return;
     }
     setIsTopingUp(true);
     try {
-      const response = await apiRequest("POST", "/api/stripe/create-checkout", { amount: finalAmount });
+      const response = await fetch("/api/stripe/create-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ amount: finalAmount }),
+      });
       const data = await response.json();
-      if (data.url) {
+      if (response.ok && data.url) {
         window.location.href = data.url;
       } else {
-        toast({ title: "錯誤", description: "無法建立付款頁面", variant: "destructive" });
+        toast({ title: "充值失敗", description: data.error || "無法建立付款頁面", variant: "destructive" });
       }
     } catch (err: any) {
       toast({ title: "充值失敗", description: err?.message || "請稍後再試", variant: "destructive" });
@@ -223,7 +274,7 @@ export default function AccountPage() {
                 />
                 <Button
                   onClick={handleTopup}
-                  disabled={isTopingUp || !finalAmount || finalAmount < 10}
+                  disabled={isTopingUp || !finalAmount || finalAmount < 50}
                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-8"
                 >
                   {isTopingUp ? (
@@ -235,7 +286,7 @@ export default function AccountPage() {
               </div>
               <p className="text-xs text-gray-400 mt-2">
                 <i className="fas fa-info-circle mr-1"></i>
-                1 積分 = 1 元新台幣，最低充值 10 積分。透過 Stripe 安全支付，支援信用卡/金融卡
+                1 積分 = 1 元新台幣，最低充值 50 積分。透過 Stripe 安全支付，支援信用卡/金融卡
               </p>
             </div>
           </CardContent>
