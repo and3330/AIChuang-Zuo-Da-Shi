@@ -141,13 +141,34 @@ export default function AccountPage() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get("payment");
-    const amount = params.get("amount");
-    if (payment === "success" && amount) {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/credits/balance"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/credits/transactions"] });
-      toast({ title: "付款成功", description: `已成功充值 ${amount} 積分，積分將在幾秒內到帳` });
+    const sessionId = params.get("session_id");
+    if (payment === "success" && sessionId) {
       window.history.replaceState({}, "", "/account");
+      (async () => {
+        try {
+          const response = await fetch("/api/stripe/verify-session", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ sessionId }),
+          });
+          const data = await response.json();
+          if (response.ok && data.success) {
+            queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/credits/balance"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/credits/transactions"] });
+            if (data.alreadyProcessed) {
+              toast({ title: "積分已到帳", description: `此筆付款已處理過，${data.credits} 積分已在帳戶中` });
+            } else {
+              toast({ title: "充值成功！", description: `已成功充值 ${data.credits} 積分` });
+            }
+          } else {
+            toast({ title: "驗證付款中", description: data.error || "請稍後刷新頁面查看", variant: "destructive" });
+          }
+        } catch {
+          toast({ title: "驗證付款失敗", description: "請稍後刷新頁面查看積分是否到帳", variant: "destructive" });
+        }
+      })();
     } else if (payment === "cancelled") {
       toast({ title: "付款已取消", description: "您可以隨時重新充值", variant: "destructive" });
       window.history.replaceState({}, "", "/account");

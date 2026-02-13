@@ -14,6 +14,7 @@ export interface IStorage {
 
   createCreditTransaction(transaction: { userId: string; type: string; amount: number; balance: number; description: string | null }): Promise<CreditTransaction>;
   getCreditTransactions(userId: string): Promise<CreditTransaction[]>;
+  getCreditTransactionByDescription(description: string): Promise<CreditTransaction | undefined>;
 
   createImageGeneration(generation: InsertImageGeneration & { userId: string; sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration>;
   createBatchImageGenerations(batchData: InsertBatchImageToImage & { userId: string }): Promise<ImageGeneration[]>;
@@ -103,6 +104,11 @@ export class DatabaseStorage implements IStorage {
 
   async getCreditTransactions(userId: string): Promise<CreditTransaction[]> {
     return db.select().from(creditTransactions).where(eq(creditTransactions.userId, userId)).orderBy(desc(creditTransactions.createdAt));
+  }
+
+  async getCreditTransactionByDescription(description: string): Promise<CreditTransaction | undefined> {
+    const [row] = await db.select().from(creditTransactions).where(eq(creditTransactions.description, description));
+    return row;
   }
 
   async createImageGeneration(insertGeneration: InsertImageGeneration & { userId: string; sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration> {

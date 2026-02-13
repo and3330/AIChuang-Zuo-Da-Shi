@@ -288,7 +288,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
           },
         ],
         mode: "payment",
-        success_url: `${baseUrl}/account?payment=success&amount=${amount}`,
+        success_url: `${baseUrl}/account?payment=success&session_id={CHECKOUT_SESSION_ID}`,
         cancel_url: `${baseUrl}/account?payment=cancelled`,
         metadata: {
           userId: user.id,
@@ -332,18 +332,13 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
       if (userId && credits > 0) {
         try {
-          const user = await storage.getUser(userId);
-          if (user) {
-            const newBalance = (user.credits || 0) + credits;
-            await storage.updateUserCredits(user.id, newBalance);
-            await storage.createCreditTransaction({
-              userId: user.id,
-              type: "topup",
-              amount: credits,
-              balance: newBalance,
-              description: `Stripe 付款充值 ${credits} 積分`,
-            });
+          const stripeDesc = `Stripe 付款 ${session.id}`;
+          const existingTx = await storage.getCreditTransactionByDescription(stripeDesc);
+          if (!existingTx) {
+            await storage.atomicAddCredits(userId, credits, stripeDesc);
             console.log(`Stripe webhook: credited ${credits} to user ${userId}`);
+          } else {
+            console.log(`Stripe webhook: session ${session.id} already processed, skipping`);
           }
         } catch (error) {
           console.error("Error processing Stripe webhook:", error);
@@ -352,6 +347,54 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     }
 
     res.json({ received: true });
+  });
+
+  app.post("/api/stripe/verify-session", requireAuth, async (req, res) => {
+    try {
+      const { sessionId } = req.body;
+      if (!sessionId) {
+        return res.status(400).json({ error: "缺少 session ID" });
+      }
+
+      const session = await stripe.checkout.sessions.retrieve(sessionId);
+      console.log(`Stripe verify session: ${sessionId}, status: ${session.payment_status}, metadata:`, session.metadata);
+
+      if (session.payment_status !== "paid") {
+        return res.status(400).json({ error: "付款尚未完成" });
+      }
+
+      const userId = session.metadata?.userId;
+      const credits = parseInt(session.metadata?.credits || "0");
+
+      if (!userId || credits <= 0) {
+        return res.status(400).json({ error: "付款資訊無效" });
+      }
+
+      if (userId !== req.session.userId) {
+        return res.status(403).json({ error: "付款用戶不匹配" });
+      }
+
+      const stripeDesc = `Stripe 付款 ${sessionId}`;
+      const existingTx = await storage.getCreditTransactionByDescription(stripeDesc);
+      if (existingTx) {
+        console.log(`Stripe session ${sessionId} already processed, skipping`);
+        return res.json({ success: true, credits, alreadyProcessed: true });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user) {
+        return res.status(404).json({ error: "用戶不存在" });
+      }
+
+      await storage.atomicAddCredits(userId, credits, stripeDesc);
+
+      const updatedUser = await storage.getUser(userId);
+      console.log(`Stripe verify: credited ${credits} to user ${userId}, new balance: ${updatedUser?.credits}`);
+      res.json({ success: true, credits, newBalance: updatedUser?.credits });
+    } catch (error: any) {
+      console.error("Error verifying Stripe session:", error?.message || error);
+      res.status(500).json({ error: "驗證付款失敗" });
+    }
   });
 
   // ===== OBJECT STORAGE ROUTES (no auth) =====
