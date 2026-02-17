@@ -1073,7 +1073,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       await storage.updateVideoGeneration(generationId, { taskId });
 
       let attempts = 0;
-      const maxAttempts = 120;
+      const maxAttempts = 180;
       let videoUrl: string | null = null;
 
       while (attempts < maxAttempts) {
