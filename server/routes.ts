@@ -4,11 +4,18 @@ import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema } from "@shared/schema";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { ObjectStorageService } from "./objectStorage";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
-const resend = new Resend(process.env.RESEND_API_KEY || "");
+
+const gmailTransporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.GMAIL_USER || "",
+    pass: process.env.GMAIL_APP_PASSWORD || "",
+  },
+});
 
 function generateVerificationCode(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
@@ -112,8 +119,9 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
       await storage.createVerificationCode(email, code, expiresAt);
 
-      await resend.emails.send({
-        from: "AI 創意工坊 <onboarding@resend.dev>",
+      const gmailUser = process.env.GMAIL_USER || "";
+      await gmailTransporter.sendMail({
+        from: `AI 創意工坊 <${gmailUser}>`,
         to: email,
         subject: "AI 創意工坊 - 註冊驗證碼",
         html: `
@@ -138,9 +146,6 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       res.json({ success: true, message: "驗證碼已發送至您的電子郵件" });
     } catch (error: any) {
       console.error("Error sending verification code:", error);
-      if (error?.statusCode === 422 || error?.message?.includes("not verified")) {
-        return res.status(400).json({ error: "郵件發送失敗，請確認電子郵件地址是否正確" });
-      }
       res.status(500).json({ error: "驗證碼發送失敗，請稍後再試" });
     }
   });
