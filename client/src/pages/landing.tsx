@@ -350,6 +350,8 @@ export default function LandingPage() {
             <span>客服信箱：<a href="mailto:Service@cms-edu.com" className="text-purple-400 hover:text-purple-300 hover:underline">Service@cms-edu.com</a></span>
             <span className="text-gray-700">|</span>
             <span>LINE：<a href="https://line.me/R/ti/p/@558icnoi" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 hover:underline">@558icnoi</a></span>
+            <span className="text-gray-700">|</span>
+            <span>Facebook：<a href="https://www.facebook.com/profile.php?id=61569836876332" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 hover:underline">粉絲專頁</a></span>
           </div>
           <div className="flex justify-center items-center gap-6 text-sm text-gray-600">
             <a href="/privacy" className="hover:text-purple-400 transition-colors">隱私政策</a>
