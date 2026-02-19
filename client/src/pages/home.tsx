@@ -405,7 +405,7 @@ export default function Home() {
               >
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-lg">🎨</span>
-                  <span className="font-semibold">SeedDance 4.5</span>
+                  <span className="font-semibold">Seedream 5.0</span>
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">圖片</span>
                 </div>
                 {isSeedDanceMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
@@ -420,7 +420,7 @@ export default function Home() {
               >
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-lg">🎬</span>
-                  <span className="font-semibold">Seedream</span>
+                  <span className="font-semibold">SeedDance 2.0</span>
                   <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">影片</span>
                 </div>
                 {isVideoMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600" />}
@@ -1542,7 +1542,7 @@ export default function Home() {
                       <i className="fas fa-chevron-down text-xs transform group-open:rotate-180 transition-transform"></i>
                     </summary>
                     <div className="mt-3 text-sm text-gray-600 space-y-1.5 bg-gray-50 rounded-lg p-3">
-                      <div className="flex justify-between"><span>模型</span><span className="font-mono text-xs">SeedDance 4.5</span></div>
+                      <div className="flex justify-between"><span>模型</span><span className="font-mono text-xs">Seedream 5.0</span></div>
                       <div className="flex justify-between"><span>描述</span><span className="text-xs max-w-[60%] text-right truncate">"{generation.prompt}"</span></div>
                       <div className="flex justify-between"><span>引導強度</span><span>{generation.guidanceScale}</span></div>
                       <div className="flex justify-between"><span>種子值</span><span>{generation.seed}</span></div>

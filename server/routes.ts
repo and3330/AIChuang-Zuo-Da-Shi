@@ -765,7 +765,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       console.log(`Using ARK_API_KEY for ${generation.type}: ${apiKey ? 'SET' : 'NOT SET'}`);
       
       if (!apiKey) {
-        throw new Error(`ARK_API_KEY environment variable is not set. Please configure your API key for SeedDance 4.5.`);
+        throw new Error(`ARK_API_KEY environment variable is not set. Please configure your API key for Seedream 5.0.`);
       }
       
       const response = await fetch(ARK_API_ENDPOINT, {

@@ -6,7 +6,7 @@ import { useSeo } from "@/hooks/use-seo";
 export default function LandingPage() {
   useSeo({
     title: "AI 創意工坊 - AI 圖片與影片生成平台 | 文字生圖、圖片編輯、AI 影片製作",
-    description: "AI 創意工坊是專業級 AI 圖片與影片生成平台，支援文字生圖、圖片編輯、AI 影片生成、多圖融合、序列生成。使用 SeedDance 4.5 與 Seedream 原生 API，註冊即送 10 積分。",
+    description: "AI 創意工坊是專業級 AI 圖片與影片生成平台，支援文字生圖、圖片編輯、AI 影片生成、多圖融合、序列生成。使用 Seedream 5.0 與 SeedDance 2.0 原生 API，註冊即送 10 積分。",
     keywords: "AI圖片生成,AI影片生成,文字生圖,圖片編輯,AI創作,SeedDance,Seedream,AI繪圖,人工智慧,AI創意工坊",
   });
 
@@ -60,7 +60,7 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl sm:text-2xl text-gray-300 mb-4 font-medium">
-            基於 SeedDance 4.5 與 Seedream 的專業級 AI 創作平台
+            基於 Seedream 5.0 與 SeedDance 2.0 的專業級 AI 創作平台
           </p>
           <p className="text-gray-400 mb-10 max-w-2xl mx-auto">
             直接使用 BytePlus ARK 原生 API，無中間層，無延遲損耗。從圖片編輯、文字生圖到 AI 影片生成，一站式完成所有創意需求。
@@ -118,7 +118,7 @@ export default function LandingPage() {
                       <i className="fas fa-image text-white text-xl"></i>
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">SeedDance 4.5</h3>
+                      <h3 className="text-xl font-bold text-white">Seedream 5.0</h3>
                       <p className="text-sm text-gray-400">圖片編輯與生成模型</p>
                     </div>
                   </div>
@@ -167,7 +167,7 @@ export default function LandingPage() {
                       <i className="fas fa-video text-white text-xl"></i>
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">Seedream</h3>
+                      <h3 className="text-xl font-bold text-white">SeedDance 2.0</h3>
                       <p className="text-sm text-gray-400">AI 影片生成模型</p>
                     </div>
                   </div>

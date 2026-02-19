@@ -35,7 +35,7 @@ export default function TermsPage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-800 mt-6 mb-3">一、服務說明</h2>
               <p>
-                AI 創意工坊（以下簡稱「本平台」）是一個基於人工智慧技術的圖片及影片生成平台，提供文字生圖、圖片編輯、圖片轉影片、文字轉影片、序列生成、多圖融合及批次生成等功能。本平台使用 BytePlus ARK API 的 SeedDance 4.5 及 Seedance 1.0 Pro 模型提供 AI 生成服務。
+                AI 創意工坊（以下簡稱「本平台」）是一個基於人工智慧技術的圖片及影片生成平台，提供文字生圖、圖片編輯、圖片轉影片、文字轉影片、序列生成、多圖融合及批次生成等功能。本平台使用 BytePlus ARK API 的 Seedream 5.0（圖片生成）及 SeedDance 2.0（影片生成）模型提供 AI 生成服務。
               </p>
             </section>
 

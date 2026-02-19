@@ -18,8 +18,8 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - 1 credit = 1 TWD (New Taiwan Dollar)
 
 ## API Configuration
-- Image generation: SeedDance 4.5 model (endpoint: ep-20251223142939-njrkd)
-- Video generation: endpoint ep-20250813120833-g4mpb
+- Image generation: Seedream 5.0 model (endpoint: ep-20251223142939-njrkd)
+- Video generation: SeedDance 2.0 model (endpoint: ep-20250813120833-g4mpb)
 - Environment secrets: ARK_API_KEY, ARK_TEXT_TO_IMAGE_API_KEY
 
 ## System Architecture
