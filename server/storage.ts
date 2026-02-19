@@ -74,6 +74,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async atomicAddCredits(userId: string, amount: number, description: string): Promise<void> {
+    const isStripePayment = description.startsWith("Stripe");
     const [updated] = await db.update(users)
       .set({ credits: sql`${users.credits} + ${amount}` })
       .where(eq(users.id, userId))
@@ -81,7 +82,7 @@ export class DatabaseStorage implements IStorage {
     if (updated) {
       await db.insert(creditTransactions).values({
         userId,
-        type: amount > 0 ? "refund" : "consume",
+        type: isStripePayment ? "topup" : (amount > 0 ? "refund" : "consume"),
         amount,
         balance: updated.credits || 0,
         description,
