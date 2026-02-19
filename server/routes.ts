@@ -929,7 +929,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         return res.status(404).json({ error: "用户不存在" });
       }
 
-      const duration = Math.max(2, Math.min(12, req.body.duration || 5));
+      const duration = Math.max(4, Math.min(12, req.body.duration || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
       const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 3.4 : 6.8;
       const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);

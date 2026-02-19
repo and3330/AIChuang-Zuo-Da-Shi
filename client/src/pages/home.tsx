@@ -887,7 +887,7 @@ export default function Home() {
                     <div className="mt-2 space-y-2">
                       <input
                         type="range"
-                        min={2}
+                        min={4}
                         max={12}
                         step={1}
                         value={videoDuration}
@@ -895,7 +895,7 @@ export default function Home() {
                         className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
                       />
                       <div className="flex justify-between items-center">
-                        <span className="text-sm text-gray-500">2秒</span>
+                        <span className="text-sm text-gray-500">4秒</span>
                         <span className="text-lg font-bold text-purple-700">{videoDuration} 秒</span>
                         <span className="text-sm text-gray-500">12秒</span>
                       </div>
@@ -1027,7 +1027,7 @@ export default function Home() {
                   </div>
                   <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
                     <i className="fas fa-calculator"></i>
-                    計算方式：影片秒數 × 每秒積分 = 總費用（支援 2-12 秒）
+                    計算方式：影片秒數 × 每秒積分 = 總費用（支援 4-12 秒）
                   </div>
                 </div>
               </CardContent>
@@ -1084,7 +1084,7 @@ export default function Home() {
                         <div className="mt-2 space-y-2">
                           <input
                             type="range"
-                            min={2}
+                            min={4}
                             max={12}
                             step={1}
                             value={videoDuration}
@@ -1092,7 +1092,7 @@ export default function Home() {
                             className="w-full h-2 bg-purple-200 rounded-lg appearance-none cursor-pointer accent-purple-600"
                           />
                           <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-500">2秒</span>
+                            <span className="text-sm text-gray-500">4秒</span>
                             <span className="text-lg font-bold text-purple-700">{videoDuration} 秒</span>
                             <span className="text-sm text-gray-500">12秒</span>
                           </div>
@@ -1224,7 +1224,7 @@ export default function Home() {
                       </div>
                       <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
                         <i className="fas fa-calculator"></i>
-                        計算方式：影片秒數 × 每秒積分 = 總費用（支援 2-12 秒）
+                        計算方式：影片秒數 × 每秒積分 = 總費用（支援 4-12 秒）
                       </div>
                     </div>
                   </div>

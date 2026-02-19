@@ -340,7 +340,7 @@ export default function AccountPage() {
                   <tr className="hover:bg-gray-50">
                     <td className="px-4 py-3 text-sm">
                       <i className="fas fa-video text-blue-500 mr-2"></i>
-                      影片生成（2-12秒）
+                      影片生成（4-12秒）
                     </td>
                     <td className="px-4 py-3 text-sm text-right font-medium">3.4~6.8 積分/秒</td>
                   </tr>

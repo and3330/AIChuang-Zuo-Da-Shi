@@ -10,7 +10,7 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ## Pricing Model
 - Image generation: 3 credits per image
-- Video generation: Resolution-based pricing (2-12 seconds)
+- Video generation: Resolution-based pricing (4-12 seconds)
   - 720P: 3.4 credits/second (standard quality)
   - 1080P: 6.8 credits/second (high quality)
   - Example: 5 sec 720P = 17 credits, 5 sec 1080P = 34 credits
