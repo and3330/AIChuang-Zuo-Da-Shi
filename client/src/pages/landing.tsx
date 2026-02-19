@@ -338,15 +338,24 @@ export default function LandingPage() {
       </section>
 
       <footer className="bg-gray-950 border-t border-white/10 py-12 px-4">
-        <div className="max-w-6xl mx-auto text-center">
+        <div className="max-w-6xl mx-auto text-center space-y-4">
           <div className="flex items-center justify-center gap-2 mb-4">
             <span className="text-2xl">✨</span>
             <span className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
               AI 創意工坊
             </span>
           </div>
-          <p className="text-gray-500 text-sm mb-2">專業級 AI 圖片與影片生成平台</p>
-          <p className="text-gray-600 text-xs">Powered by BytePlus ARK · SeedDance 4.5 · Seedream</p>
+          <p className="text-gray-400 text-sm font-medium">極電行銷整合</p>
+          <div className="flex justify-center items-center gap-4 text-sm text-gray-500">
+            <span>客服信箱：<a href="mailto:Service@cms-edu.com" className="text-purple-400 hover:text-purple-300 hover:underline">Service@cms-edu.com</a></span>
+            <span className="text-gray-700">|</span>
+            <span>LINE：<a href="https://line.me/R/ti/p/@558icnoi" target="_blank" rel="noopener noreferrer" className="text-purple-400 hover:text-purple-300 hover:underline">@558icnoi</a></span>
+          </div>
+          <div className="flex justify-center items-center gap-6 text-sm text-gray-600">
+            <a href="/privacy" className="hover:text-purple-400 transition-colors">隱私政策</a>
+            <a href="/terms" className="hover:text-purple-400 transition-colors">服務條款</a>
+          </div>
+          <p className="text-gray-700 text-xs">Powered by BytePlus ARK · SeedDance 4.5 · Seedream</p>
         </div>
       </footer>
     </div>

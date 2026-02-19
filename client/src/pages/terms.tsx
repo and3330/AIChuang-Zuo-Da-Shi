@@ -148,7 +148,13 @@ export default function TermsPage() {
       </div>
 
       <footer className="border-t border-gray-200 bg-white mt-8">
-        <div className="max-w-4xl mx-auto px-4 py-6 text-center">
+        <div className="max-w-4xl mx-auto px-4 py-6 text-center space-y-3">
+          <p className="text-sm font-medium text-gray-600">極電行銷整合</p>
+          <div className="flex justify-center items-center gap-4 text-sm text-gray-500">
+            <span>客服信箱：<a href="mailto:Service@cms-edu.com" className="text-purple-600 hover:underline">Service@cms-edu.com</a></span>
+            <span className="text-gray-300">|</span>
+            <span>LINE：<a href="https://line.me/R/ti/p/@558icnoi" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">@558icnoi</a></span>
+          </div>
           <div className="flex justify-center items-center gap-6 text-sm text-gray-400">
             <Link href="/privacy" className="hover:text-blue-600 transition-colors">隱私政策</Link>
             <span className="text-gray-600 font-medium">服務條款</span>

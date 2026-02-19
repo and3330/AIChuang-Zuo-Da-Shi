@@ -1474,13 +1474,17 @@ export default function Home() {
       </main>
 
       <footer className="mt-12 border-t border-gray-200 bg-white">
-        <div className="max-w-6xl mx-auto px-4 py-6">
-          <div className="text-center space-y-3">
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <div className="text-center space-y-4">
+            <p className="text-sm font-medium text-gray-600">極電行銷整合</p>
+            <div className="flex justify-center items-center gap-4 text-sm text-gray-500">
+              <span>客服信箱：<a href="mailto:Service@cms-edu.com" className="text-purple-600 hover:underline">Service@cms-edu.com</a></span>
+              <span className="text-gray-300">|</span>
+              <span>LINE：<a href="https://line.me/R/ti/p/@558icnoi" target="_blank" rel="noopener noreferrer" className="text-purple-600 hover:underline">@558icnoi</a></span>
+            </div>
             <div className="flex justify-center items-center gap-6 text-sm text-gray-400">
               <a href="/privacy" className="hover:text-blue-600 transition-colors">隱私政策</a>
               <a href="/terms" className="hover:text-blue-600 transition-colors">服務條款</a>
-              <a href="#" className="hover:text-blue-600 transition-colors">API 文件</a>
-              <a href="#" className="hover:text-blue-600 transition-colors">技術支援</a>
             </div>
             <p className="text-xs text-gray-300">
               技術支援：SeedDance 4.5 & Seedream AI API
