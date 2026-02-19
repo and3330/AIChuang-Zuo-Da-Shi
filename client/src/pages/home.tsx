@@ -51,6 +51,7 @@ export default function Home() {
   const [videoPrompt, setVideoPrompt] = useState("高速穿越障礙物或美麗的自然風景，帶來沉浸式的飛行體驗");
   const [videoDuration, setVideoDuration] = useState(5);
   const [cameraFixed, setCameraFixed] = useState(false);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
   
   const { toast } = useToast();
@@ -268,6 +269,7 @@ export default function Home() {
         prompt: videoPrompt.trim(),
         duration: videoDuration,
         cameraFixed,
+        aspectRatio: videoAspectRatio,
       });
     } else if (mode === "image-to-video") {
       if (!uploadedImagePath) {
@@ -284,6 +286,7 @@ export default function Home() {
         prompt: videoPrompt.trim(),
         duration: videoDuration,
         cameraFixed,
+        aspectRatio: videoAspectRatio,
       });
     }
   };
@@ -927,6 +930,48 @@ export default function Home() {
                   </div>
                 </div>
 
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">畫面比例</Label>
+                  <div className="mt-1.5 grid grid-cols-3 gap-2">
+                    <button
+                      onClick={() => setVideoAspectRatio("16:9")}
+                      className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        videoAspectRatio === "16:9"
+                          ? "border-purple-500 bg-purple-50 text-purple-700"
+                          : "border-gray-200 text-gray-600 hover:border-purple-200"
+                      }`}
+                    >
+                      <div className="text-lg mb-1">▬</div>
+                      <div className="font-semibold text-sm">16:9</div>
+                      <div className="text-xs mt-0.5">橫向</div>
+                    </button>
+                    <button
+                      onClick={() => setVideoAspectRatio("9:16")}
+                      className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        videoAspectRatio === "9:16"
+                          ? "border-purple-500 bg-purple-50 text-purple-700"
+                          : "border-gray-200 text-gray-600 hover:border-purple-200"
+                      }`}
+                    >
+                      <div className="text-lg mb-1">▮</div>
+                      <div className="font-semibold text-sm">9:16</div>
+                      <div className="text-xs mt-0.5">直向</div>
+                    </button>
+                    <button
+                      onClick={() => setVideoAspectRatio("1:1")}
+                      className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        videoAspectRatio === "1:1"
+                          ? "border-purple-500 bg-purple-50 text-purple-700"
+                          : "border-gray-200 text-gray-600 hover:border-purple-200"
+                      }`}
+                    >
+                      <div className="text-lg mb-1">■</div>
+                      <div className="font-semibold text-sm">1:1</div>
+                      <div className="text-xs mt-0.5">方形</div>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                   <i className="fas fa-info-circle"></i>
                   影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * 3.4)} 積分
@@ -1028,6 +1073,48 @@ export default function Home() {
                             <div className="text-xs mt-0.5">穩定畫面</div>
                           </button>
                         </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">畫面比例</Label>
+                      <div className="mt-1.5 grid grid-cols-3 gap-2">
+                        <button
+                          onClick={() => setVideoAspectRatio("16:9")}
+                          className={`p-3 rounded-lg border-2 text-center transition-all ${
+                            videoAspectRatio === "16:9"
+                              ? "border-purple-500 bg-purple-50 text-purple-700"
+                              : "border-gray-200 text-gray-600 hover:border-purple-200"
+                          }`}
+                        >
+                          <div className="text-lg mb-1">▬</div>
+                          <div className="font-semibold text-sm">16:9</div>
+                          <div className="text-xs mt-0.5">橫向</div>
+                        </button>
+                        <button
+                          onClick={() => setVideoAspectRatio("9:16")}
+                          className={`p-3 rounded-lg border-2 text-center transition-all ${
+                            videoAspectRatio === "9:16"
+                              ? "border-purple-500 bg-purple-50 text-purple-700"
+                              : "border-gray-200 text-gray-600 hover:border-purple-200"
+                          }`}
+                        >
+                          <div className="text-lg mb-1">▮</div>
+                          <div className="font-semibold text-sm">9:16</div>
+                          <div className="text-xs mt-0.5">直向</div>
+                        </button>
+                        <button
+                          onClick={() => setVideoAspectRatio("1:1")}
+                          className={`p-3 rounded-lg border-2 text-center transition-all ${
+                            videoAspectRatio === "1:1"
+                              ? "border-purple-500 bg-purple-50 text-purple-700"
+                              : "border-gray-200 text-gray-600 hover:border-purple-200"
+                          }`}
+                        >
+                          <div className="text-lg mb-1">■</div>
+                          <div className="font-semibold text-sm">1:1</div>
+                          <div className="text-xs mt-0.5">方形</div>
+                        </button>
                       </div>
                     </div>
 

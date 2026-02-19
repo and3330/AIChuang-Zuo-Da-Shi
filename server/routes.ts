@@ -1009,6 +1009,9 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       promptText += ` --duration ${generation.duration}`;
       promptText += ` --camerafixed ${generation.cameraFixed}`;
       promptText += ` --resolution 1080p`;
+      if (generation.aspectRatio) {
+        promptText += ` --ratio ${generation.aspectRatio}`;
+      }
 
       const contentItems: any[] = [
         {
