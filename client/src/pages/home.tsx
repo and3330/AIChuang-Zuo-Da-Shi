@@ -17,6 +17,26 @@ import { useSeo } from "@/hooks/use-seo";
 import type { UploadResult } from "@uppy/core";
 import type { ImageGeneration, VideoGeneration } from "@shared/schema";
 
+function InfoTooltip({ text }: { text: string }) {
+  const [show, setShow] = useState(false);
+  return (
+    <span className="relative inline-flex items-center ml-1">
+      <i
+        className="fas fa-info-circle text-gray-400 hover:text-blue-500 cursor-help text-xs"
+        onMouseEnter={() => setShow(true)}
+        onMouseLeave={() => setShow(false)}
+        onClick={(e) => { e.stopPropagation(); setShow(!show); }}
+      ></i>
+      {show && (
+        <span className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 px-3 py-2 text-xs text-white bg-gray-800 rounded-lg shadow-lg z-50 leading-relaxed pointer-events-none whitespace-normal">
+          {text}
+          <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-800"></span>
+        </span>
+      )}
+    </span>
+  );
+}
+
 export default function Home() {
   const { user } = useUser();
   useSeo({
@@ -446,7 +466,7 @@ export default function Home() {
                         <i className={`fas fa-pencil-alt ${mode === "text-to-image" ? "text-blue-600" : "text-gray-400"}`}></i>
                       </div>
                       <div className="text-left">
-                        <h3 className={`font-semibold text-sm ${mode === "text-to-image" ? "text-blue-700" : "text-gray-700"}`}>文字生圖</h3>
+                        <h3 className={`font-semibold text-sm ${mode === "text-to-image" ? "text-blue-700" : "text-gray-700"}`}>文字生圖<InfoTooltip text="輸入文字描述，AI 直接生成一張全新的圖片。例如：「一隻貓在海灘上散步」" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">用文字描述創建圖片</p>
                         <span className="inline-block mt-1.5 text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">3 積分/張</span>
                       </div>
@@ -467,7 +487,7 @@ export default function Home() {
                         <i className={`fas fa-image ${mode === "image-to-image" ? "text-blue-600" : "text-gray-400"}`}></i>
                       </div>
                       <div className="text-left">
-                        <h3 className={`font-semibold text-sm ${mode === "image-to-image" ? "text-blue-700" : "text-gray-700"}`}>圖片編輯</h3>
+                        <h3 className={`font-semibold text-sm ${mode === "image-to-image" ? "text-blue-700" : "text-gray-700"}`}>圖片編輯<InfoTooltip text="上傳一張現有圖片，搭配文字描述，AI 會根據指示修改圖片。例如：「把天空改成日落顏色」" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">AI 編輯現有圖片</p>
                         <span className="inline-block mt-1.5 text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">3 積分/張</span>
                       </div>
@@ -480,23 +500,23 @@ export default function Home() {
                   {mode === "text-to-image" && (
                     <>
                       <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
-                        <i className="fas fa-layer-group mr-1"></i>序列生成
+                        <i className="fas fa-layer-group mr-1"></i>序列生成<InfoTooltip text="開啟後，AI 會依序生成多張圖片，每張都在前一張的基礎上繼續變化，產出連貫的漸變效果" />
                       </span>
                       <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
-                        <i className="fas fa-expand-arrows-alt mr-1"></i>多種尺寸
+                        <i className="fas fa-expand-arrows-alt mr-1"></i>多種尺寸<InfoTooltip text="支援多種圖片比例，包含正方形、橫向、直向等多種尺寸選項" />
                       </span>
                     </>
                   )}
                   {mode === "image-to-image" && (
                     <>
                       <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
-                        <i className="fas fa-clone mr-1"></i>批次生成
+                        <i className="fas fa-clone mr-1"></i>批次生成<InfoTooltip text="一次生成多張不同的圖片，每張可以輸入不同的描述" />
                       </span>
                       <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
-                        <i className="fas fa-object-group mr-1"></i>多圖融合
+                        <i className="fas fa-object-group mr-1"></i>多圖融合<InfoTooltip text="上傳多張圖片，AI 會把元素融合在一起，適合服裝替換、風格混合" />
                       </span>
                       <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
-                        <i className="fas fa-layer-group mr-1"></i>序列生成
+                        <i className="fas fa-layer-group mr-1"></i>序列生成<InfoTooltip text="以圖片為基礎，連續生成一系列逐步變化的圖片" />
                       </span>
                     </>
                   )}
@@ -523,7 +543,7 @@ export default function Home() {
                         <i className={`fas fa-pencil-alt ${mode === "text-to-video" ? "text-purple-600" : "text-gray-400"}`}></i>
                       </div>
                       <div className="text-left">
-                        <h3 className={`font-semibold text-sm ${mode === "text-to-video" ? "text-purple-700" : "text-gray-700"}`}>文字生影片</h3>
+                        <h3 className={`font-semibold text-sm ${mode === "text-to-video" ? "text-purple-700" : "text-gray-700"}`}>文字生影片<InfoTooltip text="輸入文字描述，AI 直接生成一段影片。可選擇影片長度（4-12秒）和解析度（720P/1080P）" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">用文字描述創建影片</p>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
                           <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">3.4~6.8積分/秒</span>
@@ -546,7 +566,7 @@ export default function Home() {
                         <i className={`fas fa-image ${mode === "image-to-video" ? "text-purple-600" : "text-gray-400"}`}></i>
                       </div>
                       <div className="text-left">
-                        <h3 className={`font-semibold text-sm ${mode === "image-to-video" ? "text-purple-700" : "text-gray-700"}`}>圖片生影片</h3>
+                        <h3 className={`font-semibold text-sm ${mode === "image-to-video" ? "text-purple-700" : "text-gray-700"}`}>圖片生影片<InfoTooltip text="上傳一張圖片，AI 會讓它「動起來」變成影片。可選擇比例（16:9/9:16/1:1）、長度和解析度" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">將靜態圖片轉為影片</p>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
                           <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">3.4~6.8積分/秒</span>
@@ -580,7 +600,7 @@ export default function Home() {
                     文字生成圖片
                   </h2>
                   <label className="flex items-center gap-2 cursor-pointer">
-                    <span className="text-sm text-gray-600">序列生成</span>
+                    <span className="text-sm text-gray-600">序列生成<InfoTooltip text="開啟後，AI 會依序生成多張圖片，每張都在前一張的基礎上繼續變化，產出連貫的漸變效果" /></span>
                     <div
                       role="switch"
                       aria-checked={isSequentialMode}
@@ -712,7 +732,7 @@ export default function Home() {
                         isMultiImageMode ? "border-green-400 bg-green-50 text-green-700" : "border-gray-200 text-gray-500 hover:border-green-300"
                       }`}
                     >
-                      <i className="fas fa-object-group"></i>多圖融合
+                      <i className="fas fa-object-group"></i>多圖融合<InfoTooltip text="上傳多張圖片（2-4張），AI 會把這些圖片的元素融合在一起。適合服裝替換、風格融合、角色一致性等效果" />
                     </button>
                     <button
                       onClick={() => { setIsI2ISequentialMode(!isI2ISequentialMode); if (!isI2ISequentialMode) setIsBatchMode(false); }}
@@ -720,7 +740,7 @@ export default function Home() {
                         isI2ISequentialMode ? "border-purple-400 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-500 hover:border-purple-300"
                       }`}
                     >
-                      <i className="fas fa-layer-group"></i>序列生成
+                      <i className="fas fa-layer-group"></i>序列生成<InfoTooltip text="以第一張圖為基礎，連續生成一系列逐步變化的圖片。適合做漸變效果，每張都在前一張的基礎上繼續修改" />
                     </button>
                     <button
                       onClick={() => { setIsBatchMode(!isBatchMode); if (!isBatchMode) { updateBatchCount(batchCount); setIsI2ISequentialMode(false); setIsMultiImageMode(false); setAdditionalImages([]); } }}
@@ -728,7 +748,7 @@ export default function Home() {
                         isBatchMode ? "border-blue-400 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-500 hover:border-blue-300"
                       }`}
                     >
-                      <i className="fas fa-clone"></i>批次生成
+                      <i className="fas fa-clone"></i>批次生成<InfoTooltip text="一次生成多張不同的圖片（最多6張），每張可以輸入不同的描述，AI 會各自獨立產出不同版本" />
                     </button>
                   </div>
                   
