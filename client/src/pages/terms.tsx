@@ -54,7 +54,7 @@ export default function TermsPage() {
               <ul className="list-disc pl-6 space-y-2">
                 <li>本平台採用積分制度，1 積分等值於 1 元新台幣（TWD）。</li>
                 <li><strong>圖片生成：</strong>每次生成消耗 3 積分。</li>
-                <li><strong>影片生成：</strong>按時長計費，每秒消耗 6.8 積分（支援 2 至 12 秒）。</li>
+                <li><strong>影片生成：</strong>按時長與解析度計費，720P 每秒 3.4 積分，1080P 每秒 6.8 積分（支援 2 至 12 秒）。</li>
                 <li>積分充值最低金額為 50 積分，透過 Stripe 安全支付處理。</li>
                 <li>積分在生成任務開始時扣除。若生成失敗，積分將自動退還至您的帳戶。</li>
                 <li>已消耗的積分不予退還，除非因本平台技術問題導致生成失敗。</li>

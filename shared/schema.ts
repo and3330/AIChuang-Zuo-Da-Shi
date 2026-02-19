@@ -59,6 +59,7 @@ export const videoGenerations = pgTable("video_generations", {
   duration: integer("duration").default(5),
   cameraFixed: boolean("camera_fixed").default(false),
   aspectRatio: text("aspect_ratio").default("16:9"),
+  resolution: text("resolution").default("1080p"),
   status: text("status").notNull().default("pending"),
   errorMessage: text("error_message"),
   processingTime: real("processing_time"),
@@ -148,6 +149,7 @@ export const insertImageToVideoSchema = z.object({
   duration: z.number().min(2).max(12).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),
   aspectRatio: z.enum(["16:9", "9:16", "1:1"]).optional().default("16:9"),
+  resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
 });
 
 export const insertTextToVideoSchema = z.object({
@@ -156,6 +158,7 @@ export const insertTextToVideoSchema = z.object({
   duration: z.number().min(2).max(12).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),
   aspectRatio: z.enum(["16:9", "9:16", "1:1"]).optional().default("16:9"),
+  resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
 });
 
 export const sendVerificationCodeSchema = z.object({

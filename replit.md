@@ -10,9 +10,10 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ## Pricing Model
 - Image generation: 3 credits per image
-- Video generation: 6.8 credits per second (2-12 seconds, proportional pricing based on API cost × 5 markup)
-  - API cost basis: ~$0.0408 USD/sec (Seedance token formula at 1080p 24fps)
-  - Example: 5 sec = 34 credits, 10 sec = 68 credits
+- Video generation: Resolution-based pricing (2-12 seconds)
+  - 720P: 3.4 credits/second (standard quality)
+  - 1080P: 6.8 credits/second (high quality)
+  - Example: 5 sec 720P = 17 credits, 5 sec 1080P = 34 credits
 - New user registration bonus: 10 credits
 - 1 credit = 1 TWD (New Taiwan Dollar)
 

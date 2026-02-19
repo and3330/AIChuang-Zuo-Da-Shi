@@ -230,7 +230,8 @@ export class DatabaseStorage implements IStorage {
     if (!updated) return false;
 
     if (updated.userId) {
-      const refundAmount = updated.creditsUsed || Math.round((updated.duration || 5) * 6.8);
+      const creditsPerSec = updated.resolution === "720p" ? 3.4 : 6.8;
+      const refundAmount = updated.creditsUsed || Math.round((updated.duration || 5) * creditsPerSec);
       await this.atomicAddCredits(updated.userId, refundAmount, `影片生成失敗退還 ${refundAmount} 積分`);
     }
     return true;
@@ -257,6 +258,8 @@ export class DatabaseStorage implements IStorage {
 
   async createVideoGeneration(insertGeneration: (InsertImageToVideo | InsertTextToVideo) & { userId: string }): Promise<VideoGeneration> {
     const duration = insertGeneration.duration ?? 5;
+    const resolution = insertGeneration.resolution ?? "1080p";
+    const creditsPerSecond = resolution === "720p" ? 3.4 : 6.8;
     const [row] = await db.insert(videoGenerations).values({
       userId: insertGeneration.userId,
       type: insertGeneration.type,
@@ -264,9 +267,11 @@ export class DatabaseStorage implements IStorage {
       prompt: insertGeneration.prompt,
       duration,
       cameraFixed: insertGeneration.cameraFixed ?? false,
+      aspectRatio: insertGeneration.aspectRatio ?? "16:9",
+      resolution,
       status: "pending",
       cost: 0.10,
-      creditsUsed: Math.round(duration * 6.8),
+      creditsUsed: Math.round(duration * creditsPerSecond),
     }).returning();
     return row;
   }

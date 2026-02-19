@@ -52,6 +52,7 @@ export default function Home() {
   const [videoDuration, setVideoDuration] = useState(5);
   const [cameraFixed, setCameraFixed] = useState(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
   
   const { toast } = useToast();
@@ -270,6 +271,7 @@ export default function Home() {
         duration: videoDuration,
         cameraFixed,
         aspectRatio: videoAspectRatio,
+        resolution: videoResolution,
       });
     } else if (mode === "image-to-video") {
       if (!uploadedImagePath) {
@@ -287,6 +289,7 @@ export default function Home() {
         duration: videoDuration,
         cameraFixed,
         aspectRatio: videoAspectRatio,
+        resolution: videoResolution,
       });
     }
   };
@@ -329,7 +332,7 @@ export default function Home() {
     (videoGeneration?.status === "pending" || videoGeneration?.status === "processing");
 
   const getCreditsNeeded = () => {
-    if (mode === "image-to-video" || mode === "text-to-video") return Math.round(videoDuration * 6.8);
+    if (mode === "image-to-video" || mode === "text-to-video") return Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8));
     if (mode === "text-to-image") return isSequentialMode ? 3 * sequentialCount : 3;
     if (isBatchMode) return 3 * batchPrompts.filter(p => p.trim()).length;
     if (isI2ISequentialMode) return 3 * i2iSequentialCount;
@@ -523,7 +526,7 @@ export default function Home() {
                         <h3 className={`font-semibold text-sm ${mode === "text-to-video" ? "text-purple-700" : "text-gray-700"}`}>文字生影片</h3>
                         <p className="text-xs text-gray-500 mt-0.5">用文字描述創建影片</p>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
-                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">6.8積分/秒</span>
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">3.4~6.8積分/秒</span>
                         </div>
                       </div>
                     </div>
@@ -546,7 +549,7 @@ export default function Home() {
                         <h3 className={`font-semibold text-sm ${mode === "image-to-video" ? "text-purple-700" : "text-gray-700"}`}>圖片生影片</h3>
                         <p className="text-xs text-gray-500 mt-0.5">將靜態圖片轉為影片</p>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
-                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">6.8積分/秒</span>
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">3.4~6.8積分/秒</span>
                         </div>
                       </div>
                     </div>
@@ -897,7 +900,7 @@ export default function Home() {
                         <span className="text-sm text-gray-500">12秒</span>
                       </div>
                       <div className="text-center text-sm font-medium text-purple-600 bg-purple-50 rounded-lg py-1.5">
-                        {Math.round(videoDuration * 6.8)} 積分（{videoDuration}秒 × 6.8積分/秒）
+                        {Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8))} 積分（{videoDuration}秒 × {videoResolution === "720p" ? "3.4" : "6.8"}積分/秒）
                       </div>
                     </div>
                   </div>
@@ -927,6 +930,34 @@ export default function Home() {
                         <div className="text-xs mt-0.5">穩定畫面</div>
                       </button>
                     </div>
+                  </div>
+                </div>
+
+                <div>
+                  <Label className="text-sm font-medium text-gray-700">影片解析度</Label>
+                  <div className="mt-1.5 grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => setVideoResolution("720p")}
+                      className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        videoResolution === "720p"
+                          ? "border-purple-500 bg-purple-50 text-purple-700"
+                          : "border-gray-200 text-gray-600 hover:border-purple-200"
+                      }`}
+                    >
+                      <div className="font-semibold text-sm">720P</div>
+                      <div className="text-xs mt-0.5 text-green-600 font-medium">3.4 積分/秒</div>
+                    </button>
+                    <button
+                      onClick={() => setVideoResolution("1080p")}
+                      className={`p-3 rounded-lg border-2 text-center transition-all ${
+                        videoResolution === "1080p"
+                          ? "border-purple-500 bg-purple-50 text-purple-700"
+                          : "border-gray-200 text-gray-600 hover:border-purple-200"
+                      }`}
+                    >
+                      <div className="font-semibold text-sm">1080P</div>
+                      <div className="text-xs mt-0.5 text-orange-600 font-medium">6.8 積分/秒</div>
+                    </button>
                   </div>
                 </div>
 
@@ -974,7 +1005,30 @@ export default function Home() {
 
                 <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                   <i className="fas fa-info-circle"></i>
-                  影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * 6.8)} 積分
+                  影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8))} 積分
+                </div>
+
+                <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
+                  <h4 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                    <i className="fas fa-coins text-yellow-500"></i>
+                    影片生成費用說明
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3 text-xs">
+                    <div className="bg-white rounded-lg p-2.5 border border-gray-100">
+                      <div className="font-semibold text-gray-700">720P 標準畫質</div>
+                      <div className="text-green-600 font-bold text-base mt-1">3.4 積分/秒</div>
+                      <div className="text-gray-400 mt-0.5">適合一般用途、社群分享</div>
+                    </div>
+                    <div className="bg-white rounded-lg p-2.5 border border-gray-100">
+                      <div className="font-semibold text-gray-700">1080P 高畫質</div>
+                      <div className="text-orange-600 font-bold text-base mt-1">6.8 積分/秒</div>
+                      <div className="text-gray-400 mt-0.5">適合專業製作、高品質需求</div>
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                    <i className="fas fa-calculator"></i>
+                    計算方式：影片秒數 × 每秒積分 = 總費用（支援 2-12 秒）
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -1043,7 +1097,7 @@ export default function Home() {
                             <span className="text-sm text-gray-500">12秒</span>
                           </div>
                           <div className="text-center text-sm font-medium text-purple-600 bg-purple-50 rounded-lg py-1.5">
-                            {Math.round(videoDuration * 6.8)} 積分（{videoDuration}秒 × 6.8積分/秒）
+                            {Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8))} 積分（{videoDuration}秒 × {videoResolution === "720p" ? "3.4" : "6.8"}積分/秒）
                           </div>
                         </div>
                       </div>
@@ -1073,6 +1127,34 @@ export default function Home() {
                             <div className="text-xs mt-0.5">穩定畫面</div>
                           </button>
                         </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium text-gray-700">影片解析度</Label>
+                      <div className="mt-1.5 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => setVideoResolution("720p")}
+                          className={`p-3 rounded-lg border-2 text-center transition-all ${
+                            videoResolution === "720p"
+                              ? "border-purple-500 bg-purple-50 text-purple-700"
+                              : "border-gray-200 text-gray-600 hover:border-purple-200"
+                          }`}
+                        >
+                          <div className="font-semibold text-sm">720P</div>
+                          <div className="text-xs mt-0.5 text-green-600 font-medium">3.4 積分/秒</div>
+                        </button>
+                        <button
+                          onClick={() => setVideoResolution("1080p")}
+                          className={`p-3 rounded-lg border-2 text-center transition-all ${
+                            videoResolution === "1080p"
+                              ? "border-purple-500 bg-purple-50 text-purple-700"
+                              : "border-gray-200 text-gray-600 hover:border-purple-200"
+                          }`}
+                        >
+                          <div className="font-semibold text-sm">1080P</div>
+                          <div className="text-xs mt-0.5 text-orange-600 font-medium">6.8 積分/秒</div>
+                        </button>
                       </div>
                     </div>
 
@@ -1120,7 +1202,30 @@ export default function Home() {
 
                     <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                       <i className="fas fa-info-circle"></i>
-                      影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * 6.8)} 積分
+                      影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8))} 積分
+                    </div>
+
+                    <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
+                        <i className="fas fa-coins text-yellow-500"></i>
+                        影片生成費用說明
+                      </h4>
+                      <div className="grid grid-cols-2 gap-3 text-xs">
+                        <div className="bg-white rounded-lg p-2.5 border border-gray-100">
+                          <div className="font-semibold text-gray-700">720P 標準畫質</div>
+                          <div className="text-green-600 font-bold text-base mt-1">3.4 積分/秒</div>
+                          <div className="text-gray-400 mt-0.5">適合一般用途、社群分享</div>
+                        </div>
+                        <div className="bg-white rounded-lg p-2.5 border border-gray-100">
+                          <div className="font-semibold text-gray-700">1080P 高畫質</div>
+                          <div className="text-orange-600 font-bold text-base mt-1">6.8 積分/秒</div>
+                          <div className="text-gray-400 mt-0.5">適合專業製作、高品質需求</div>
+                        </div>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                        <i className="fas fa-calculator"></i>
+                        計算方式：影片秒數 × 每秒積分 = 總費用（支援 2-12 秒）
+                      </div>
                     </div>
                   </div>
                 )}
@@ -1266,7 +1371,7 @@ export default function Home() {
                 </div>
                 <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg text-sm text-purple-700">
                   <span><i className="fas fa-clock mr-1"></i>影片長度：{videoGeneration.duration || 5} 秒</span>
-                  <span className="font-semibold">費用：{Math.round((videoGeneration.duration || 5) * 6.8)} 積分</span>
+                  <span className="font-semibold">費用：{videoGeneration.creditsUsed || Math.round((videoGeneration.duration || 5) * 6.8)} 積分（{videoGeneration.resolution === "720p" ? "720P" : "1080P"}）</span>
                 </div>
                 <div className="flex justify-center gap-3">
                   <Button className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg" onClick={() => {

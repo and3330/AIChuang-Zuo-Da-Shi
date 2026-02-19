@@ -134,7 +134,7 @@ export default function AccountPage() {
 
   useSeo({
     title: "我的帳戶 - 積分管理與充值 | AI 創意工坊",
-    description: "管理您的 AI 創意工坊帳戶，查看積分餘額、充值積分、查看定價方案。圖片生成 3 積分/張，影片生成 6.8 積分/秒。",
+    description: "管理您的 AI 創意工坊帳戶，查看積分餘額、充值積分、查看定價方案。圖片生成 3 積分/張，影片生成 3.4~6.8 積分/秒。",
     keywords: "帳戶管理,積分充值,AI創作積分,定價方案",
   });
 
@@ -342,7 +342,7 @@ export default function AccountPage() {
                       <i className="fas fa-video text-blue-500 mr-2"></i>
                       影片生成（2-12秒）
                     </td>
-                    <td className="px-4 py-3 text-sm text-right font-medium">6.8 積分/秒</td>
+                    <td className="px-4 py-3 text-sm text-right font-medium">3.4~6.8 積分/秒</td>
                   </tr>
                 </tbody>
               </table>
