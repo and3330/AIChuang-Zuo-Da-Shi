@@ -86,6 +86,9 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Admin link visible only to admin users in NavigationHeader
 
 ## Recent Changes
+- Fixed image-to-image sequential generation display bug: now shows all generated images in grid (was only showing 1)
+- Added multi-image reference support for video generation (backend + storage persistence)
+- Updated landing page and home page feature tags to reflect video multi-image capability
 - Added email verification for registration using Resend (6-digit code, 10min expiry, prevents duplicate email registration)
 - Changed video pricing to proportional per-second model: 6.8 credits/sec (API cost × 5), duration slider 2-12 seconds
 - Added text-to-video generation (no image required)

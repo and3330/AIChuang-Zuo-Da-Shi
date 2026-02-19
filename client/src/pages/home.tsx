@@ -605,13 +605,16 @@ export default function Home() {
                 </div>
                 <div className="mt-3 flex flex-wrap gap-2 justify-center">
                   <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
+                    <i className="fas fa-object-group mr-1"></i>多圖參考
+                  </span>
+                  <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
                     <i className="fas fa-video mr-1"></i>動態鏡頭
                   </span>
                   <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
                     <i className="fas fa-crosshairs mr-1"></i>固定鏡頭
                   </span>
                   <span className="text-xs px-2.5 py-1 rounded-full bg-gray-100 text-gray-600">
-                    <i className="fas fa-clock mr-1"></i>5 / 10 秒可選
+                    <i className="fas fa-clock mr-1"></i>4-12 秒可選
                   </span>
                 </div>
               </div>
@@ -1643,41 +1646,91 @@ export default function Home() {
                     </div>
                   )
                 ) : (
-                  <div className="grid grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-medium text-gray-600 text-center">原始圖片</h3>
-                      <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square">
-                        <img src={uploadedImageUrl} alt="Original" className="w-full h-full object-cover" />
+                  generation.generatedImageUrls && generation.generatedImageUrls.length > 1 ? (
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm text-gray-600">序列生成結果 ({generation.generatedImageUrls.length} 張)</span>
+                        <span className="text-sm font-semibold text-purple-600">{generation.generatedImageUrls.length * (watermark ? 3 : 8)} 積分</span>
+                      </div>
+                      <div className="mb-3 space-y-1">
+                        <h3 className="text-sm font-medium text-gray-600">原始圖片</h3>
+                        <div className="bg-gray-100 rounded-lg overflow-hidden w-32 h-32">
+                          <img src={uploadedImageUrl} alt="Original" className="w-full h-full object-cover" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {generation.generatedImageUrls.map((url, index) => (
+                          <div key={index} className="space-y-2">
+                            <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
+                              <img src={url} alt={`序列圖片 ${index + 1}`} className="w-full h-full object-cover hover:scale-105 transition-transform" />
+                              <span className="absolute top-2 left-2 bg-purple-600 text-white text-xs px-2 py-0.5 rounded-full">{index + 1}</span>
+                            </div>
+                            <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => {
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.download = `sequential-image-${index + 1}.png`;
+                              link.click();
+                            }}>
+                              <i className="fas fa-download mr-1"></i>下載
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex justify-center gap-3 pt-3">
+                        <Button className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg" onClick={() => {
+                          generation.generatedImageUrls?.forEach((url, index) => {
+                            setTimeout(() => {
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.download = `sequential-image-${index + 1}.png`;
+                              link.click();
+                            }, index * 300);
+                          });
+                        }}>
+                          <i className="fas fa-download mr-2"></i>下載全部 ({generation.generatedImageUrls.length} 張)
+                        </Button>
+                        <Button variant="secondary" className="bg-gray-100 hover:bg-gray-200 rounded-lg" onClick={handleGenerate}>
+                          <i className="fas fa-redo mr-2"></i>再次生成
+                        </Button>
                       </div>
                     </div>
-                    <div className="space-y-2">
-                      <h3 className="text-sm font-medium text-gray-600 text-center flex items-center justify-center gap-1">
-                        AI 生成結果 <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">NEW</span>
-                      </h3>
-                      <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
-                        <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
-                          <DialogTrigger asChild>
-                            <div className="relative cursor-pointer hover:scale-[1.02] transition-transform" onClick={() => setIsLightboxOpen(true)}>
-                              <img src={generation.generatedImageUrl} alt="AI generated" className="w-full h-full object-cover" />
-                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
-                                <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-3">
-                                  <i className="fas fa-search-plus text-gray-700"></i>
+                  ) : (
+                    <div className="grid grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium text-gray-600 text-center">原始圖片</h3>
+                        <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square">
+                          <img src={uploadedImageUrl} alt="Original" className="w-full h-full object-cover" />
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <h3 className="text-sm font-medium text-gray-600 text-center flex items-center justify-center gap-1">
+                          AI 生成結果 <span className="bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full">NEW</span>
+                        </h3>
+                        <div className="bg-gray-100 rounded-lg overflow-hidden aspect-square relative group">
+                          <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
+                            <DialogTrigger asChild>
+                              <div className="relative cursor-pointer hover:scale-[1.02] transition-transform" onClick={() => setIsLightboxOpen(true)}>
+                                <img src={generation.generatedImageUrl} alt="AI generated" className="w-full h-full object-cover" />
+                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all flex items-center justify-center">
+                                  <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-white/90 rounded-full p-3">
+                                    <i className="fas fa-search-plus text-gray-700"></i>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 bg-transparent border-0 shadow-none">
-                            <div className="relative flex items-center justify-center">
-                              <img src={generation.generatedImageUrl} alt="Full size" className="max-w-full max-h-[95vh] object-contain rounded-lg shadow-2xl" />
-                              <button onClick={() => setIsLightboxOpen(false)} className="absolute top-4 right-4 bg-white/90 hover:bg-white text-gray-700 rounded-full p-2 shadow-lg">
-                                <i className="fas fa-times"></i>
-                              </button>
-                            </div>
-                          </DialogContent>
-                        </Dialog>
+                            </DialogTrigger>
+                            <DialogContent className="max-w-[95vw] max-h-[95vh] w-auto h-auto p-0 bg-transparent border-0 shadow-none">
+                              <div className="relative flex items-center justify-center">
+                                <img src={generation.generatedImageUrl} alt="Full size" className="max-w-full max-h-[95vh] object-contain rounded-lg shadow-2xl" />
+                                <button onClick={() => setIsLightboxOpen(false)} className="absolute top-4 right-4 bg-white/90 hover:bg-white text-gray-700 rounded-full p-2 shadow-lg">
+                                  <i className="fas fa-times"></i>
+                                </button>
+                              </div>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
                       </div>
                     </div>
-                  </div>
+                  )
                 )}
 
                 {/* Action Buttons */}

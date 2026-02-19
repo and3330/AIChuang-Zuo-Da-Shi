@@ -1025,26 +1025,35 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         }
       ];
 
-      if (generation.originalImageUrl) {
-        console.log(`Getting image from object storage: ${generation.originalImageUrl}`);
-        const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
+      const loadImageAsBase64 = async (imagePath: string): Promise<string> => {
+        const objectFile = await objectStorageService.getObjectEntityFile(imagePath);
         const chunks: Buffer[] = [];
         const stream = objectFile.createReadStream();
-        
         for await (const chunk of stream) {
           chunks.push(Buffer.from(chunk));
         }
-        
         const imageBuffer = Buffer.concat(chunks);
-        const base64Image = imageBuffer.toString('base64');
-        const imageDataUri = `data:image/jpeg;base64,${base64Image}`;
+        return `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
+      };
 
+      if (generation.originalImageUrl) {
+        console.log(`Getting main image from object storage: ${generation.originalImageUrl}`);
+        const imageDataUri = await loadImageAsBase64(generation.originalImageUrl);
         contentItems.push({
           type: "image_url",
-          image_url: {
-            url: imageDataUri
-          }
+          image_url: { url: imageDataUri }
         });
+      }
+
+      if (generation.additionalImageUrls && generation.additionalImageUrls.length > 0) {
+        console.log(`Loading ${generation.additionalImageUrls.length} additional reference images for video`);
+        for (const additionalUrl of generation.additionalImageUrls) {
+          const additionalDataUri = await loadImageAsBase64(additionalUrl);
+          contentItems.push({
+            type: "image_url",
+            image_url: { url: additionalDataUri }
+          });
+        }
       }
 
       const requestBody = {

@@ -279,6 +279,7 @@ export class DatabaseStorage implements IStorage {
       userId: insertGeneration.userId,
       type: insertGeneration.type,
       originalImageUrl: "originalImageUrl" in insertGeneration ? insertGeneration.originalImageUrl : null,
+      additionalImageUrls: "additionalImageUrls" in insertGeneration ? (insertGeneration.additionalImageUrls ?? []) : [],
       prompt: insertGeneration.prompt,
       duration,
       cameraFixed: insertGeneration.cameraFixed ?? false,

@@ -182,8 +182,12 @@ export default function LandingPage() {
                     <span>圖片生影片 — 靜態圖轉動態影片</span>
                   </div>
                   <div className="flex items-center gap-3 text-gray-300">
+                    <i className="fas fa-object-group text-blue-400 w-5 text-center"></i>
+                    <span>多圖參考 — 角色一致性、風格融合</span>
+                  </div>
+                  <div className="flex items-center gap-3 text-gray-300">
                     <i className="fas fa-clock text-blue-400 w-5 text-center"></i>
-                    <span>5 秒 / 10 秒影片長度可選</span>
+                    <span>4-12 秒影片長度可選</span>
                   </div>
                   <div className="flex items-center gap-3 text-gray-300">
                     <i className="fas fa-video text-blue-400 w-5 text-center"></i>
