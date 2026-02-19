@@ -52,6 +52,8 @@ export default function Home() {
   const [guidanceScale, setGuidanceScale] = useState(5.5);
   const [seed, setSeed] = useState(21);
   const [watermark, setWatermark] = useState(true);
+  const [showWatermarkDisclaimer, setShowWatermarkDisclaimer] = useState(false);
+  const [disclaimerAgreed, setDisclaimerAgreed] = useState(false);
   const [size, setSize] = useState("2K");
   const [currentGenerationId, setCurrentGenerationId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -351,12 +353,14 @@ export default function Home() {
     (batchData?.generations.some(g => g.status === "pending" || g.status === "processing")) ||
     (videoGeneration?.status === "pending" || videoGeneration?.status === "processing");
 
+  const WATERMARK_REMOVAL_COST = 5;
   const getCreditsNeeded = () => {
     if (mode === "image-to-video" || mode === "text-to-video") return Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8));
-    if (mode === "text-to-image") return isSequentialMode ? 3 * sequentialCount : 3;
-    if (isBatchMode) return 3 * batchPrompts.filter(p => p.trim()).length;
-    if (isI2ISequentialMode) return 3 * i2iSequentialCount;
-    return 3;
+    const perImageCost = watermark ? 3 : 3 + WATERMARK_REMOVAL_COST;
+    if (mode === "text-to-image") return isSequentialMode ? perImageCost * sequentialCount : perImageCost;
+    if (isBatchMode) return perImageCost * batchPrompts.filter(p => p.trim()).length;
+    if (isI2ISequentialMode) return perImageCost * i2iSequentialCount;
+    return perImageCost;
   };
 
   const creditsNeeded = getCreditsNeeded();
@@ -468,7 +472,7 @@ export default function Home() {
                       <div className="text-left">
                         <h3 className={`font-semibold text-sm ${mode === "text-to-image" ? "text-blue-700" : "text-gray-700"}`}>文字生圖<InfoTooltip text="輸入文字描述，AI 直接生成一張全新的圖片。例如：「一隻貓在海灘上散步」" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">用文字描述創建圖片</p>
-                        <span className="inline-block mt-1.5 text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">3 積分/張</span>
+                        <span className={`inline-block mt-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${!watermark ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>{watermark ? "3" : "8"} 積分/張</span>
                       </div>
                     </div>
                   </button>
@@ -489,7 +493,7 @@ export default function Home() {
                       <div className="text-left">
                         <h3 className={`font-semibold text-sm ${mode === "image-to-image" ? "text-blue-700" : "text-gray-700"}`}>圖片編輯<InfoTooltip text="上傳一張現有圖片，搭配文字描述，AI 會根據指示修改圖片。例如：「把天空改成日落顏色」" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">AI 編輯現有圖片</p>
-                        <span className="inline-block mt-1.5 text-xs font-medium bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">3 積分/張</span>
+                        <span className={`inline-block mt-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${!watermark ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>{watermark ? "3" : "8"} 積分/張</span>
                       </div>
                     </div>
                   </button>
@@ -640,7 +644,7 @@ export default function Home() {
                         className="w-20 px-3 py-1.5 border border-blue-200 rounded-lg"
                       />
                       <span className="text-sm text-gray-500">張 (2-10)</span>
-                      <span className="ml-auto text-sm font-semibold text-blue-600">{sequentialCount * 3} 積分</span>
+                      <span className="ml-auto text-sm font-semibold text-blue-600">{sequentialCount * (watermark ? 3 : 8)} 積分</span>
                     </div>
                     <p className="text-xs text-blue-600 mt-2">
                       <i className="fas fa-info-circle mr-1"></i>
@@ -806,7 +810,7 @@ export default function Home() {
                               className="w-20 px-3 py-1.5 border border-purple-200 rounded-lg"
                             />
                             <span className="text-sm text-gray-500">張 (2-10)</span>
-                            <span className="ml-auto text-sm font-semibold text-purple-600">{i2iSequentialCount * 3} 積分</span>
+                            <span className="ml-auto text-sm font-semibold text-purple-600">{i2iSequentialCount * (watermark ? 3 : 8)} 積分</span>
                           </div>
                           <p className="text-xs text-purple-600 mt-2">
                             <i className="fas fa-info-circle mr-1"></i>
@@ -828,7 +832,7 @@ export default function Home() {
                         >
                           {[2,3,4,5,6].map(n => <option key={n} value={n}>{n} 張</option>)}
                         </select>
-                        <span className="ml-auto text-sm font-semibold text-blue-600">{batchPrompts.filter(p => p.trim()).length * 3} 積分</span>
+                        <span className="ml-auto text-sm font-semibold text-blue-600">{batchPrompts.filter(p => p.trim()).length * (watermark ? 3 : 8)} 積分</span>
                       </div>
                       <div className="space-y-3">
                         {batchPrompts.map((p, index) => (
@@ -1254,26 +1258,99 @@ export default function Home() {
           )}
 
           {/* Watermark Toggle */}
-          <div className="bg-white rounded-xl border border-gray-200 p-4">
+          {!isVideoMode && (
+          <div className={`bg-white rounded-xl border p-4 ${!watermark ? "border-orange-300 bg-orange-50/30" : "border-gray-200"}`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <i className="fas fa-stamp text-gray-400"></i>
+                <i className={`fas fa-stamp ${!watermark ? "text-orange-500" : "text-gray-400"}`}></i>
                 <div>
                   <span className="text-sm font-medium text-gray-700">浮水印</span>
                   <p className="text-xs text-gray-400">
-                    {watermark ? "生成圖片會包含浮水印" : "生成圖片不含浮水印"}
+                    {watermark ? "生成圖片會包含浮水印" : "已移除浮水印（每張 +5 積分）"}
                   </p>
                 </div>
               </div>
               <button
                 role="switch" aria-checked={watermark}
-                onClick={() => setWatermark(!watermark)}
-                className={`relative w-11 h-6 rounded-full transition-colors ${watermark ? 'bg-blue-500' : 'bg-gray-300'}`}
+                onClick={() => {
+                  if (watermark) {
+                    setDisclaimerAgreed(false);
+                    setShowWatermarkDisclaimer(true);
+                  } else {
+                    setWatermark(true);
+                  }
+                }}
+                className={`relative w-11 h-6 rounded-full transition-colors ${watermark ? 'bg-blue-500' : 'bg-orange-500'}`}
               >
                 <span className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${watermark ? 'translate-x-5' : ''}`} />
               </button>
             </div>
+            {!watermark && (
+              <div className="mt-2 text-xs text-orange-600 bg-orange-100 rounded-lg px-3 py-1.5 flex items-center gap-1.5">
+                <i className="fas fa-coins"></i>
+                去除浮水印：每張圖片額外 +{WATERMARK_REMOVAL_COST} 積分（共 {3 + WATERMARK_REMOVAL_COST} 積分/張）
+              </div>
+            )}
           </div>
+          )}
+
+          {/* Watermark Removal Disclaimer Dialog */}
+          <Dialog open={showWatermarkDisclaimer} onOpenChange={setShowWatermarkDisclaimer}>
+            <DialogContent className="sm:max-w-md">
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+                    <i className="fas fa-exclamation-triangle text-orange-500"></i>
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">去除浮水印 — 免責聲明</h3>
+                    <p className="text-xs text-gray-500">請詳閱以下條款後勾選同意</p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 space-y-2 max-h-48 overflow-y-auto border">
+                  <p><strong>1. 額外費用：</strong>去除浮水印將對每張圖片額外收取 {WATERMARK_REMOVAL_COST} 積分（原價 3 積分 + 去浮水印 {WATERMARK_REMOVAL_COST} 積分 = 每張 {3 + WATERMARK_REMOVAL_COST} 積分）。</p>
+                  <p><strong>2. 版權責任：</strong>去除浮水印後的圖片，使用者須自行承擔所有版權及法律責任。本平台不對去除浮水印後圖片的使用方式及其衍生之任何法律糾紛負責。</p>
+                  <p><strong>3. 商業使用：</strong>使用者將去浮水印圖片用於商業用途時，應確保內容不侵犯第三方權益，並遵守相關法律法規。</p>
+                  <p><strong>4. 禁止濫用：</strong>嚴禁將去浮水印圖片用於任何違法、侵權、詐騙、冒名或損害他人名譽之用途。</p>
+                  <p><strong>5. 免責範圍：</strong>本平台（極電行銷整合）僅提供 AI 圖片生成技術服務，對生成內容之後續使用不承擔任何直接或間接責任。</p>
+                </div>
+
+                <label className="flex items-start gap-3 cursor-pointer p-3 rounded-lg border border-gray-200 hover:bg-gray-50 transition-colors">
+                  <Checkbox
+                    checked={disclaimerAgreed}
+                    onCheckedChange={(checked) => setDisclaimerAgreed(checked === true)}
+                    className="mt-0.5"
+                  />
+                  <span className="text-sm text-gray-700">我已閱讀並同意上述免責聲明條款，了解去除浮水印的額外費用及相關責任。</span>
+                </label>
+
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => {
+                      setShowWatermarkDisclaimer(false);
+                      setDisclaimerAgreed(false);
+                    }}
+                  >
+                    取消
+                  </Button>
+                  <Button
+                    className="flex-1 bg-orange-500 hover:bg-orange-600 text-white"
+                    disabled={!disclaimerAgreed}
+                    onClick={() => {
+                      setWatermark(false);
+                      setShowWatermarkDisclaimer(false);
+                    }}
+                  >
+                    <i className="fas fa-check mr-2"></i>
+                    確認去除浮水印
+                  </Button>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
 
           {/* Generate Button */}
           <div className="flex flex-col items-center gap-3">
@@ -1567,7 +1644,7 @@ export default function Home() {
                       <div className="flex justify-between"><span>引導強度</span><span>{generation.guidanceScale}</span></div>
                       <div className="flex justify-between"><span>種子值</span><span>{generation.seed}</span></div>
                       <div className="flex justify-between"><span>處理時間</span><span>{generation.processingTime?.toFixed(1)}s</span></div>
-                      <div className="flex justify-between"><span>費用</span><span className="font-semibold">3 積分</span></div>
+                      <div className="flex justify-between"><span>費用</span><span className="font-semibold">{generation.watermark === false ? "8 積分（含去浮水印）" : "3 積分"}</span></div>
                     </div>
                   </details>
                 </div>

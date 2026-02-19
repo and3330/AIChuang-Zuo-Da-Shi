@@ -536,13 +536,16 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       }
 
       let creditsNeeded: number;
+      const WATERMARK_REMOVAL_COST = 5;
+      const hasWatermark = req.body.watermark !== false;
+      const perImageCost = hasWatermark ? 3 : 3 + WATERMARK_REMOVAL_COST;
 
       if (req.body.prompts && Array.isArray(req.body.prompts)) {
-        creditsNeeded = 3 * req.body.prompts.length;
+        creditsNeeded = perImageCost * req.body.prompts.length;
       } else if (req.body.sequentialGeneration && req.body.maxImages && req.body.maxImages > 1) {
-        creditsNeeded = 3 * req.body.maxImages;
+        creditsNeeded = perImageCost * req.body.maxImages;
       } else {
-        creditsNeeded = 3;
+        creditsNeeded = perImageCost;
       }
 
       if ((user.credits || 0) < creditsNeeded) {
@@ -555,12 +558,13 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
       const newBalance = (user.credits || 0) - creditsNeeded;
       await storage.updateUserCredits(userId, newBalance);
+      const watermarkNote = hasWatermark ? "" : "（含去浮水印）";
       await storage.createCreditTransaction({
         userId,
         type: "consume",
         amount: -creditsNeeded,
         balance: newBalance,
-        description: `图片生成消耗 ${creditsNeeded} 积分`,
+        description: `圖片生成消耗 ${creditsNeeded} 積分${watermarkNote}`,
       });
 
       if (req.body.prompts && Array.isArray(req.body.prompts)) {
