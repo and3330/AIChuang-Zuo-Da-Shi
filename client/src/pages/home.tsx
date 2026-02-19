@@ -76,6 +76,8 @@ export default function Home() {
   const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
+  const [isVideoMultiImageMode, setIsVideoMultiImageMode] = useState(false);
+  const [videoAdditionalImages, setVideoAdditionalImages] = useState<{url: string, path: string}[]>([]);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -304,7 +306,7 @@ export default function Home() {
         toast({ title: "缺少描述", description: "請輸入影片動態描述。", variant: "destructive" });
         return;
       }
-      videoGenerateMutation.mutate({
+      const videoData: any = {
         type: "image-to-video",
         originalImageUrl: uploadedImagePath,
         prompt: videoPrompt.trim(),
@@ -312,7 +314,11 @@ export default function Home() {
         cameraFixed,
         aspectRatio: videoAspectRatio,
         resolution: videoResolution,
-      });
+      };
+      if (isVideoMultiImageMode && videoAdditionalImages.length > 0) {
+        videoData.additionalImageUrls = videoAdditionalImages.map(img => img.path);
+      }
+      videoGenerateMutation.mutate(videoData);
     }
   };
 
@@ -346,6 +352,24 @@ export default function Home() {
 
   const removeAdditionalImage = (index: number) => {
     setAdditionalImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleVideoAdditionalUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
+    if (result.successful && result.successful[0]) {
+      const uploadURL = result.successful[0].uploadURL;
+      try {
+        const response = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
+        const data = await response.json();
+        setVideoAdditionalImages(prev => [...prev, { url: data.objectPath, path: data.objectPath }]);
+        toast({ title: "參考圖片上傳成功", description: `已新增第 ${videoAdditionalImages.length + 2} 張參考圖片。` });
+      } catch (error) {
+        toast({ title: "上傳錯誤", description: "處理上傳圖片失敗。", variant: "destructive" });
+      }
+    }
+  };
+
+  const removeVideoAdditionalImage = (index: number) => {
+    setVideoAdditionalImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const isGenerating = generateMutation.isPending || videoGenerateMutation.isPending ||
@@ -1091,16 +1115,64 @@ export default function Home() {
                       </div>
                     </div>
 
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => { setIsVideoMultiImageMode(!isVideoMultiImageMode); if (isVideoMultiImageMode) setVideoAdditionalImages([]); }}
+                        className={`text-xs px-3 py-1.5 rounded-full border transition-all flex items-center gap-1.5 ${
+                          isVideoMultiImageMode ? "border-green-400 bg-green-50 text-green-700" : "border-gray-200 text-gray-500 hover:border-green-300"
+                        }`}
+                      >
+                        <i className="fas fa-object-group"></i>多圖參考<InfoTooltip text="上傳多張參考圖片（最多5張），使用 @Image1、@Image2 語法在描述中引用。適合角色一致性、風格融合、場景組合等效果" />
+                      </button>
+                    </div>
+
                     <div>
                       <Label className="text-sm font-medium text-gray-700">描述影片動態效果</Label>
                       <Textarea 
-                        placeholder="例如：高速穿越障礙物，帶來沉浸式的飛行體驗"
+                        placeholder={isVideoMultiImageMode 
+                          ? "使用 @Image1（主圖）和 @Image2、@Image3... 引用參考圖片。例如：@Image1 的人物穿著 @Image2 的服裝在 @Image3 的場景中走動"
+                          : "例如：高速穿越障礙物，帶來沉浸式的飛行體驗"}
                         value={videoPrompt}
                         onChange={(e) => setVideoPrompt(e.target.value)}
                         className="mt-1.5 w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                       />
-                      <p className="text-xs text-gray-400 mt-1">描述您希望圖片如何變成動態影片</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {isVideoMultiImageMode 
+                          ? "使用 @Image1 引用主圖，@Image2、@Image3... 引用參考圖片" 
+                          : "描述您希望圖片如何變成動態影片"}
+                      </p>
                     </div>
+
+                    {isVideoMultiImageMode && (
+                      <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
+                        <Label className="text-sm font-medium text-gray-700 mb-3 block">
+                          <i className="fas fa-images text-green-600 mr-2"></i>
+                          參考圖片（@Image2、@Image3...）
+                        </Label>
+                        <p className="text-xs text-green-700 mb-3">
+                          上傳額外的參考圖片，用於角色一致性、風格融合、場景組合。主圖為 @Image1，以下為 @Image2 起
+                        </p>
+                        <div className="grid grid-cols-4 gap-3 mb-2">
+                          {videoAdditionalImages.map((img, index) => (
+                            <div key={index} className="relative">
+                              <img src={img.path.startsWith('/') ? img.path : `/${img.path}`} alt={`參考圖片 ${index + 2}`} className="w-full aspect-square object-cover rounded-lg border border-green-300" />
+                              <div className="absolute top-1 left-1 bg-green-600 text-white text-xs px-1.5 py-0.5 rounded-full">@{index + 2}</div>
+                              <button onClick={() => removeVideoAdditionalImage(index)} className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600">×</button>
+                            </div>
+                          ))}
+                          {videoAdditionalImages.length < 5 && (
+                            <UnifiedUploader
+                              onGetUploadParameters={handleGetUploadParameters}
+                              onComplete={handleVideoAdditionalUploadComplete}
+                              onError={handleUploadError}
+                              maxFileSize={10 * 1024 * 1024}
+                              className="w-full aspect-square border-2 border-dashed border-green-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-green-500 hover:bg-green-100 transition-colors"
+                            />
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500">最多 5 張參考圖片（已上傳 {videoAdditionalImages.length} 張）</p>
+                      </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-4">
                       <div>

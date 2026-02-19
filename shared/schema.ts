@@ -54,6 +54,7 @@ export const videoGenerations = pgTable("video_generations", {
   taskId: text("task_id"),
   type: text("type").notNull().default("image-to-video"),
   originalImageUrl: text("original_image_url"),
+  additionalImageUrls: text("additional_image_urls").array(),
   generatedVideoUrl: text("generated_video_url"),
   prompt: text("prompt").notNull(),
   duration: integer("duration").default(5),
@@ -145,6 +146,7 @@ export const insertBatchImageToImageSchema = z.object({
 export const insertImageToVideoSchema = z.object({
   type: z.literal("image-to-video"),
   originalImageUrl: z.string(),
+  additionalImageUrls: z.array(z.string()).optional(),
   prompt: z.string(),
   duration: z.number().min(2).max(12).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),
