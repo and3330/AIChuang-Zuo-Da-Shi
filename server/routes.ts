@@ -1250,6 +1250,16 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     }
   });
 
+  app.get("/api/admin/orders", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const orders = await storage.getAllTopupTransactions();
+      res.json(orders);
+    } catch (error) {
+      console.error("Error fetching admin orders:", error);
+      res.status(500).json({ error: "獲取訂單資料失敗" });
+    }
+  });
+
   app.get("/api/admin/stats", requireAuth, requireAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();

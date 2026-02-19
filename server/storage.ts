@@ -15,6 +15,7 @@ export interface IStorage {
   createCreditTransaction(transaction: { userId: string; type: string; amount: number; balance: number; description: string | null }): Promise<CreditTransaction>;
   getCreditTransactions(userId: string): Promise<CreditTransaction[]>;
   getCreditTransactionByDescription(description: string): Promise<CreditTransaction | undefined>;
+  getAllTopupTransactions(): Promise<(CreditTransaction & { username?: string; email?: string })[]>;
 
   createImageGeneration(generation: InsertImageGeneration & { userId: string; sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration>;
   createBatchImageGenerations(batchData: InsertBatchImageToImage & { userId: string }): Promise<ImageGeneration[]>;
@@ -115,6 +116,26 @@ export class DatabaseStorage implements IStorage {
   async getCreditTransactionByDescription(description: string): Promise<CreditTransaction | undefined> {
     const [row] = await db.select().from(creditTransactions).where(eq(creditTransactions.description, description));
     return row;
+  }
+
+  async getAllTopupTransactions(): Promise<(CreditTransaction & { username?: string; email?: string })[]> {
+    const rows = await db
+      .select({
+        id: creditTransactions.id,
+        userId: creditTransactions.userId,
+        type: creditTransactions.type,
+        amount: creditTransactions.amount,
+        balance: creditTransactions.balance,
+        description: creditTransactions.description,
+        createdAt: creditTransactions.createdAt,
+        username: users.username,
+        email: users.email,
+      })
+      .from(creditTransactions)
+      .leftJoin(users, eq(creditTransactions.userId, users.id))
+      .where(eq(creditTransactions.type, "topup"))
+      .orderBy(desc(creditTransactions.createdAt));
+    return rows as any;
   }
 
   async createImageGeneration(insertGeneration: InsertImageGeneration & { userId: string; sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration> {
