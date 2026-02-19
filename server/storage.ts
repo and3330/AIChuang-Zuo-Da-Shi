@@ -1,6 +1,6 @@
 import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql, and, gt } from "drizzle-orm";
+import { eq, desc, sql, and, gt, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -33,6 +33,7 @@ export interface IStorage {
   getUserVideoGenerations(userId: string): Promise<VideoGeneration[]>;
   getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
   atomicAddCredits(userId: string, amount: number, description: string): Promise<void>;
+  fixStripeTransactionTypes(): Promise<number>;
 
   createVerificationCode(email: string, code: string, expiresAt: Date): Promise<VerificationCode>;
   getValidVerificationCode(email: string, code: string): Promise<VerificationCode | undefined>;
@@ -88,6 +89,19 @@ export class DatabaseStorage implements IStorage {
         description,
       });
     }
+  }
+
+  async fixStripeTransactionTypes(): Promise<number> {
+    const result = await db.update(creditTransactions)
+      .set({ type: "topup" })
+      .where(
+        and(
+          like(creditTransactions.description, "Stripe%"),
+          eq(creditTransactions.type, "refund")
+        )
+      )
+      .returning();
+    return result.length;
   }
 
   async setUserAdmin(userId: string, isAdmin: boolean): Promise<User | undefined> {
