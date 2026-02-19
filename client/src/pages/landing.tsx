@@ -198,7 +198,7 @@ export default function LandingPage() {
                 <div className="pt-4 border-t border-white/10">
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <i className="fas fa-coins text-yellow-400"></i>
-                    <span>3.4 積分/秒（2-12秒自由選擇）</span>
+                    <span>6.8 積分/秒（2-12秒自由選擇）</span>
                   </div>
                 </div>
               </CardContent>
@@ -318,8 +318,8 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-gray-900 text-lg">3.4 積分/秒</p>
-                    <p className="text-xs text-gray-400">例：5秒 ≈ NT$17</p>
+                    <p className="font-bold text-gray-900 text-lg">6.8 積分/秒</p>
+                    <p className="text-xs text-gray-400">例：5秒 ≈ NT$34</p>
                   </div>
                 </div>
               </div>

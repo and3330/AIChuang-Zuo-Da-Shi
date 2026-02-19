@@ -329,7 +329,7 @@ export default function Home() {
     (videoGeneration?.status === "pending" || videoGeneration?.status === "processing");
 
   const getCreditsNeeded = () => {
-    if (mode === "image-to-video" || mode === "text-to-video") return Math.round(videoDuration * 3.4);
+    if (mode === "image-to-video" || mode === "text-to-video") return Math.round(videoDuration * 6.8);
     if (mode === "text-to-image") return isSequentialMode ? 3 * sequentialCount : 3;
     if (isBatchMode) return 3 * batchPrompts.filter(p => p.trim()).length;
     if (isI2ISequentialMode) return 3 * i2iSequentialCount;
@@ -523,7 +523,7 @@ export default function Home() {
                         <h3 className={`font-semibold text-sm ${mode === "text-to-video" ? "text-purple-700" : "text-gray-700"}`}>文字生影片</h3>
                         <p className="text-xs text-gray-500 mt-0.5">用文字描述創建影片</p>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
-                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">3.4積分/秒</span>
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">6.8積分/秒</span>
                         </div>
                       </div>
                     </div>
@@ -546,7 +546,7 @@ export default function Home() {
                         <h3 className={`font-semibold text-sm ${mode === "image-to-video" ? "text-purple-700" : "text-gray-700"}`}>圖片生影片</h3>
                         <p className="text-xs text-gray-500 mt-0.5">將靜態圖片轉為影片</p>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
-                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">3.4積分/秒</span>
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">6.8積分/秒</span>
                         </div>
                       </div>
                     </div>
@@ -897,7 +897,7 @@ export default function Home() {
                         <span className="text-sm text-gray-500">12秒</span>
                       </div>
                       <div className="text-center text-sm font-medium text-purple-600 bg-purple-50 rounded-lg py-1.5">
-                        {Math.round(videoDuration * 3.4)} 積分（{videoDuration}秒 × 3.4積分/秒）
+                        {Math.round(videoDuration * 6.8)} 積分（{videoDuration}秒 × 6.8積分/秒）
                       </div>
                     </div>
                   </div>
@@ -974,7 +974,7 @@ export default function Home() {
 
                 <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                   <i className="fas fa-info-circle"></i>
-                  影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * 3.4)} 積分
+                  影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * 6.8)} 積分
                 </div>
               </CardContent>
             </Card>
@@ -1043,7 +1043,7 @@ export default function Home() {
                             <span className="text-sm text-gray-500">12秒</span>
                           </div>
                           <div className="text-center text-sm font-medium text-purple-600 bg-purple-50 rounded-lg py-1.5">
-                            {Math.round(videoDuration * 3.4)} 積分（{videoDuration}秒 × 3.4積分/秒）
+                            {Math.round(videoDuration * 6.8)} 積分（{videoDuration}秒 × 6.8積分/秒）
                           </div>
                         </div>
                       </div>
@@ -1120,7 +1120,7 @@ export default function Home() {
 
                     <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                       <i className="fas fa-info-circle"></i>
-                      影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * 3.4)} 積分
+                      影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * 6.8)} 積分
                     </div>
                   </div>
                 )}
@@ -1266,7 +1266,7 @@ export default function Home() {
                 </div>
                 <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg text-sm text-purple-700">
                   <span><i className="fas fa-clock mr-1"></i>影片長度：{videoGeneration.duration || 5} 秒</span>
-                  <span className="font-semibold">費用：{Math.round((videoGeneration.duration || 5) * 3.4)} 積分</span>
+                  <span className="font-semibold">費用：{Math.round((videoGeneration.duration || 5) * 6.8)} 積分</span>
                 </div>
                 <div className="flex justify-center gap-3">
                   <Button className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg" onClick={() => {

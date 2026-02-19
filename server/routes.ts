@@ -930,7 +930,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       }
 
       const duration = Math.max(2, Math.min(12, req.body.duration || 5));
-      const VIDEO_CREDITS_PER_SECOND = 3.4;
+      const VIDEO_CREDITS_PER_SECOND = 6.8;
       const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
 
       if ((user.credits || 0) < creditsNeeded) {

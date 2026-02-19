@@ -230,7 +230,7 @@ export class DatabaseStorage implements IStorage {
     if (!updated) return false;
 
     if (updated.userId) {
-      const refundAmount = updated.creditsUsed || Math.round((updated.duration || 5) * 3.4);
+      const refundAmount = updated.creditsUsed || Math.round((updated.duration || 5) * 6.8);
       await this.atomicAddCredits(updated.userId, refundAmount, `影片生成失敗退還 ${refundAmount} 積分`);
     }
     return true;
@@ -266,7 +266,7 @@ export class DatabaseStorage implements IStorage {
       cameraFixed: insertGeneration.cameraFixed ?? false,
       status: "pending",
       cost: 0.10,
-      creditsUsed: Math.round(duration * 3.4),
+      creditsUsed: Math.round(duration * 6.8),
     }).returning();
     return row;
   }

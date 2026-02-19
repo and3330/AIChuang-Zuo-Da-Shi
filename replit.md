@@ -10,9 +10,9 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ## Pricing Model
 - Image generation: 3 credits per image
-- Video generation: 3.4 credits per second (2-12 seconds, proportional pricing based on API cost × 2.5 markup)
+- Video generation: 6.8 credits per second (2-12 seconds, proportional pricing based on API cost × 5 markup)
   - API cost basis: ~$0.0408 USD/sec (Seedance token formula at 1080p 24fps)
-  - Example: 5 sec = 17 credits, 10 sec = 34 credits
+  - Example: 5 sec = 34 credits, 10 sec = 68 credits
 - New user registration bonus: 10 credits
 - 1 credit = 1 TWD (New Taiwan Dollar)
 
@@ -86,11 +86,11 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ## Recent Changes
 - Added email verification for registration using Resend (6-digit code, 10min expiry, prevents duplicate email registration)
-- Changed video pricing to proportional per-second model: 3.4 credits/sec (API cost × 2.5), duration slider 2-12 seconds
+- Changed video pricing to proportional per-second model: 6.8 credits/sec (API cost × 5), duration slider 2-12 seconds
 - Added text-to-video generation (no image required)
 - Added admin dashboard with user management, credit adjustment, transaction/generation history
 - Added member registration/login system with bcrypt password hashing
-- Implemented credit system with pricing: 3/image, 3.4/sec video
+- Implemented credit system with pricing: 3/image, 6.8/sec video
 - Added credit top-up functionality with preset amounts
 - Created transaction history page
 - Updated home page with NavigationHeader, credit balance display, cost indicators
