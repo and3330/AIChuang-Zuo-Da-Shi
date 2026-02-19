@@ -355,7 +355,7 @@ export default function LandingPage() {
             <a href="/privacy" className="hover:text-purple-400 transition-colors">隱私政策</a>
             <a href="/terms" className="hover:text-purple-400 transition-colors">服務條款</a>
           </div>
-          <p className="text-gray-700 text-xs">Powered by BytePlus ARK · SeedDance 4.5 · Seedream</p>
+          <p className="text-gray-700 text-xs">使用模型：SeedDance 2.0 · Seedream 5.0</p>
         </div>
       </footer>
     </div>

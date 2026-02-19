@@ -1487,7 +1487,7 @@ export default function Home() {
               <a href="/terms" className="hover:text-blue-600 transition-colors">服務條款</a>
             </div>
             <p className="text-xs text-gray-300">
-              技術支援：SeedDance 4.5 & Seedream AI API
+              使用模型：SeedDance 2.0 · Seedream 5.0
             </p>
           </div>
         </div>
