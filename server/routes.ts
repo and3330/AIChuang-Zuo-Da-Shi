@@ -1045,15 +1045,60 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         });
       }
 
-      if (generation.additionalImageUrls && generation.additionalImageUrls.length > 0) {
-        console.log(`Loading ${generation.additionalImageUrls.length} additional reference images for video`);
-        for (const additionalUrl of generation.additionalImageUrls) {
-          const additionalDataUri = await loadImageAsBase64(additionalUrl);
-          contentItems.push({
-            type: "image_url",
-            image_url: { url: additionalDataUri }
-          });
-        }
+      if (generation.additionalImageUrls && generation.additionalImageUrls.length > 0 && generation.originalImageUrl) {
+        console.log(`Loading ${generation.additionalImageUrls.length} additional reference images for video - will merge into single composite image`);
+        const sharp = (await import('sharp')).default;
+        
+        const loadImageBuffer = async (imagePath: string): Promise<Buffer> => {
+          const objectFile = await objectStorageService.getObjectEntityFile(imagePath);
+          const chunks: Buffer[] = [];
+          const stream = objectFile.createReadStream();
+          for await (const chunk of stream) {
+            chunks.push(Buffer.from(chunk));
+          }
+          return Buffer.concat(chunks);
+        };
+
+        const allImagePaths = [generation.originalImageUrl, ...generation.additionalImageUrls];
+        const imageBuffers = await Promise.all(allImagePaths.map(p => loadImageBuffer(p)));
+        
+        const targetSize = 512;
+        const resizedImages = await Promise.all(
+          imageBuffers.map(buf => sharp(buf).resize(targetSize, targetSize, { fit: 'cover' }).jpeg().toBuffer())
+        );
+
+        const count = resizedImages.length;
+        const cols = count <= 2 ? count : Math.ceil(Math.sqrt(count));
+        const rows = Math.ceil(count / cols);
+        const compositeWidth = cols * targetSize;
+        const compositeHeight = rows * targetSize;
+
+        const compositeInputs = resizedImages.map((buf, i) => ({
+          input: buf,
+          left: (i % cols) * targetSize,
+          top: Math.floor(i / cols) * targetSize,
+        }));
+
+        const compositeBuffer = await sharp({
+          create: {
+            width: compositeWidth,
+            height: compositeHeight,
+            channels: 3 as const,
+            background: { r: 255, g: 255, b: 255 }
+          }
+        })
+          .composite(compositeInputs)
+          .jpeg({ quality: 85 })
+          .toBuffer();
+
+        const compositeDataUri = `data:image/jpeg;base64,${compositeBuffer.toString('base64')}`;
+        console.log(`✅ Merged ${count} images into ${compositeWidth}x${compositeHeight} composite image`);
+
+        contentItems.pop();
+        contentItems.push({
+          type: "image_url",
+          image_url: { url: compositeDataUri }
+        });
       }
 
       const requestBody = {
