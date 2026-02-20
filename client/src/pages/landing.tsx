@@ -182,8 +182,8 @@ export default function LandingPage() {
                     <span>圖片生影片 — 靜態圖轉動態影片</span>
                   </div>
                   <div className="flex items-center gap-3 text-gray-300">
-                    <i className="fas fa-object-group text-blue-400 w-5 text-center"></i>
-                    <span>多圖參考 — 角色一致性、風格融合</span>
+                    <i className="fas fa-text-width text-blue-400 w-5 text-center"></i>
+                    <span>文字生影片 — 純文字描述生成影片</span>
                   </div>
                   <div className="flex items-center gap-3 text-gray-300">
                     <i className="fas fa-clock text-blue-400 w-5 text-center"></i>
