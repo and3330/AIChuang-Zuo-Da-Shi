@@ -410,6 +410,35 @@ export default function AdminPage() {
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-emerald-100 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-chart-line text-emerald-600"></i>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">利潤（TWD）</p>
+                  {statsLoading || ordersLoading ? (
+                    <p className="text-2xl font-bold">...</p>
+                  ) : (
+                    (() => {
+                      const stripeRevenue = orders?.filter(o => o.description?.includes("Stripe")).reduce((sum, o) => sum + o.amount, 0) || 0;
+                      const apiCostTwd = (stats?.totalCost || 0) * 32;
+                      const profit = stripeRevenue - apiCostTwd;
+                      return (
+                        <div>
+                          <p className={`text-2xl font-bold ${profit >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+                            ${profit.toFixed(0)}
+                          </p>
+                          <p className="text-xs text-gray-400">收入 ${stripeRevenue} - 成本 ${apiCostTwd.toFixed(0)}</p>
+                        </div>
+                      );
+                    })()
+                  )}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
         {!statsLoading && stats && (
