@@ -187,3 +187,35 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   }
 }
+
+@media (max-width: 639px) {
+  body {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  body.pwa-standalone {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  main {
+    padding-bottom: 80px !important;
+  }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 40;
+  }
+
+  .mobile-page-transition {
+    animation: mobileSlideIn 0.2s ease-out;
+  }
+
+  @keyframes mobileSlideIn {
+    from { opacity: 0.8; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}

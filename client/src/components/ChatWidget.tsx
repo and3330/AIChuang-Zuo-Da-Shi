@@ -135,7 +135,7 @@ export default function ChatWidget() {
   return (
     <>
       {isOpen && (
-        <div className="fixed bottom-20 right-4 z-50 w-[360px] max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300" style={{ height: "520px" }}>
+        <div className="fixed bottom-20 max-sm:bottom-[140px] right-4 max-sm:right-2 max-sm:left-2 z-50 w-[360px] max-sm:w-auto max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-gray-200 flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 duration-300" style={{ height: "520px", maxHeight: "calc(100vh - 200px)" }}>
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white px-4 py-3 flex items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
               <div className="w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-lg">
@@ -229,7 +229,7 @@ export default function ChatWidget() {
 
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-4 right-4 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 ${
+        className={`fixed bottom-4 sm:bottom-4 right-4 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 max-sm:bottom-[76px] ${
           isOpen
             ? "bg-gray-600 hover:bg-gray-700"
             : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
