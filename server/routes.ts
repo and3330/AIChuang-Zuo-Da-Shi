@@ -957,6 +957,8 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       });
       
       console.log(`API response status: ${response.status}`);
+      const responseHeaders = Object.fromEntries(response.headers.entries());
+      console.log(`API response headers:`, JSON.stringify(responseHeaders, null, 2));
 
       const processingTime = (Date.now() - startTime) / 1000;
 
@@ -1091,6 +1093,12 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         });
       } else {
         const result = await response.json();
+        console.log(`📋 API response model info:`, JSON.stringify({
+          model: result.model,
+          created: result.created,
+          object: result.object,
+          usage: result.usage
+        }, null, 2));
         const generatedImageUrl = result.data?.[0]?.url;
 
         if (!generatedImageUrl) {
