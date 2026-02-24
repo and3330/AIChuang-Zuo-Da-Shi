@@ -288,7 +288,23 @@ export class DatabaseStorage implements IStorage {
   async createVideoGeneration(insertGeneration: (InsertImageToVideo | InsertTextToVideo) & { userId: string }): Promise<VideoGeneration> {
     const duration = insertGeneration.duration ?? 5;
     const resolution = insertGeneration.resolution ?? "1080p";
+    const aspectRatio = insertGeneration.aspectRatio ?? "16:9";
     const creditsPerSecond = resolution === "720p" ? 3.4 : 6.8;
+
+    const fps = 24;
+    let width: number, height: number;
+    if (resolution === "720p") {
+      if (aspectRatio === "16:9") { width = 1280; height = 720; }
+      else if (aspectRatio === "9:16") { width = 720; height = 1280; }
+      else { width = 720; height = 720; }
+    } else {
+      if (aspectRatio === "16:9") { width = 1920; height = 1080; }
+      else if (aspectRatio === "9:16") { width = 1080; height = 1920; }
+      else { width = 1080; height = 1080; }
+    }
+    const tokenConsumption = (width * height * fps * duration) / 1024;
+    const videoCost = (tokenConsumption / 1_000_000) * 2.4;
+
     const [row] = await db.insert(videoGenerations).values({
       userId: insertGeneration.userId,
       type: insertGeneration.type,
@@ -297,10 +313,10 @@ export class DatabaseStorage implements IStorage {
       prompt: insertGeneration.prompt,
       duration,
       cameraFixed: insertGeneration.cameraFixed ?? false,
-      aspectRatio: insertGeneration.aspectRatio ?? "16:9",
+      aspectRatio,
       resolution,
       status: "pending",
-      cost: 0.10,
+      cost: Math.round(videoCost * 10000) / 10000,
       creditsUsed: Math.round(duration * creditsPerSecond),
     }).returning();
     return row;
