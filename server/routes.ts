@@ -11,6 +11,19 @@ import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
+function fixBunnyCdnUrl(url: string | null | undefined): string | null | undefined {
+  if (!url) return url;
+  const cdnHost = process.env.BUNNY_CDN_HOST || "";
+  if (!cdnHost) return url;
+  const correctHost = cdnHost.startsWith("http") ? cdnHost : `https://${cdnHost}`;
+  return url.replace(/https?:\/\/storage\.bunnycdn\.com/, correctHost);
+}
+
+function fixBunnyCdnUrls(urls: string[] | null | undefined): string[] | null | undefined {
+  if (!urls) return urls;
+  return urls.map(u => fixBunnyCdnUrl(u) as string);
+}
+
 const gmailTransporter = nodemailer.createTransport({
   service: "gmail",
   auth: {
@@ -748,6 +761,8 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         return res.status(404).json({ error: "Generation not found" });
       }
       const result = { ...generation };
+      result.bunnyImageUrl = fixBunnyCdnUrl(result.bunnyImageUrl) as string;
+      result.bunnyImageUrls = fixBunnyCdnUrls(result.bunnyImageUrls) as string[];
       if (result.bunnyImageUrl) {
         result.generatedImageUrl = result.bunnyImageUrl;
       }
@@ -769,6 +784,8 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       }
       const generations = rawGenerations.map(g => {
         const r = { ...g };
+        r.bunnyImageUrl = fixBunnyCdnUrl(r.bunnyImageUrl) as string;
+        r.bunnyImageUrls = fixBunnyCdnUrls(r.bunnyImageUrls) as string[];
         if (r.bunnyImageUrl) r.generatedImageUrl = r.bunnyImageUrl;
         if (r.bunnyImageUrls && r.bunnyImageUrls.length > 0) r.generatedImageUrls = r.bunnyImageUrls;
         return r;
@@ -1175,6 +1192,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         return res.status(404).json({ error: "Video generation not found" });
       }
       const result = { ...generation };
+      result.bunnyVideoUrl = fixBunnyCdnUrl(result.bunnyVideoUrl) as string;
       if (result.bunnyVideoUrl) {
         result.generatedVideoUrl = result.bunnyVideoUrl;
       }
