@@ -332,13 +332,49 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(videoGenerations).where(eq(videoGenerations.userId, userId)).orderBy(desc(videoGenerations.createdAt));
   }
 
-  async getStats(): Promise<{ totalGenerations: number; totalCost: number }> {
+  async getStats(): Promise<{
+    totalGenerations: number;
+    totalCost: number;
+    totalImages: number;
+    totalVideos: number;
+    completedImages: number;
+    completedVideos: number;
+    failedImages: number;
+    failedVideos: number;
+    imageCost: number;
+    videoCost: number;
+    imageCreditsUsed: number;
+    videoCreditsUsed: number;
+    totalCreditsUsed: number;
+  }> {
     const allImages = await db.select().from(imageGenerations);
     const allVideos = await db.select().from(videoGenerations);
-    const totalGenerations = allImages.length + allVideos.length;
-    const imageCost = allImages.reduce((sum, gen) => sum + (gen.cost || 0), 0);
-    const videoCost = allVideos.reduce((sum, gen) => sum + (gen.cost || 0), 0);
-    return { totalGenerations, totalCost: imageCost + videoCost };
+
+    const completedImages = allImages.filter(g => g.status === "completed");
+    const completedVideos = allVideos.filter(g => g.status === "completed");
+    const failedImages = allImages.filter(g => g.status === "failed").length;
+    const failedVideos = allVideos.filter(g => g.status === "failed").length;
+
+    const imageCost = completedImages.reduce((sum, gen) => sum + (gen.cost || 0), 0);
+    const videoCost = completedVideos.reduce((sum, gen) => sum + (gen.cost || 0), 0);
+    const imageCreditsUsed = completedImages.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
+    const videoCreditsUsed = completedVideos.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
+
+    return {
+      totalGenerations: allImages.length + allVideos.length,
+      totalCost: imageCost + videoCost,
+      totalImages: allImages.length,
+      totalVideos: allVideos.length,
+      completedImages: completedImages.length,
+      completedVideos: completedVideos.length,
+      failedImages,
+      failedVideos,
+      imageCost,
+      videoCost,
+      imageCreditsUsed,
+      videoCreditsUsed,
+      totalCreditsUsed: imageCreditsUsed + videoCreditsUsed,
+    };
   }
 
   async createVerificationCode(email: string, code: string, expiresAt: Date): Promise<VerificationCode> {

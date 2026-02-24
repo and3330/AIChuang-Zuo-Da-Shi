@@ -25,6 +25,17 @@ interface AdminStats {
   totalCreditsInCirculation: number;
   totalGenerations: number;
   totalCost: number;
+  totalImages: number;
+  totalVideos: number;
+  completedImages: number;
+  completedVideos: number;
+  failedImages: number;
+  failedVideos: number;
+  imageCost: number;
+  videoCost: number;
+  imageCreditsUsed: number;
+  videoCreditsUsed: number;
+  totalCreditsUsed: number;
 }
 
 interface OrderRecord {
@@ -236,7 +247,7 @@ export default function AdminPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -270,8 +281,21 @@ export default function AdminPage() {
                   <i className="fas fa-image text-purple-600"></i>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">總生成次數</p>
-                  <p className="text-2xl font-bold">{statsLoading ? "..." : stats?.totalGenerations || 0}</p>
+                  <p className="text-sm text-gray-500">圖片生成</p>
+                  <p className="text-2xl font-bold">{statsLoading ? "..." : stats?.completedImages || 0} <span className="text-sm font-normal text-gray-400">/ {stats?.totalImages || 0} 次</span></p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-video text-indigo-600"></i>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">影片生成</p>
+                  <p className="text-2xl font-bold">{statsLoading ? "..." : stats?.completedVideos || 0} <span className="text-sm font-normal text-gray-400">/ {stats?.totalVideos || 0} 次</span></p>
                 </div>
               </div>
             </CardContent>
@@ -283,13 +307,57 @@ export default function AdminPage() {
                   <i className="fas fa-dollar-sign text-green-600"></i>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">API 成本</p>
+                  <p className="text-sm text-gray-500">API 總成本</p>
                   <p className="text-2xl font-bold">${statsLoading ? "..." : (stats?.totalCost || 0).toFixed(2)}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-orange-100 rounded-lg flex items-center justify-center">
+                  <i className="fas fa-fire text-orange-600"></i>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-500">已消耗積分</p>
+                  <p className="text-2xl font-bold">{statsLoading ? "..." : stats?.totalCreditsUsed || 0}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
+
+        {!statsLoading && stats && (
+          <Card>
+            <CardContent className="pt-6">
+              <h3 className="text-sm font-semibold text-gray-700 mb-4 flex items-center gap-2">
+                <i className="fas fa-chart-bar text-blue-500"></i>
+                詳細成本明細
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-purple-50 rounded-lg p-4">
+                  <p className="text-sm font-medium text-purple-700 mb-2">圖片生成</p>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-gray-600">成功</span><span className="font-medium">{stats.completedImages} 張</span></div>
+                    <div className="flex justify-between"><span className="text-gray-600">失敗</span><span className="font-medium text-red-500">{stats.failedImages} 次</span></div>
+                    <div className="flex justify-between"><span className="text-gray-600">消耗積分</span><span className="font-medium">{stats.imageCreditsUsed} 積分</span></div>
+                    <div className="flex justify-between border-t pt-1 mt-1"><span className="text-gray-600">API 成本</span><span className="font-bold text-green-700">${stats.imageCost.toFixed(2)} USD</span></div>
+                  </div>
+                </div>
+                <div className="bg-indigo-50 rounded-lg p-4">
+                  <p className="text-sm font-medium text-indigo-700 mb-2">影片生成</p>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between"><span className="text-gray-600">成功</span><span className="font-medium">{stats.completedVideos} 部</span></div>
+                    <div className="flex justify-between"><span className="text-gray-600">失敗</span><span className="font-medium text-red-500">{stats.failedVideos} 次</span></div>
+                    <div className="flex justify-between"><span className="text-gray-600">消耗積分</span><span className="font-medium">{stats.videoCreditsUsed} 積分</span></div>
+                    <div className="flex justify-between border-t pt-1 mt-1"><span className="text-gray-600">API 成本</span><span className="font-bold text-green-700">${stats.videoCost.toFixed(2)} USD</span></div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {activeTab === "orders" && (
           <Card>
