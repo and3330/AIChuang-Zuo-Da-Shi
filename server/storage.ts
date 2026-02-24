@@ -43,6 +43,9 @@ export interface IStorage {
   markVerificationCodeUsed(id: string): Promise<void>;
   deleteExpiredVerificationCodes(): Promise<void>;
 
+  getUserByTelegramChatId(chatId: string): Promise<User | undefined>;
+  bindTelegramChatId(userId: string, chatId: string): Promise<User | undefined>;
+
   createChatMessage(userId: string, message: string, isAdmin: boolean): Promise<ChatMessage>;
   getChatMessages(userId: string): Promise<ChatMessage[]>;
   getChatsOverview(): Promise<{ userId: string; username: string; email: string; lastMessage: string; lastMessageAt: Date | null; unreadCount: number }[]>;
@@ -68,6 +71,16 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByGoogleId(googleId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.googleId, googleId));
+    return user;
+  }
+
+  async getUserByTelegramChatId(chatId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.telegramChatId, chatId));
+    return user;
+  }
+
+  async bindTelegramChatId(userId: string, chatId: string): Promise<User | undefined> {
+    const [user] = await db.update(users).set({ telegramChatId: chatId }).where(eq(users.id, userId)).returning();
     return user;
   }
 

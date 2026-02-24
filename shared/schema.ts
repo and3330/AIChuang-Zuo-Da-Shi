@@ -12,6 +12,7 @@ export const users = pgTable("users", {
   avatarUrl: text("avatar_url"),
   credits: integer("credits").default(0),
   isAdmin: boolean("is_admin").default(false),
+  telegramChatId: text("telegram_chat_id").unique(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
