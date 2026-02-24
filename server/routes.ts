@@ -1062,7 +1062,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
           bunnyImageUrl,
           bunnyImageUrls,
           processingTime,
-          cost: 0.03 * generatedImageUrls.length
+          cost: 0.05 * generatedImageUrls.length
         });
       } else {
         const result = await response.json();
@@ -1099,7 +1099,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
           generatedImageUrl,
           bunnyImageUrl,
           processingTime,
-          cost: 0.03
+          cost: 0.05
         });
       }
 
