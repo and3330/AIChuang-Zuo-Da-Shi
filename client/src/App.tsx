@@ -18,6 +18,7 @@ import TermsPage from "@/pages/terms";
 import NotFound from "@/pages/not-found";
 import ChatWidget from "@/components/ChatWidget";
 import MobileTabBar from "@/components/MobileTabBar";
+import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import type { User } from "@shared/schema";
 
 export function useUser() {
@@ -359,6 +360,7 @@ function App() {
       <AppContent />
       <ChatWidget />
       <MobileTabBar />
+      <PWAInstallPrompt />
     </QueryClientProvider>
   );
 }
