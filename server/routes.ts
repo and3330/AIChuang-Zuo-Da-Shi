@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import { storage } from "./storage";
@@ -260,7 +261,6 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     if (!GOOGLE_CLIENT_ID) {
       return res.status(500).json({ error: "Google OAuth 未設定" });
     }
-    const { randomBytes } = require("crypto");
     const state = randomBytes(32).toString("hex");
     (req.session as any).oauthState = state;
     const params = new URLSearchParams({
