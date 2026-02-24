@@ -109,7 +109,21 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Contact: Telegram @amyhong0401
 - API: POST /api/chat/send, GET /api/chat/messages, GET /api/chat/unread, POST /api/chat/mark-read
 
+### Telegram Bot
+- server/telegramBot.ts - Full Telegram Bot integration using long-polling
+- Commands: /start, /bind, /verify, /balance, /generate, /video, /history, /help
+- Account binding via email verification (6-digit code, 10min expiry)
+- Text-to-image generation with Bunny CDN upload, sends image back in chat
+- Text-to-video generation (5sec 720P default), sends video back in chat
+- Image editing: send photo + caption to edit
+- Credit deduction with auto-refund on failure
+- Users table has telegramChatId field for account linking
+- Environment secret: TELEGRAM_BOT_TOKEN
+
 ## Recent Changes
+- Added Telegram Bot integration: text-to-image, text-to-video, image editing, account binding with email verification
+- Fixed admin dashboard cost calculation: dynamic recalculation using correct API pricing formulas
+- Fixed chat system: changed req.user!.id to req.session.userId! for all chat endpoints
 - Integrated Bunny.net CDN storage: all generated images/videos auto-uploaded to per-user folders, API returns CDN URLs
 - Removed video multi-image reference (API doesn't support yet, will re-add when SeedDance 2.0 API fully launches)
 - Fixed image-to-image sequential generation display bug: now shows all generated images in grid (was only showing 1)

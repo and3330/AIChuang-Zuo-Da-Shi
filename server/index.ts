@@ -3,6 +3,7 @@ import session from "express-session";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
+import { startTelegramBot } from "./telegramBot";
 
 const app = express();
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
@@ -86,5 +87,6 @@ app.use((req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+    startTelegramBot();
   });
 })();
