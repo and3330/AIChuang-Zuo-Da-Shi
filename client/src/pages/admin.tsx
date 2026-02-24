@@ -51,6 +51,21 @@ interface OrderRecord {
   email: string;
 }
 
+interface GenerationRecord {
+  id: string;
+  userId: string;
+  username: string;
+  email: string;
+  category: "image" | "video";
+  type: string;
+  prompt: string;
+  status: string;
+  creditsUsed: number;
+  duration?: number;
+  createdAt: string;
+  thumbnailUrl: string | null;
+}
+
 interface UserDetail {
   user: {
     id: string;
@@ -102,7 +117,7 @@ export default function AdminPage() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditDescription, setCreditDescription] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"users" | "orders">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "orders" | "generations">("users");
   const [orderSearch, setOrderSearch] = useState("");
   const [promptDialog, setPromptDialog] = useState<{ open: boolean; prompt: string; type: string }>({ open: false, prompt: "", type: "" });
   const [mediaDialog, setMediaDialog] = useState<{ open: boolean; url: string; type: "image" | "video" }>({ open: false, url: "", type: "image" });
@@ -130,6 +145,13 @@ export default function AdminPage() {
   const { data: orders, isLoading: ordersLoading } = useQuery<OrderRecord[]>({
     queryKey: ["/api/admin/orders"],
     enabled: !!user?.isAdmin && activeTab === "orders",
+  });
+
+  const [genSearch, setGenSearch] = useState("");
+  const [genFilter, setGenFilter] = useState<"all" | "image" | "video">("all");
+  const { data: generations, isLoading: generationsLoading } = useQuery<GenerationRecord[]>({
+    queryKey: ["/api/admin/generations"],
+    enabled: !!user?.isAdmin && activeTab === "generations",
   });
 
   const handleAdjustCredits = async () => {
@@ -250,6 +272,16 @@ export default function AdminPage() {
             }`}
           >
             <i className="fas fa-shopping-cart mr-2"></i>訂單管理
+          </button>
+          <button
+            onClick={() => setActiveTab("generations")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "generations"
+                ? "bg-purple-600 text-white shadow-sm"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            <i className="fas fa-stream mr-2"></i>生成紀錄
           </button>
         </div>
 
@@ -470,6 +502,178 @@ export default function AdminPage() {
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+        )}
+
+        {activeTab === "generations" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <i className="fas fa-stream text-purple-500"></i>
+                全站生成紀錄
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                <Input
+                  placeholder="搜尋用戶名稱、電子郵件或提示詞..."
+                  value={genSearch}
+                  onChange={(e) => setGenSearch(e.target.value)}
+                  className="text-sm flex-1"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setGenFilter("all")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      genFilter === "all" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    全部
+                  </button>
+                  <button
+                    onClick={() => setGenFilter("image")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      genFilter === "image" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    <i className="fas fa-image mr-1"></i>圖片
+                  </button>
+                  <button
+                    onClick={() => setGenFilter("video")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      genFilter === "video" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    <i className="fas fa-video mr-1"></i>影片
+                  </button>
+                </div>
+              </div>
+              {generationsLoading ? (
+                <div className="text-center py-8 text-gray-400">
+                  <i className="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                  <p>載入中...</p>
+                </div>
+              ) : !generations || generations.length === 0 ? (
+                <div className="text-center py-12 text-gray-400">
+                  <i className="fas fa-history text-4xl mb-3"></i>
+                  <p>尚無生成紀錄</p>
+                </div>
+              ) : (() => {
+                const filtered = generations
+                  .filter(g => genFilter === "all" || g.category === genFilter)
+                  .filter(g => {
+                    if (!genSearch) return true;
+                    const s = genSearch.toLowerCase();
+                    return (
+                      g.username.toLowerCase().includes(s) ||
+                      g.email.toLowerCase().includes(s) ||
+                      g.prompt.toLowerCase().includes(s)
+                    );
+                  });
+                return (
+                  <>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+                      <div className="p-3 bg-purple-50 rounded-lg text-center">
+                        <p className="text-xs text-gray-500">總紀錄數</p>
+                        <p className="text-xl font-bold text-purple-600">{filtered.length}</p>
+                      </div>
+                      <div className="p-3 bg-green-50 rounded-lg text-center">
+                        <p className="text-xs text-gray-500">成功</p>
+                        <p className="text-xl font-bold text-green-600">{filtered.filter(g => g.status === "completed").length}</p>
+                      </div>
+                      <div className="p-3 bg-yellow-50 rounded-lg text-center">
+                        <p className="text-xs text-gray-500">處理中</p>
+                        <p className="text-xl font-bold text-yellow-600">{filtered.filter(g => g.status === "pending" || g.status === "processing").length}</p>
+                      </div>
+                      <div className="p-3 bg-red-50 rounded-lg text-center">
+                        <p className="text-xs text-gray-500">失敗</p>
+                        <p className="text-xl font-bold text-red-600">{filtered.filter(g => g.status === "failed").length}</p>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b bg-gray-50">
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">時間</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">用戶</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">類型</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">提示詞</th>
+                            <th className="text-left px-3 py-2 font-medium text-gray-600">狀態</th>
+                            <th className="text-right px-3 py-2 font-medium text-gray-600">積分</th>
+                            <th className="text-center px-3 py-2 font-medium text-gray-600">預覽</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filtered.slice(0, 100).map((g) => (
+                            <tr key={`${g.category}-${g.id}`} className="border-b hover:bg-gray-50">
+                              <td className="px-3 py-2 text-gray-500 text-xs whitespace-nowrap">
+                                {new Date(g.createdAt).toLocaleString("zh-TW")}
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="text-sm font-medium">{g.username}</div>
+                                <div className="text-[10px] text-gray-400">{g.email}</div>
+                              </td>
+                              <td className="px-3 py-2">
+                                {g.category === "image" ? (
+                                  <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
+                                    {g.type === "text-to-image" ? "文字生圖" : "圖片編輯"}
+                                  </span>
+                                ) : (
+                                  <span className="px-2 py-0.5 text-xs rounded-full bg-indigo-100 text-indigo-700">
+                                    影片 {g.duration || 5}秒
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-gray-600 text-xs max-w-[200px]">
+                                <span
+                                  className="cursor-pointer hover:text-purple-600 hover:underline truncate block"
+                                  title="點擊查看完整提示詞"
+                                  onClick={() => setPromptDialog({
+                                    open: true,
+                                    prompt: g.prompt,
+                                    type: g.category === "image" ? (g.type === "text-to-image" ? "文字生圖" : "圖片編輯") : `影片 ${g.duration || 5}秒`
+                                  })}
+                                >
+                                  {g.prompt}
+                                </span>
+                              </td>
+                              <td className="px-3 py-2">{getStatusBadge(g.status)}</td>
+                              <td className="px-3 py-2 text-right font-medium">{g.creditsUsed}</td>
+                              <td className="px-3 py-2">
+                                {g.thumbnailUrl ? (
+                                  g.category === "image" ? (
+                                    <img
+                                      src={g.thumbnailUrl}
+                                      alt="生成結果"
+                                      className="w-10 h-10 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                      onClick={() => setMediaDialog({ open: true, url: g.thumbnailUrl!, type: "image" })}
+                                    />
+                                  ) : (
+                                    <div
+                                      className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors"
+                                      onClick={() => setMediaDialog({ open: true, url: g.thumbnailUrl!, type: "video" })}
+                                    >
+                                      <i className="fas fa-play text-xs text-purple-600"></i>
+                                    </div>
+                                  )
+                                ) : (
+                                  <div className="w-10 h-10 bg-gray-50 rounded flex items-center justify-center">
+                                    <i className="fas fa-minus text-xs text-gray-300"></i>
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    {filtered.length > 100 && (
+                      <p className="text-center text-xs text-gray-400 mt-4">僅顯示最近 100 筆紀錄</p>
+                    )}
+                  </>
+                );
+              })()}
             </CardContent>
           </Card>
         )}

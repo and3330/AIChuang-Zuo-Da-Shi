@@ -1524,6 +1524,65 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     }
   });
 
+  app.get("/api/admin/generations", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const allUsers = await storage.getAllUsers();
+      const userMap = new Map(allUsers.map(u => [u.id, { username: u.username, email: u.email }]));
+
+      const rawImages = await storage.getAllImageGenerations();
+      const rawVideos = await storage.getAllVideoGenerations();
+
+      const images = rawImages.map(g => {
+        const r = { ...g };
+        r.bunnyImageUrl = fixBunnyCdnUrl(r.bunnyImageUrl) as string;
+        r.bunnyImageUrls = fixBunnyCdnUrls(r.bunnyImageUrls) as string[];
+        const userInfo = userMap.get(r.userId);
+        return {
+          id: r.id,
+          userId: r.userId,
+          username: userInfo?.username || "未知",
+          email: userInfo?.email || "",
+          category: "image" as const,
+          type: r.type,
+          prompt: r.prompt,
+          status: r.status,
+          creditsUsed: r.creditsUsed || 3,
+          createdAt: r.createdAt,
+          thumbnailUrl: r.bunnyImageUrl || (r.bunnyImageUrls && r.bunnyImageUrls[0]) || null,
+        };
+      });
+
+      const videos = rawVideos.map(g => {
+        const r = { ...g };
+        r.bunnyVideoUrl = fixBunnyCdnUrl(r.bunnyVideoUrl) as string;
+        const userInfo = userMap.get(r.userId);
+        return {
+          id: r.id,
+          userId: r.userId,
+          username: userInfo?.username || "未知",
+          email: userInfo?.email || "",
+          category: "video" as const,
+          type: r.type,
+          prompt: r.prompt,
+          status: r.status,
+          creditsUsed: r.creditsUsed || Math.round((r.duration || 5) * 6.8),
+          duration: r.duration,
+          createdAt: r.createdAt,
+          thumbnailUrl: r.bunnyVideoUrl || null,
+        };
+      });
+
+      const all = [...images, ...videos].sort((a, b) =>
+        new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
+      );
+
+      res.json(all);
+    } catch (error) {
+      console.error("Error fetching admin generations:", error);
+      res.status(500).json({ error: "獲取生成紀錄失敗" });
+    }
+  });
+
   app.get("/api/admin/stats", requireAuth, requireAdmin, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
