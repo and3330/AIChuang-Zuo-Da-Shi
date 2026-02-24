@@ -5,6 +5,7 @@ import { useUser } from "@/App";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/use-seo";
 import { Link } from "wouter";
@@ -79,6 +80,8 @@ interface UserDetail {
     status: string;
     creditsUsed: number;
     createdAt: string;
+    bunnyImageUrl: string | null;
+    bunnyImageUrls: string[] | null;
   }>;
   videoGenerations: Array<{
     id: string;
@@ -87,6 +90,7 @@ interface UserDetail {
     status: string;
     creditsUsed: number;
     createdAt: string;
+    bunnyVideoUrl: string | null;
   }>;
 }
 
@@ -100,6 +104,8 @@ export default function AdminPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"users" | "orders">("users");
   const [orderSearch, setOrderSearch] = useState("");
+  const [promptDialog, setPromptDialog] = useState<{ open: boolean; prompt: string; type: string }>({ open: false, prompt: "", type: "" });
+  const [mediaDialog, setMediaDialog] = useState<{ open: boolean; url: string; type: "image" | "video" }>({ open: false, url: "", type: "image" });
 
   useSeo({
     title: "管理後台 - 系統管理 | AI 創意工坊",
@@ -675,6 +681,7 @@ export default function AdminPage() {
                               <th className="text-left px-3 py-2 font-medium text-gray-600">提示詞</th>
                               <th className="text-left px-3 py-2 font-medium text-gray-600">狀態</th>
                               <th className="text-right px-3 py-2 font-medium text-gray-600">積分</th>
+                              <th className="text-center px-3 py-2 font-medium text-gray-600">預覽</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -686,6 +693,8 @@ export default function AdminPage() {
                                 prompt: g.prompt,
                                 status: g.status,
                                 credits: g.creditsUsed || 3,
+                                mediaType: "image" as const,
+                                thumbnailUrl: g.bunnyImageUrl || (g.bunnyImageUrls && g.bunnyImageUrls[0]) || null,
                               })),
                               ...userDetail.videoGenerations.map((g) => ({
                                 id: g.id,
@@ -694,6 +703,8 @@ export default function AdminPage() {
                                 prompt: g.prompt,
                                 status: g.status,
                                 credits: g.creditsUsed || Math.round((g.duration || 5) * 6.8),
+                                mediaType: "video" as const,
+                                thumbnailUrl: g.bunnyVideoUrl || null,
                               })),
                             ]
                               .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -708,9 +719,40 @@ export default function AdminPage() {
                                       {g.typeLabel}
                                     </span>
                                   </td>
-                                  <td className="px-3 py-2 text-gray-600 text-xs max-w-[200px] truncate">{g.prompt}</td>
+                                  <td className="px-3 py-2 text-gray-600 text-xs max-w-[200px]">
+                                    <span
+                                      className="cursor-pointer hover:text-purple-600 hover:underline truncate block"
+                                      title="點擊查看完整提示詞"
+                                      onClick={() => setPromptDialog({ open: true, prompt: g.prompt, type: g.typeLabel })}
+                                    >
+                                      {g.prompt}
+                                    </span>
+                                  </td>
                                   <td className="px-3 py-2">{getStatusBadge(g.status)}</td>
                                   <td className="px-3 py-2 text-right font-medium">{g.credits}</td>
+                                  <td className="px-3 py-2">
+                                    {g.thumbnailUrl ? (
+                                      g.mediaType === "image" ? (
+                                        <img
+                                          src={g.thumbnailUrl}
+                                          alt="生成結果"
+                                          className="w-10 h-10 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                          onClick={() => setMediaDialog({ open: true, url: g.thumbnailUrl!, type: "image" })}
+                                        />
+                                      ) : (
+                                        <div
+                                          className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors"
+                                          onClick={() => setMediaDialog({ open: true, url: g.thumbnailUrl!, type: "video" })}
+                                        >
+                                          <i className="fas fa-play text-xs text-purple-600"></i>
+                                        </div>
+                                      )
+                                    ) : (
+                                      <div className="w-10 h-10 bg-gray-50 rounded flex items-center justify-center">
+                                        <i className="fas fa-minus text-xs text-gray-300"></i>
+                                      </div>
+                                    )}
+                                  </td>
                                 </tr>
                               ))}
                           </tbody>
@@ -725,6 +767,39 @@ export default function AdminPage() {
         </div>
         )}
       </div>
+
+      <Dialog open={promptDialog.open} onOpenChange={(open) => setPromptDialog((prev) => ({ ...prev, open }))}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <i className="fas fa-comment-alt text-purple-500"></i>
+              完整提示詞
+              <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">{promptDialog.type}</span>
+            </DialogTitle>
+          </DialogHeader>
+          <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 whitespace-pre-wrap break-words max-h-[400px] overflow-y-auto">
+            {promptDialog.prompt}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={mediaDialog.open} onOpenChange={(open) => setMediaDialog((prev) => ({ ...prev, open }))}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <i className={`fas ${mediaDialog.type === "image" ? "fa-image" : "fa-video"} text-purple-500`}></i>
+              {mediaDialog.type === "image" ? "圖片預覽" : "影片預覽"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex items-center justify-center">
+            {mediaDialog.type === "image" ? (
+              <img src={mediaDialog.url} alt="生成結果" className="max-w-full max-h-[70vh] rounded-lg object-contain" />
+            ) : (
+              <video src={mediaDialog.url} controls className="max-w-full max-h-[70vh] rounded-lg" />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
