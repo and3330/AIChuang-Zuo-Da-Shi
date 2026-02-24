@@ -16,6 +16,7 @@ import AdminPage from "@/pages/admin";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 import NotFound from "@/pages/not-found";
+import ChatWidget from "@/components/ChatWidget";
 import type { User } from "@shared/schema";
 
 export function useUser() {
@@ -355,6 +356,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Toaster />
       <AppContent />
+      <ChatWidget />
     </QueryClientProvider>
   );
 }
