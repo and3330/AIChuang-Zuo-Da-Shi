@@ -91,17 +91,17 @@ export class BunnyStorageService {
     return this.getCdnUrl(remotePath);
   }
 
-  async uploadImageFromUrl(sourceUrl: string, userId: string, generationId: string, index?: number): Promise<string> {
+  async uploadImageFromUrl(sourceUrl: string, userFolder: string, generationId: string, index?: number): Promise<string> {
     const ext = "jpg";
     const filename = index !== undefined ? `${generationId}_${index}.${ext}` : `${generationId}.${ext}`;
-    const remotePath = `users/${userId}/images/${filename}`;
+    const remotePath = `users/${userFolder}/images/${filename}`;
     return this.uploadFromUrl(sourceUrl, remotePath);
   }
 
-  async uploadVideoFromUrl(sourceUrl: string, userId: string, generationId: string): Promise<string> {
+  async uploadVideoFromUrl(sourceUrl: string, userFolder: string, generationId: string): Promise<string> {
     const ext = "mp4";
     const filename = `${generationId}.${ext}`;
-    const remotePath = `users/${userId}/videos/${filename}`;
+    const remotePath = `users/${userFolder}/videos/${filename}`;
     return this.uploadFromUrl(sourceUrl, remotePath);
   }
 }

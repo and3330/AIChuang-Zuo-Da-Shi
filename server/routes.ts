@@ -820,6 +820,9 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       const generation = await storage.getImageGeneration(generationId);
       if (!generation) return;
 
+      const generationUser = await storage.getUser(generation.userId);
+      const userFolder = generationUser?.username || generation.userId;
+
       const startTime = Date.now();
       
       let requestBody: any;
@@ -1041,12 +1044,12 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
               }
               const ext = "jpg";
               const filename = `${generationId}_${i}.${ext}`;
-              const remotePath = `users/${generation.userId}/images/${filename}`;
+              const remotePath = `users/${userFolder}/images/${filename}`;
               const cdnUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
               bunnyImageUrls.push(cdnUrl);
             }
             bunnyImageUrl = bunnyImageUrls[0];
-            console.log(`✅ Uploaded ${bunnyImageUrls.length} images to Bunny.net for user ${generation.userId}`);
+            console.log(`✅ Uploaded ${bunnyImageUrls.length} images to Bunny.net for user ${userFolder}`);
           } catch (e) {
             console.error("Bunny upload failed (sequential):", e);
           }
@@ -1083,9 +1086,9 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
               imgBuffer = await addWatermark(imgBuffer);
               console.log(`✅ Watermark added to image`);
             }
-            const remotePath = `users/${generation.userId}/images/${generationId}.jpg`;
+            const remotePath = `users/${userFolder}/images/${generationId}.jpg`;
             bunnyImageUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
-            console.log(`✅ Uploaded image to Bunny.net for user ${generation.userId}: ${bunnyImageUrl}`);
+            console.log(`✅ Uploaded image to Bunny.net for user ${userFolder}: ${bunnyImageUrl}`);
           } catch (e) {
             console.error("Bunny upload failed (single):", e);
           }
@@ -1198,6 +1201,9 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       
       const generation = await storage.getVideoGeneration(generationId);
       if (!generation) return;
+
+      const videoUser = await storage.getUser(generation.userId);
+      const userFolder = videoUser?.username || generation.userId;
 
       const startTime = Date.now();
       const apiKey = process.env.ARK_API_KEY;
@@ -1332,8 +1338,8 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       let bunnyVideoUrl: string | undefined;
       if (bunnyStorage.isConfigured()) {
         try {
-          bunnyVideoUrl = await bunnyStorage.uploadVideoFromUrl(videoUrl, generation.userId, generationId);
-          console.log(`✅ Uploaded video to Bunny.net for user ${generation.userId}: ${bunnyVideoUrl}`);
+          bunnyVideoUrl = await bunnyStorage.uploadVideoFromUrl(videoUrl, userFolder, generationId);
+          console.log(`✅ Uploaded video to Bunny.net for user ${userFolder}: ${bunnyVideoUrl}`);
         } catch (e) {
           console.error("Bunny video upload failed:", e);
         }
