@@ -254,37 +254,41 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
   const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
   const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
-
-  function getGoogleRedirectUri(req: Request): string {
-    const host = req.get("host") || "cmai-marker.com";
-    const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
-    return `${protocol}://${host}/api/auth/google/callback`;
-  }
+  const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || "https://cmai-marker.com/api/auth/google/callback";
 
   app.get("/api/auth/google", (req, res) => {
     if (!GOOGLE_CLIENT_ID) {
       return res.status(500).json({ error: "Google OAuth 未設定" });
     }
-    const redirectUri = getGoogleRedirectUri(req);
+    const { randomBytes } = require("crypto");
+    const state = randomBytes(32).toString("hex");
+    (req.session as any).oauthState = state;
     const params = new URLSearchParams({
       client_id: GOOGLE_CLIENT_ID,
-      redirect_uri: redirectUri,
+      redirect_uri: GOOGLE_REDIRECT_URI,
       response_type: "code",
       scope: "openid email profile",
       access_type: "offline",
       prompt: "select_account",
+      state,
     });
     res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
   });
 
   app.get("/api/auth/google/callback", async (req, res) => {
     try {
-      const { code } = req.query;
+      const { code, state } = req.query;
       if (!code || typeof code !== "string") {
         return res.redirect("/login?error=google_failed");
       }
 
-      const redirectUri = getGoogleRedirectUri(req);
+      const savedState = (req.session as any).oauthState;
+      if (!state || state !== savedState) {
+        console.error("OAuth state mismatch");
+        return res.redirect("/login?error=google_failed");
+      }
+      delete (req.session as any).oauthState;
+
       const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -292,7 +296,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
           code,
           client_id: GOOGLE_CLIENT_ID,
           client_secret: GOOGLE_CLIENT_SECRET,
-          redirect_uri: redirectUri,
+          redirect_uri: GOOGLE_REDIRECT_URI,
           grant_type: "authorization_code",
         }),
       });

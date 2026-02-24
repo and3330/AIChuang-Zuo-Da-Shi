@@ -34,7 +34,13 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 ### Authentication
 - Express session-based auth (express-session + connect-pg-simple)
 - Password hashing with bcryptjs
-- Email verification via Resend (6-digit code, 10min expiry, 60s cooldown)
+- Email verification via Gmail SMTP (6-digit code, 10min expiry, 60s cooldown)
+- Google OAuth 2.0 login/registration (GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI)
+  - GET /api/auth/google - redirect to Google OAuth
+  - GET /api/auth/google/callback - handle OAuth callback, auto-create user if needed
+  - CSRF protection via state parameter
+  - Auto-links Google account if email already exists
+  - New Google users get 10 welcome credits
 - POST /api/auth/send-verification - send verification code to email
 - GET /api/auth/me - check login state
 - POST /api/auth/register - register with verification code (sends 10 welcome credits)
