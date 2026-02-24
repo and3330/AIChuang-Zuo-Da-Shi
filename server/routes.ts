@@ -6,6 +6,7 @@ import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema } from "@shared/schema";
 import nodemailer from "nodemailer";
 import { ObjectStorageService } from "./objectStorage";
+import { BunnyStorageService } from "./bunnyStorage";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -48,6 +49,12 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
+  const bunnyStorage = new BunnyStorageService();
+  if (bunnyStorage.isConfigured()) {
+    console.log("✅ Bunny.net storage configured");
+  } else {
+    console.log("⚠️ Bunny.net storage not configured - files will not be persisted to CDN");
+  }
 
   const BASE_URL = process.env.REPLIT_DEV_DOMAIN
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
@@ -613,7 +620,14 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       if (!generation) {
         return res.status(404).json({ error: "Generation not found" });
       }
-      res.json(generation);
+      const result = { ...generation };
+      if (result.bunnyImageUrl) {
+        result.generatedImageUrl = result.bunnyImageUrl;
+      }
+      if (result.bunnyImageUrls && result.bunnyImageUrls.length > 0) {
+        result.generatedImageUrls = result.bunnyImageUrls;
+      }
+      res.json(result);
     } catch (error) {
       console.error("Error getting image generation:", error);
       res.status(500).json({ error: "Failed to get image generation" });
@@ -622,10 +636,16 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
   app.get("/api/batch-generations/:batchId", async (req, res) => {
     try {
-      const generations = await storage.getImageGenerationsByBatchId(req.params.batchId);
-      if (generations.length === 0) {
+      const rawGenerations = await storage.getImageGenerationsByBatchId(req.params.batchId);
+      if (rawGenerations.length === 0) {
         return res.status(404).json({ error: "Batch not found" });
       }
+      const generations = rawGenerations.map(g => {
+        const r = { ...g };
+        if (r.bunnyImageUrl) r.generatedImageUrl = r.bunnyImageUrl;
+        if (r.bunnyImageUrls && r.bunnyImageUrls.length > 0) r.generatedImageUrls = r.bunnyImageUrls;
+        return r;
+      });
       res.json({
         batchId: req.params.batchId,
         generations,
@@ -880,10 +900,28 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
           return;
         }
         
+        let bunnyImageUrl: string | undefined;
+        let bunnyImageUrls: string[] | undefined;
+        if (bunnyStorage.isConfigured()) {
+          try {
+            bunnyImageUrls = [];
+            for (let i = 0; i < generatedImageUrls.length; i++) {
+              const cdnUrl = await bunnyStorage.uploadImageFromUrl(generatedImageUrls[i], generation.userId, generationId, i);
+              bunnyImageUrls.push(cdnUrl);
+            }
+            bunnyImageUrl = bunnyImageUrls[0];
+            console.log(`✅ Uploaded ${bunnyImageUrls.length} images to Bunny.net for user ${generation.userId}`);
+          } catch (e) {
+            console.error("Bunny upload failed (sequential):", e);
+          }
+        }
+
         await storage.updateImageGeneration(generationId, {
           status: "completed",
           generatedImageUrl: generatedImageUrls[0],
           generatedImageUrls,
+          bunnyImageUrl,
+          bunnyImageUrls,
           processingTime,
           cost: 0.03 * generatedImageUrls.length
         });
@@ -900,9 +938,20 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
           return;
         }
 
+        let bunnyImageUrl: string | undefined;
+        if (bunnyStorage.isConfigured()) {
+          try {
+            bunnyImageUrl = await bunnyStorage.uploadImageFromUrl(generatedImageUrl, generation.userId, generationId);
+            console.log(`✅ Uploaded image to Bunny.net for user ${generation.userId}: ${bunnyImageUrl}`);
+          } catch (e) {
+            console.error("Bunny upload failed (single):", e);
+          }
+        }
+
         await storage.updateImageGeneration(generationId, {
           status: "completed",
           generatedImageUrl,
+          bunnyImageUrl,
           processingTime,
           cost: 0.03
         });
@@ -979,7 +1028,11 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       if (!generation) {
         return res.status(404).json({ error: "Video generation not found" });
       }
-      res.json(generation);
+      const result = { ...generation };
+      if (result.bunnyVideoUrl) {
+        result.generatedVideoUrl = result.bunnyVideoUrl;
+      }
+      res.json(result);
     } catch (error) {
       console.error("Error getting video generation:", error);
       res.status(500).json({ error: "Failed to get video generation" });
@@ -1132,11 +1185,22 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       }
 
       console.log(`✅ Video generation completed: ${videoUrl}`);
+
+      let bunnyVideoUrl: string | undefined;
+      if (bunnyStorage.isConfigured()) {
+        try {
+          bunnyVideoUrl = await bunnyStorage.uploadVideoFromUrl(videoUrl, generation.userId, generationId);
+          console.log(`✅ Uploaded video to Bunny.net for user ${generation.userId}: ${bunnyVideoUrl}`);
+        } catch (e) {
+          console.error("Bunny video upload failed:", e);
+        }
+      }
       
       const videoCostUsd = (generation.duration || 5) * 0.0408;
       await storage.updateVideoGeneration(generationId, {
         status: "completed",
         generatedVideoUrl: videoUrl,
+        bunnyVideoUrl,
         processingTime,
         cost: parseFloat(videoCostUsd.toFixed(4))
       });
