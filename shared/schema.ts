@@ -6,8 +6,10 @@ import { z } from "zod";
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  password: text("password").notNull().default(""),
   email: text("email").notNull().unique(),
+  googleId: text("google_id").unique(),
+  avatarUrl: text("avatar_url"),
   credits: integer("credits").default(0),
   isAdmin: boolean("is_admin").default(false),
   createdAt: timestamp("created_at").defaultNow(),
@@ -86,6 +88,8 @@ export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
   email: true,
+}).extend({
+  password: z.string(),
 });
 
 export const loginSchema = z.object({

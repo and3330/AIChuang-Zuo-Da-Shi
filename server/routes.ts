@@ -225,6 +225,9 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       if (!user) {
         return res.status(401).json({ error: "用户名或密码错误" });
       }
+      if (!user.password) {
+        return res.status(401).json({ error: "此帳號使用 Google 登入，請點擊 Google 登入按鈕" });
+      }
       const isValid = await bcrypt.compare(validatedData.password, user.password);
       if (!isValid) {
         return res.status(401).json({ error: "用户名或密码错误" });
@@ -246,6 +249,126 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     } catch (error) {
       console.error("Error logging in:", error);
       res.status(500).json({ error: "登录失败" });
+    }
+  });
+
+  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || "";
+
+  function getGoogleRedirectUri(req: Request): string {
+    const host = req.get("host") || "cmai-marker.com";
+    const protocol = req.get("x-forwarded-proto") || req.protocol || "https";
+    return `${protocol}://${host}/api/auth/google/callback`;
+  }
+
+  app.get("/api/auth/google", (req, res) => {
+    if (!GOOGLE_CLIENT_ID) {
+      return res.status(500).json({ error: "Google OAuth 未設定" });
+    }
+    const redirectUri = getGoogleRedirectUri(req);
+    const params = new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      redirect_uri: redirectUri,
+      response_type: "code",
+      scope: "openid email profile",
+      access_type: "offline",
+      prompt: "select_account",
+    });
+    res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+  });
+
+  app.get("/api/auth/google/callback", async (req, res) => {
+    try {
+      const { code } = req.query;
+      if (!code || typeof code !== "string") {
+        return res.redirect("/login?error=google_failed");
+      }
+
+      const redirectUri = getGoogleRedirectUri(req);
+      const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id: GOOGLE_CLIENT_ID,
+          client_secret: GOOGLE_CLIENT_SECRET,
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code",
+        }),
+      });
+
+      const tokenData = await tokenRes.json() as any;
+      if (!tokenData.access_token) {
+        console.error("Google token exchange failed:", tokenData);
+        return res.redirect("/login?error=google_failed");
+      }
+
+      const userInfoRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
+        headers: { Authorization: `Bearer ${tokenData.access_token}` },
+      });
+      const googleUser = await userInfoRes.json() as any;
+
+      if (!googleUser.id || !googleUser.email) {
+        return res.redirect("/login?error=google_failed");
+      }
+
+      let user = await storage.getUserByGoogleId(googleUser.id);
+
+      if (!user) {
+        user = await storage.getUserByEmail(googleUser.email);
+        if (user) {
+          await storage.updateUserGoogleId(user.id, googleUser.id, googleUser.picture);
+        }
+      }
+
+      if (!user) {
+        let baseUsername = googleUser.name || googleUser.email.split("@")[0];
+        let username = baseUsername;
+        let suffix = 1;
+        while (await storage.getUserByUsername(username)) {
+          username = `${baseUsername}_${suffix}`;
+          suffix++;
+        }
+
+        user = await storage.createUser({
+          username,
+          email: googleUser.email,
+          password: "",
+        });
+
+        if (googleUser.picture) {
+          await storage.updateUserGoogleId(user.id, googleUser.id, googleUser.picture);
+        } else {
+          await storage.updateUserGoogleId(user.id, googleUser.id);
+        }
+
+        const adminEmails = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+        if (adminEmails.includes(googleUser.email.toLowerCase())) {
+          await storage.setUserAdmin(user.id, true);
+        }
+
+        const welcomeCredits = 10;
+        await storage.updateUserCredits(user.id, welcomeCredits);
+        await storage.createCreditTransaction({
+          userId: user.id,
+          type: "topup",
+          amount: welcomeCredits,
+          balance: welcomeCredits,
+          description: "Google 註冊歡迎獎勵",
+        });
+        user = await storage.getUser(user.id);
+      }
+
+      if (user) {
+        req.session.userId = user.id;
+        req.session.username = user.username;
+        req.session.isAdmin = user.isAdmin || false;
+      }
+
+      res.redirect("/");
+    } catch (error) {
+      console.error("Google OAuth error:", error);
+      res.redirect("/login?error=google_failed");
     }
   });
 
