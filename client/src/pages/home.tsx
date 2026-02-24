@@ -1411,6 +1411,10 @@ export default function Home() {
                 <a href="/account" className="text-blue-600 underline ml-1">前往充值</a>
               </p>
             )}
+            <p className="text-xs text-gray-400 text-center max-w-md">
+              <i className="fas fa-info-circle mr-1"></i>
+              AI 生成為技術交流，如有任何產生社會道德問題，請協尋專業法律諮詢
+            </p>
           </div>
 
           {/* Loading State */}

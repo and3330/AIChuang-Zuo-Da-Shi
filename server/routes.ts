@@ -6,7 +6,7 @@ import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema } from "@shared/schema";
 import nodemailer from "nodemailer";
 import { ObjectStorageService } from "./objectStorage";
-import { BunnyStorageService } from "./bunnyStorage";
+import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -906,7 +906,16 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
           try {
             bunnyImageUrls = [];
             for (let i = 0; i < generatedImageUrls.length; i++) {
-              const cdnUrl = await bunnyStorage.uploadImageFromUrl(generatedImageUrls[i], generation.userId, generationId, i);
+              const imgResp = await fetch(generatedImageUrls[i]);
+              let imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+              if (generation.watermark !== false) {
+                imgBuffer = await addWatermark(imgBuffer);
+                console.log(`✅ Watermark added to sequential image ${i + 1}`);
+              }
+              const ext = "jpg";
+              const filename = `${generationId}_${i}.${ext}`;
+              const remotePath = `users/${generation.userId}/images/${filename}`;
+              const cdnUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
               bunnyImageUrls.push(cdnUrl);
             }
             bunnyImageUrl = bunnyImageUrls[0];
@@ -941,7 +950,14 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         let bunnyImageUrl: string | undefined;
         if (bunnyStorage.isConfigured()) {
           try {
-            bunnyImageUrl = await bunnyStorage.uploadImageFromUrl(generatedImageUrl, generation.userId, generationId);
+            const imgResp = await fetch(generatedImageUrl);
+            let imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+            if (generation.watermark !== false) {
+              imgBuffer = await addWatermark(imgBuffer);
+              console.log(`✅ Watermark added to image`);
+            }
+            const remotePath = `users/${generation.userId}/images/${generationId}.jpg`;
+            bunnyImageUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
             console.log(`✅ Uploaded image to Bunny.net for user ${generation.userId}: ${bunnyImageUrl}`);
           } catch (e) {
             console.error("Bunny upload failed (single):", e);

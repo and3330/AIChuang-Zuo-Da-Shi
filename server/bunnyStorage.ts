@@ -1,7 +1,43 @@
+import sharp from "sharp";
+
 const BUNNY_STORAGE_ZONE = process.env.BUNNY_STORAGE_ZONE || "";
 const BUNNY_ACCESS_KEY = process.env.BUNNY_ACCESS_KEY || "";
 const BUNNY_CDN_HOST = process.env.BUNNY_CDN_HOST || "";
 const BUNNY_STORAGE_BASE = "https://storage.bunnycdn.com";
+
+export async function addWatermark(imageBuffer: Buffer): Promise<Buffer> {
+  const metadata = await sharp(imageBuffer).metadata();
+  const width = metadata.width || 1024;
+  const height = metadata.height || 1024;
+
+  const fontSize = Math.max(14, Math.floor(width / 55));
+  const padding = Math.floor(fontSize * 1.0);
+  const lineHeight = Math.floor(fontSize * 1.5);
+  const lines = [
+    "本圖片為 AI 生成",
+    "使用 Seedream 5.0"
+  ];
+  const blockHeight = lines.length * lineHeight + padding * 2;
+  const blockWidth = Math.floor(fontSize * 14);
+
+  const svgOverlay = `
+    <svg width="${blockWidth}" height="${blockHeight}">
+      <rect x="0" y="0" width="${blockWidth}" height="${blockHeight}" rx="6" ry="6" fill="rgba(0,0,0,0.5)"/>
+      ${lines.map((line, i) => `
+        <text x="${blockWidth - padding}" y="${padding + (i + 1) * lineHeight - Math.floor(fontSize * 0.3)}" 
+              font-family="Arial, Noto Sans CJK TC, sans-serif" font-size="${fontSize}" 
+              fill="rgba(255,255,255,0.9)" text-anchor="end">${line}</text>
+      `).join("")}
+    </svg>`;
+
+  return sharp(imageBuffer)
+    .composite([{
+      input: Buffer.from(svgOverlay),
+      gravity: "southeast",
+    }])
+    .jpeg({ quality: 92 })
+    .toBuffer();
+}
 
 export class BunnyStorageService {
   private storageZone: string;
