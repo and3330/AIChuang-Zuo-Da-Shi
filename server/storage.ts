@@ -286,10 +286,28 @@ export class DatabaseStorage implements IStorage {
     const userImages = await db.select().from(imageGenerations).where(eq(imageGenerations.userId, userId));
     const userVideos = await db.select().from(videoGenerations).where(eq(videoGenerations.userId, userId));
     const totalGenerations = userImages.length + userVideos.length;
-    const imageCost = userImages.reduce((sum, gen) => sum + (gen.cost || 0), 0);
-    const videoCost = userVideos.reduce((sum, gen) => sum + (gen.cost || 0), 0);
-    const imageCredits = userImages.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
-    const videoCredits = userVideos.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
+    const completedUserImages = userImages.filter(g => g.status === 'completed');
+    const completedUserVideos = userVideos.filter(g => g.status === 'completed');
+    const imageCost = completedUserImages.length * 0.05;
+    const videoCost = completedUserVideos.reduce((sum, gen) => {
+      const dur = gen.duration || 5;
+      const r = gen.resolution || '1080p';
+      const ar = gen.aspectRatio || '16:9';
+      let w: number, h: number;
+      if (r === '720p') {
+        if (ar === '16:9') { w = 1280; h = 720; }
+        else if (ar === '9:16') { w = 720; h = 1280; }
+        else { w = 720; h = 720; }
+      } else {
+        if (ar === '16:9') { w = 1920; h = 1080; }
+        else if (ar === '9:16') { w = 1080; h = 1920; }
+        else { w = 1080; h = 1080; }
+      }
+      const tokens = (w * h * 24 * dur) / 1024;
+      return sum + (tokens / 1_000_000) * 2.4;
+    }, 0);
+    const imageCredits = completedUserImages.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
+    const videoCredits = completedUserVideos.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
     return { totalGenerations, totalCost: imageCost + videoCost, totalCreditsUsed: imageCredits + videoCredits };
   }
 
@@ -380,8 +398,27 @@ export class DatabaseStorage implements IStorage {
     const failedImages = allImages.filter(g => g.status === "failed").length;
     const failedVideos = allVideos.filter(g => g.status === "failed").length;
 
-    const imageCost = completedImages.reduce((sum, gen) => sum + (gen.cost || 0), 0);
-    const videoCost = completedVideos.reduce((sum, gen) => sum + (gen.cost || 0), 0);
+    const IMAGE_COST_USD = 0.05;
+    const imageCost = completedImages.length * IMAGE_COST_USD;
+
+    const videoCost = completedVideos.reduce((sum, gen) => {
+      const dur = gen.duration || 5;
+      const r = gen.resolution || '1080p';
+      const ar = gen.aspectRatio || '16:9';
+      let w: number, h: number;
+      if (r === '720p') {
+        if (ar === '16:9') { w = 1280; h = 720; }
+        else if (ar === '9:16') { w = 720; h = 1280; }
+        else { w = 720; h = 720; }
+      } else {
+        if (ar === '16:9') { w = 1920; h = 1080; }
+        else if (ar === '9:16') { w = 1080; h = 1920; }
+        else { w = 1080; h = 1080; }
+      }
+      const tokens = (w * h * 24 * dur) / 1024;
+      return sum + (tokens / 1_000_000) * 2.4;
+    }, 0);
+
     const imageCreditsUsed = completedImages.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
     const videoCreditsUsed = completedVideos.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
 
