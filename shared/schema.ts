@@ -84,6 +84,15 @@ export const verificationCodes = pgTable("verification_codes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  message: text("message").notNull(),
+  isAdmin: boolean("is_admin").default(false),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -196,3 +205,4 @@ export type InsertImageToVideo = z.infer<typeof insertImageToVideoSchema>;
 export type InsertTextToVideo = z.infer<typeof insertTextToVideoSchema>;
 export type ImageGeneration = typeof imageGenerations.$inferSelect;
 export type VideoGeneration = typeof videoGenerations.$inferSelect;
+export type ChatMessage = typeof chatMessages.$inferSelect;

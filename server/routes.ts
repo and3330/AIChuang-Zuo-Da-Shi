@@ -1600,6 +1600,83 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     }
   });
 
+  app.post("/api/chat/send", requireAuth, async (req, res) => {
+    try {
+      const { message } = req.body;
+      if (!message || typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ error: "請輸入訊息" });
+      }
+      const msg = await storage.createChatMessage(req.user!.id, message.trim(), false);
+      res.json(msg);
+    } catch (error) {
+      console.error("Error sending chat message:", error);
+      res.status(500).json({ error: "發送訊息失敗" });
+    }
+  });
+
+  app.get("/api/chat/messages", requireAuth, async (req, res) => {
+    try {
+      const messages = await storage.getChatMessages(req.user!.id);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching chat messages:", error);
+      res.status(500).json({ error: "獲取訊息失敗" });
+    }
+  });
+
+  app.get("/api/chat/unread", requireAuth, async (req, res) => {
+    try {
+      const count = await storage.getUnreadCount(req.user!.id);
+      res.json({ count });
+    } catch (error) {
+      res.json({ count: 0 });
+    }
+  });
+
+  app.post("/api/chat/mark-read", requireAuth, async (req, res) => {
+    try {
+      await storage.markChatMessagesRead(req.user!.id);
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "操作失敗" });
+    }
+  });
+
+  app.get("/api/admin/chats", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const chats = await storage.getChatsOverview();
+      res.json(chats);
+    } catch (error) {
+      console.error("Error fetching admin chats:", error);
+      res.status(500).json({ error: "獲取對話列表失敗" });
+    }
+  });
+
+  app.get("/api/admin/chats/:userId", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const messages = await storage.getChatMessages(req.params.userId);
+      await storage.markChatMessagesRead(req.params.userId);
+      res.json(messages);
+    } catch (error) {
+      console.error("Error fetching chat messages:", error);
+      res.status(500).json({ error: "獲取對話訊息失敗" });
+    }
+  });
+
+  app.post("/api/admin/chats/:userId/reply", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const { message } = req.body;
+      if (!message || typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ error: "請輸入訊息" });
+      }
+      const msg = await storage.createChatMessage(req.params.userId, message.trim(), true);
+      res.json(msg);
+    } catch (error) {
+      console.error("Error sending admin reply:", error);
+      res.status(500).json({ error: "回覆訊息失敗" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

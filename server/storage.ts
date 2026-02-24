@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes } from "@shared/schema";
+import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gt, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -42,6 +42,12 @@ export interface IStorage {
   getRecentVerificationCode(email: string): Promise<VerificationCode | undefined>;
   markVerificationCodeUsed(id: string): Promise<void>;
   deleteExpiredVerificationCodes(): Promise<void>;
+
+  createChatMessage(userId: string, message: string, isAdmin: boolean): Promise<ChatMessage>;
+  getChatMessages(userId: string): Promise<ChatMessage[]>;
+  getChatsOverview(): Promise<{ userId: string; username: string; email: string; lastMessage: string; lastMessageAt: Date | null; unreadCount: number }[]>;
+  markChatMessagesRead(userId: string): Promise<void>;
+  getUnreadCount(userId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -436,6 +442,66 @@ export class DatabaseStorage implements IStorage {
     await db.delete(verificationCodes).where(
       sql`${verificationCodes.expiresAt} < NOW() OR ${verificationCodes.used} = true`
     );
+  }
+
+  async createChatMessage(userId: string, message: string, isAdmin: boolean): Promise<ChatMessage> {
+    const [msg] = await db.insert(chatMessages).values({
+      userId,
+      message,
+      isAdmin,
+      isRead: isAdmin,
+    }).returning();
+    return msg;
+  }
+
+  async getChatMessages(userId: string): Promise<ChatMessage[]> {
+    return db.select().from(chatMessages).where(eq(chatMessages.userId, userId)).orderBy(chatMessages.createdAt);
+  }
+
+  async getChatsOverview(): Promise<{ userId: string; username: string; email: string; lastMessage: string; lastMessageAt: Date | null; unreadCount: number }[]> {
+    const allUsers = await db.select().from(users);
+    const userMap = new Map(allUsers.map(u => [u.id, u]));
+    const allMessages = await db.select().from(chatMessages).orderBy(desc(chatMessages.createdAt));
+
+    const chatMap = new Map<string, { lastMessage: string; lastMessageAt: Date | null; unreadCount: number }>();
+    for (const msg of allMessages) {
+      if (!chatMap.has(msg.userId)) {
+        chatMap.set(msg.userId, {
+          lastMessage: msg.message,
+          lastMessageAt: msg.createdAt,
+          unreadCount: 0,
+        });
+      }
+      if (!msg.isAdmin && !msg.isRead) {
+        const entry = chatMap.get(msg.userId)!;
+        entry.unreadCount++;
+      }
+    }
+
+    return Array.from(chatMap.entries())
+      .map(([userId, data]) => {
+        const user = userMap.get(userId);
+        return {
+          userId,
+          username: user?.username || "未知",
+          email: user?.email || "",
+          ...data,
+        };
+      })
+      .sort((a, b) => (b.lastMessageAt?.getTime() || 0) - (a.lastMessageAt?.getTime() || 0));
+  }
+
+  async markChatMessagesRead(userId: string): Promise<void> {
+    await db.update(chatMessages).set({ isRead: true }).where(
+      and(eq(chatMessages.userId, userId), eq(chatMessages.isAdmin, false))
+    );
+  }
+
+  async getUnreadCount(userId: string): Promise<number> {
+    const msgs = await db.select().from(chatMessages).where(
+      and(eq(chatMessages.userId, userId), eq(chatMessages.isAdmin, true), eq(chatMessages.isRead, false))
+    );
+    return msgs.length;
   }
 }
 

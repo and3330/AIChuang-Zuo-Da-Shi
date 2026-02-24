@@ -30,6 +30,7 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - **imageGenerations**: id, userId, type, prompt, status, resultUrl, cost, etc.
 - **videoGenerations**: id, userId, prompt, duration, status, resultUrl, cost, etc.
 - **verificationCodes**: id, email, code, expiresAt, used, createdAt
+- **chatMessages**: id, userId, message, isAdmin, isRead, createdAt
 
 ### Authentication
 - Express session-based auth (express-session + connect-pg-simple)
@@ -61,7 +62,7 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - **home.tsx**: Main generation page with credit display, cost indicators on buttons
 - **account.tsx**: User profile, credit top-up, pricing info (exports NavigationHeader)
 - **transactions.tsx**: Transaction history with type badges
-- **admin.tsx**: Admin dashboard - user management, credit adjustment, stats overview
+- **admin.tsx**: Admin dashboard - user management, credit adjustment, stats overview, generation logs, customer chat
 - **Routing**: wouter (/, /account, /transactions, /admin)
 - **State**: TanStack Query v5 for server state
 - **UI**: shadcn/ui + Tailwind CSS
@@ -93,7 +94,20 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - GET /api/admin/users/:userId - user detail with transactions & generation history
 - POST /api/admin/users/:userId/credits - adjust user credits (add/deduct)
 - GET /api/admin/stats - platform-wide statistics
+- GET /api/admin/generations - all generation records across all users
+- GET /api/admin/chats - chat conversations overview
+- GET /api/admin/chats/:userId - chat messages for specific user
+- POST /api/admin/chats/:userId/reply - admin reply to user chat
 - Admin link visible only to admin users in NavigationHeader
+
+### Live Chat System
+- Users can send messages via ChatWidget (floating chat bubble)
+- FAQ auto-reply still works for common questions
+- Messages stored in DB, admin can view/reply in admin dashboard "客服對話" tab
+- Polling-based real-time updates (5s for chat list, 3s for active conversation)
+- Unread badge on both user side and admin side
+- Contact: Telegram @amyhong0401
+- API: POST /api/chat/send, GET /api/chat/messages, GET /api/chat/unread, POST /api/chat/mark-read
 
 ## Recent Changes
 - Integrated Bunny.net CDN storage: all generated images/videos auto-uploaded to per-user folders, API returns CDN URLs

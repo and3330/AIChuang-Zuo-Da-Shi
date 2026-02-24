@@ -117,7 +117,7 @@ export default function AdminPage() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditDescription, setCreditDescription] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"users" | "orders" | "generations">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "orders" | "generations" | "chats">("users");
   const [orderSearch, setOrderSearch] = useState("");
   const [promptDialog, setPromptDialog] = useState<{ open: boolean; prompt: string; type: string }>({ open: false, prompt: "", type: "" });
   const [mediaDialog, setMediaDialog] = useState<{ open: boolean; url: string; type: "image" | "video" }>({ open: false, url: "", type: "image" });
@@ -153,6 +153,37 @@ export default function AdminPage() {
     queryKey: ["/api/admin/generations"],
     enabled: !!user?.isAdmin && activeTab === "generations",
   });
+
+  const [selectedChatUserId, setSelectedChatUserId] = useState<string | null>(null);
+  const [chatReply, setChatReply] = useState("");
+  const { data: chatList, isLoading: chatsLoading } = useQuery<{
+    userId: string; username: string; email: string; lastMessage: string; lastMessageAt: string; unreadCount: number;
+  }[]>({
+    queryKey: ["/api/admin/chats"],
+    enabled: !!user?.isAdmin && activeTab === "chats",
+    refetchInterval: activeTab === "chats" ? 5000 : false,
+  });
+  const { data: chatMessages, isLoading: chatMessagesLoading } = useQuery<{
+    id: string; userId: string; message: string; isAdmin: boolean; isRead: boolean; createdAt: string;
+  }[]>({
+    queryKey: ["/api/admin/chats", selectedChatUserId],
+    enabled: !!selectedChatUserId && !!user?.isAdmin && activeTab === "chats",
+    refetchInterval: activeTab === "chats" && selectedChatUserId ? 3000 : false,
+  });
+
+  const handleSendChatReply = async () => {
+    if (!selectedChatUserId || !chatReply.trim()) return;
+    try {
+      await apiRequest("POST", `/api/admin/chats/${selectedChatUserId}/reply`, {
+        message: chatReply.trim(),
+      });
+      setChatReply("");
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chats", selectedChatUserId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/chats"] });
+    } catch (err: any) {
+      toast({ title: "錯誤", description: err?.message || "回覆失敗", variant: "destructive" });
+    }
+  };
 
   const handleAdjustCredits = async () => {
     if (!selectedUserId || !creditAmount) return;
@@ -282,6 +313,21 @@ export default function AdminPage() {
             }`}
           >
             <i className="fas fa-stream mr-2"></i>生成紀錄
+          </button>
+          <button
+            onClick={() => setActiveTab("chats")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all relative ${
+              activeTab === "chats"
+                ? "bg-purple-600 text-white shadow-sm"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+            }`}
+          >
+            <i className="fas fa-comments mr-2"></i>客服對話
+            {chatList && chatList.reduce((sum, c) => sum + c.unreadCount, 0) > 0 && (
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold">
+                {chatList.reduce((sum, c) => sum + c.unreadCount, 0)}
+              </span>
+            )}
           </button>
         </div>
 
@@ -504,6 +550,138 @@ export default function AdminPage() {
               )}
             </CardContent>
           </Card>
+        )}
+
+        {activeTab === "chats" && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-1">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <i className="fas fa-comments text-purple-500"></i>
+                    對話列表
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {chatsLoading ? (
+                    <div className="text-center py-8 text-gray-400">
+                      <i className="fas fa-spinner fa-spin text-2xl mb-2"></i>
+                      <p>載入中...</p>
+                    </div>
+                  ) : !chatList || chatList.length === 0 ? (
+                    <div className="text-center py-12 text-gray-400">
+                      <i className="fas fa-inbox text-4xl mb-3"></i>
+                      <p>尚無對話記錄</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[600px] overflow-y-auto">
+                      {chatList.map((chat) => (
+                        <button
+                          key={chat.userId}
+                          onClick={() => setSelectedChatUserId(chat.userId)}
+                          className={`w-full text-left p-3 rounded-lg border transition-all ${
+                            selectedChatUserId === chat.userId
+                              ? "border-purple-500 bg-purple-50"
+                              : "border-gray-200 hover:border-purple-200 hover:bg-gray-50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-sm flex items-center gap-2">
+                                {chat.username}
+                                {chat.unreadCount > 0 && (
+                                  <span className="px-1.5 py-0.5 text-[10px] bg-red-500 text-white rounded-full font-bold">
+                                    {chat.unreadCount}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-xs text-gray-400 mt-0.5 truncate">{chat.email}</div>
+                              <div className="text-xs text-gray-500 mt-1 truncate">{chat.lastMessage}</div>
+                            </div>
+                            <div className="text-[10px] text-gray-400 whitespace-nowrap ml-2">
+                              {chat.lastMessageAt ? new Date(chat.lastMessageAt).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
+                            </div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="lg:col-span-2">
+              {!selectedChatUserId ? (
+                <Card>
+                  <CardContent className="pt-6">
+                    <div className="text-center py-16 text-gray-400">
+                      <i className="fas fa-comment-dots text-5xl mb-4"></i>
+                      <p>請從左側選擇一個對話查看詳情</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <Card className="flex flex-col" style={{ height: "650px" }}>
+                  <CardHeader className="shrink-0 border-b">
+                    <CardTitle className="text-lg flex items-center gap-2">
+                      <i className="fas fa-user text-purple-500"></i>
+                      {chatList?.find(c => c.userId === selectedChatUserId)?.username || "用戶"} 的對話
+                      <span className="text-xs text-gray-400 font-normal">
+                        {chatList?.find(c => c.userId === selectedChatUserId)?.email}
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex-1 overflow-y-auto py-4 px-4 space-y-3 bg-gray-50">
+                    {chatMessagesLoading ? (
+                      <div className="text-center py-8 text-gray-400">
+                        <i className="fas fa-spinner fa-spin text-2xl"></i>
+                      </div>
+                    ) : !chatMessages || chatMessages.length === 0 ? (
+                      <div className="text-center py-8 text-gray-400">
+                        <p className="text-sm">尚無對話訊息</p>
+                      </div>
+                    ) : (
+                      chatMessages.map((msg) => (
+                        <div key={msg.id} className={`flex ${msg.isAdmin ? "justify-end" : "justify-start"}`}>
+                          <div className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm whitespace-pre-line leading-relaxed ${
+                            msg.isAdmin
+                              ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-tr-sm"
+                              : "bg-white text-gray-800 rounded-tl-sm shadow-sm border border-gray-100"
+                          }`}>
+                            {msg.message}
+                            <div className={`text-[10px] mt-1 ${msg.isAdmin ? "text-white/60" : "text-gray-400"}`}>
+                              {new Date(msg.createdAt).toLocaleString("zh-TW", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                  <div className="shrink-0 px-4 py-3 border-t bg-white flex gap-2">
+                    <Input
+                      value={chatReply}
+                      onChange={(e) => setChatReply(e.target.value)}
+                      placeholder="輸入回覆訊息..."
+                      className="text-sm flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) {
+                          e.preventDefault();
+                          handleSendChatReply();
+                        }
+                      }}
+                    />
+                    <Button
+                      onClick={handleSendChatReply}
+                      disabled={!chatReply.trim()}
+                      className="bg-purple-600 hover:bg-purple-700 text-white"
+                    >
+                      <i className="fas fa-paper-plane mr-1"></i>發送
+                    </Button>
+                  </div>
+                </Card>
+              )}
+            </div>
+          </div>
         )}
 
         {activeTab === "generations" && (

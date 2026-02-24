@@ -1,7 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { useUser } from "@/App";
+import { apiRequest } from "@/lib/queryClient";
 
-interface Message {
-  id: number;
+interface ChatMsg {
+  id: string;
+  userId: string;
+  message: string;
+  isAdmin: boolean;
+  isRead: boolean;
+  createdAt: string;
+}
+
+interface LocalMessage {
+  id: string;
   text: string;
   isBot: boolean;
   timestamp: Date;
@@ -42,15 +53,15 @@ const FAQ_DATA: { keywords: string[]; answer: string }[] = [
   },
   {
     keywords: ["失敗", "錯誤", "不能用", "出問題", "bug"],
-    answer: "生成失敗可能的原因：\n• 積分不足\n• 提示詞包含敏感內容被系統攔截\n• 網路連線問題\n如問題持續，請聯繫客服 Email：support@cmai-marker.com",
+    answer: "生成失敗可能的原因：\n• 積分不足\n• 提示詞包含敏感內容被系統攔截\n• 網路連線問題\n如問題持續，請透過 Telegram 聯繫客服：@amyhong0401",
   },
   {
     keywords: ["退款", "退費", "退回"],
-    answer: "如因系統問題導致生成失敗，積分會自動退回。如有其他退款需求，請聯繫客服 Email：support@cmai-marker.com",
+    answer: "如因系統問題導致生成失敗，積分會自動退回。如有其他退款需求，請透過 Telegram 聯繫客服：@amyhong0401",
   },
   {
     keywords: ["聯繫", "客服", "聯絡", "email", "信箱"],
-    answer: "您可以透過以下方式聯繫我們：\n• Email：support@cmai-marker.com\n• 營運公司：極電行銷整合\n我們會在 1-2 個工作天內回覆。",
+    answer: "您可以透過以下方式聯繫我們：\n• Telegram：@amyhong0401\n• 或直接在這裡留言，我們會盡快回覆！",
   },
   {
     keywords: ["安全", "隱私", "個資"],
@@ -63,34 +74,89 @@ const QUICK_QUESTIONS = [
   "圖片和影片怎麼收費？",
   "怎麼儲值？",
   "支援哪些生成功能？",
-  "生成失敗怎麼辦？",
   "怎麼聯繫客服？",
 ];
 
-function findAnswer(input: string): string {
+function findFaqAnswer(input: string): string | null {
   const lower = input.toLowerCase();
   for (const faq of FAQ_DATA) {
     if (faq.keywords.some((kw) => lower.includes(kw))) {
       return faq.answer;
     }
   }
-  return "抱歉，我暫時無法回答這個問題。您可以嘗試問其他問題，或聯繫客服 Email：support@cmai-marker.com，我們會盡快為您處理。";
+  return null;
 }
 
 export default function ChatWidget() {
+  const { user } = useUser();
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: 0,
-      text: "您好！我是 AI 創意工坊的客服小幫手 🤖\n有什麼問題可以問我，或點擊下方常見問題快速查詢！",
-      isBot: true,
-      timestamp: new Date(),
-    },
-  ]);
+  const [messages, setMessages] = useState<LocalMessage[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [showQuickQuestions, setShowQuickQuestions] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const welcomeMsg: LocalMessage = {
+    id: "welcome",
+    text: "您好！我是 AI 創意工坊的客服小幫手 🤖\n有什麼問題可以問我，或直接留言給客服，我們會盡快回覆！\n\n💬 Telegram：@amyhong0401",
+    isBot: true,
+    timestamp: new Date(),
+  };
+
+  const loadMessages = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch("/api/chat/messages", { credentials: "include" });
+      if (!res.ok) return;
+      const data: ChatMsg[] = await res.json();
+      if (data.length > 0) {
+        const loaded: LocalMessage[] = data.map((m) => ({
+          id: m.id,
+          text: m.message,
+          isBot: m.isAdmin,
+          timestamp: new Date(m.createdAt),
+        }));
+        setMessages([welcomeMsg, ...loaded]);
+        setShowQuickQuestions(false);
+      } else {
+        setMessages([welcomeMsg]);
+        setShowQuickQuestions(true);
+      }
+    } catch {}
+  }, [user]);
+
+  const checkUnread = useCallback(async () => {
+    if (!user) return;
+    try {
+      const res = await fetch("/api/chat/unread", { credentials: "include" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setUnreadCount(data.count || 0);
+    } catch {}
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      checkUnread();
+      const interval = setInterval(checkUnread, 15000);
+      return () => clearInterval(interval);
+    }
+  }, [user, checkUnread]);
+
+  useEffect(() => {
+    if (isOpen && user) {
+      loadMessages();
+      pollingRef.current = setInterval(loadMessages, 5000);
+      return () => {
+        if (pollingRef.current) clearInterval(pollingRef.current);
+      };
+    } else {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    }
+  }, [isOpen, user, loadMessages]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -99,31 +165,44 @@ export default function ChatWidget() {
   useEffect(() => {
     if (isOpen) {
       setTimeout(() => inputRef.current?.focus(), 300);
+      if (user) {
+        fetch("/api/chat/mark-read", { method: "POST", credentials: "include" });
+        setUnreadCount(0);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, user]);
 
-  const sendMessage = (text: string) => {
-    const userMsg: Message = {
-      id: Date.now(),
+  const sendMessage = async (text: string) => {
+    const userMsg: LocalMessage = {
+      id: `local-${Date.now()}`,
       text,
       isBot: false,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
-    setIsTyping(true);
+    setShowQuickQuestions(false);
 
-    setTimeout(() => {
-      const answer = findAnswer(text);
-      const botMsg: Message = {
-        id: Date.now() + 1,
-        text: answer,
-        isBot: true,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, botMsg]);
-      setIsTyping(false);
-    }, 600 + Math.random() * 400);
+    const faqAnswer = findFaqAnswer(text);
+    if (faqAnswer) {
+      setIsTyping(true);
+      setTimeout(() => {
+        const botMsg: LocalMessage = {
+          id: `faq-${Date.now()}`,
+          text: faqAnswer,
+          isBot: true,
+          timestamp: new Date(),
+        };
+        setMessages((prev) => [...prev, botMsg]);
+        setIsTyping(false);
+      }, 500);
+    }
+
+    if (user) {
+      try {
+        await apiRequest("POST", "/api/chat/send", { message: text });
+      } catch {}
+    }
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -143,7 +222,7 @@ export default function ChatWidget() {
               </div>
               <div>
                 <div className="font-semibold text-sm">客服小幫手</div>
-                <div className="text-xs text-white/80">AI 創意工坊</div>
+                <div className="text-xs text-white/80">AI 創意工坊 · 線上客服</div>
               </div>
             </div>
             <button
@@ -184,7 +263,7 @@ export default function ChatWidget() {
               </div>
             )}
 
-            {messages.length === 1 && !isTyping && (
+            {showQuickQuestions && messages.length <= 1 && !isTyping && (
               <div className="space-y-2 mt-2">
                 <p className="text-xs text-gray-400 font-medium px-1">常見問題</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -204,6 +283,12 @@ export default function ChatWidget() {
             <div ref={messagesEndRef} />
           </div>
 
+          {!user && (
+            <div className="px-3 py-2 bg-yellow-50 border-t border-yellow-200 text-center">
+              <p className="text-xs text-yellow-700">請先登入後即可留言給客服</p>
+            </div>
+          )}
+
           <form
             onSubmit={handleSubmit}
             className="px-3 py-2 bg-white border-t border-gray-200 flex gap-2 shrink-0"
@@ -213,12 +298,13 @@ export default function ChatWidget() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="輸入您的問題..."
+              placeholder={user ? "輸入您的問題或留言..." : "請先登入後留言"}
               className="flex-1 px-3 py-2 text-sm bg-gray-100 rounded-full border-0 outline-none focus:ring-2 focus:ring-purple-300 focus:bg-white transition-all"
+              disabled={!user}
             />
             <button
               type="submit"
-              disabled={!input.trim()}
+              disabled={!input.trim() || !user}
               className="w-9 h-9 bg-gradient-to-r from-purple-600 to-blue-600 text-white rounded-full flex items-center justify-center hover:opacity-90 transition-opacity disabled:opacity-40 shrink-0"
             >
               <i className="fas fa-paper-plane text-xs"></i>
@@ -240,9 +326,9 @@ export default function ChatWidget() {
         ) : (
           <i className="fas fa-comment-dots text-white text-xl"></i>
         )}
-        {!isOpen && (
-          <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold animate-pulse">
-            1
+        {!isOpen && unreadCount > 0 && (
+          <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full text-white text-[10px] flex items-center justify-center font-bold animate-pulse">
+            {unreadCount}
           </span>
         )}
       </button>
