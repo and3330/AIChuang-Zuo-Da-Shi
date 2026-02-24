@@ -727,7 +727,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
           batchId: generations[0].batchId,
           generations,
           totalCount: generations.length,
-          totalCost: generations.length * 0.03,
+          totalCost: generations.length * 0.05,
         });
       } else {
         const requestType = req.body.type || "image-to-image";
@@ -1377,7 +1377,21 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         }
       }
       
-      const videoCostUsd = (generation.duration || 5) * 0.0408;
+      const duration = generation.duration || 5;
+      const vidRes = generation.resolution || '1080p';
+      const vidAspect = generation.aspectRatio || '16:9';
+      let vidW: number, vidH: number;
+      if (vidRes === '720p') {
+        if (vidAspect === '16:9') { vidW = 1280; vidH = 720; }
+        else if (vidAspect === '9:16') { vidW = 720; vidH = 1280; }
+        else { vidW = 720; vidH = 720; }
+      } else {
+        if (vidAspect === '16:9') { vidW = 1920; vidH = 1080; }
+        else if (vidAspect === '9:16') { vidW = 1080; vidH = 1920; }
+        else { vidW = 1080; vidH = 1080; }
+      }
+      const tokenConsumption = (vidW * vidH * 24 * duration) / 1024;
+      const videoCostUsd = (tokenConsumption / 1_000_000) * 2.4;
       await storage.updateVideoGeneration(generationId, {
         status: "completed",
         generatedVideoUrl: videoUrl,

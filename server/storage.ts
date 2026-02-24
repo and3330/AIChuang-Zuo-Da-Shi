@@ -189,7 +189,7 @@ export class DatabaseStorage implements IStorage {
       additionalImageUrls: insertGeneration.additionalImageUrls ?? [],
       generatedImageUrls: [],
       status: "pending",
-      cost: 0.03,
+      cost: 0.05,
       creditsUsed: 3,
     }).returning();
 
