@@ -1620,7 +1620,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       if (!message || typeof message !== "string" || !message.trim()) {
         return res.status(400).json({ error: "請輸入訊息" });
       }
-      const msg = await storage.createChatMessage(req.user!.id, message.trim(), false);
+      const msg = await storage.createChatMessage(req.session.userId!, message.trim(), false);
       res.json(msg);
     } catch (error) {
       console.error("Error sending chat message:", error);
@@ -1630,7 +1630,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
   app.get("/api/chat/messages", requireAuth, async (req, res) => {
     try {
-      const messages = await storage.getChatMessages(req.user!.id);
+      const messages = await storage.getChatMessages(req.session.userId!);
       res.json(messages);
     } catch (error) {
       console.error("Error fetching chat messages:", error);
@@ -1640,7 +1640,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
   app.get("/api/chat/unread", requireAuth, async (req, res) => {
     try {
-      const count = await storage.getUnreadCount(req.user!.id);
+      const count = await storage.getUnreadCount(req.session.userId!);
       res.json({ count });
     } catch (error) {
       res.json({ count: 0 });
@@ -1649,7 +1649,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
   app.post("/api/chat/mark-read", requireAuth, async (req, res) => {
     try {
-      await storage.markChatMessagesRead(req.user!.id);
+      await storage.markChatMessagesRead(req.session.userId!);
       res.json({ success: true });
     } catch (error) {
       res.status(500).json({ error: "操作失敗" });
