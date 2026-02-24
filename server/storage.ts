@@ -230,6 +230,8 @@ export class DatabaseStorage implements IStorage {
     if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
     if (updates.creditsUsed !== undefined) dbUpdates.creditsUsed = updates.creditsUsed;
     if (updates.generatedImageUrls !== undefined) dbUpdates.generatedImageUrls = updates.generatedImageUrls;
+    if (updates.bunnyImageUrl !== undefined) dbUpdates.bunnyImageUrl = updates.bunnyImageUrl;
+    if (updates.bunnyImageUrls !== undefined) dbUpdates.bunnyImageUrls = updates.bunnyImageUrls;
 
     const [row] = await db.update(imageGenerations).set(dbUpdates).where(eq(imageGenerations.id, id)).returning();
     return row;
@@ -335,6 +337,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.errorMessage !== undefined) dbUpdates.errorMessage = updates.errorMessage;
     if (updates.processingTime !== undefined) dbUpdates.processingTime = updates.processingTime;
     if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
+    if (updates.bunnyVideoUrl !== undefined) dbUpdates.bunnyVideoUrl = updates.bunnyVideoUrl;
 
     const [row] = await db.update(videoGenerations).set(dbUpdates).where(eq(videoGenerations.id, id)).returning();
     return row;
