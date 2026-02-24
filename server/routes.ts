@@ -806,7 +806,15 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
   app.get("/api/image-generations", async (req, res) => {
     try {
-      const generations = await storage.getAllImageGenerations();
+      const rawGenerations = await storage.getAllImageGenerations();
+      const generations = rawGenerations.map(g => {
+        const r = { ...g };
+        r.bunnyImageUrl = fixBunnyCdnUrl(r.bunnyImageUrl) as string;
+        r.bunnyImageUrls = fixBunnyCdnUrls(r.bunnyImageUrls) as string[];
+        if (r.bunnyImageUrl) r.generatedImageUrl = r.bunnyImageUrl;
+        if (r.bunnyImageUrls && r.bunnyImageUrls.length > 0) r.generatedImageUrls = r.bunnyImageUrls;
+        return r;
+      });
       res.json(generations);
     } catch (error) {
       console.error("Error getting image generations:", error);
@@ -1205,7 +1213,13 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
   app.get("/api/video-generations", async (req, res) => {
     try {
-      const generations = await storage.getAllVideoGenerations();
+      const rawGenerations = await storage.getAllVideoGenerations();
+      const generations = rawGenerations.map(g => {
+        const r = { ...g };
+        r.bunnyVideoUrl = fixBunnyCdnUrl(r.bunnyVideoUrl) as string;
+        if (r.bunnyVideoUrl) r.generatedVideoUrl = r.bunnyVideoUrl;
+        return r;
+      });
       res.json(generations);
     } catch (error) {
       console.error("Error getting video generations:", error);
@@ -1429,8 +1443,23 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       }
       const stats = await storage.getUserStats(user.id);
       const transactions = await storage.getCreditTransactions(user.id);
-      const imageGenerations = await storage.getUserImageGenerations(user.id);
-      const videoGenerations = await storage.getUserVideoGenerations(user.id);
+      const rawImageGenerations = await storage.getUserImageGenerations(user.id);
+      const rawVideoGenerations = await storage.getUserVideoGenerations(user.id);
+
+      const imageGenerations = rawImageGenerations.map(g => {
+        const r = { ...g };
+        r.bunnyImageUrl = fixBunnyCdnUrl(r.bunnyImageUrl) as string;
+        r.bunnyImageUrls = fixBunnyCdnUrls(r.bunnyImageUrls) as string[];
+        if (r.bunnyImageUrl) r.generatedImageUrl = r.bunnyImageUrl;
+        if (r.bunnyImageUrls && r.bunnyImageUrls.length > 0) r.generatedImageUrls = r.bunnyImageUrls;
+        return r;
+      });
+      const videoGenerations = rawVideoGenerations.map(g => {
+        const r = { ...g };
+        r.bunnyVideoUrl = fixBunnyCdnUrl(r.bunnyVideoUrl) as string;
+        if (r.bunnyVideoUrl) r.generatedVideoUrl = r.bunnyVideoUrl;
+        return r;
+      });
 
       res.json({
         user: {
