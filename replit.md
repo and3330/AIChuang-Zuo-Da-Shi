@@ -61,9 +61,13 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - **UI**: shadcn/ui + Tailwind CSS
 
 ### File Storage
-- Google Cloud Storage via Replit Object Storage
-- Direct-to-cloud uploads using presigned URLs
-- Public/private object serving
+- User uploads: Replit Object Storage (temporary)
+- Generated content: Bunny.net CDN (persistent, per-user folders)
+  - Images: `users/{userId}/images/{generationId}.jpg`
+  - Videos: `users/{userId}/videos/{generationId}.mp4`
+  - Environment secrets: BUNNY_STORAGE_ZONE, BUNNY_ACCESS_KEY, BUNNY_CDN_HOST
+  - API endpoints auto-prefer Bunny CDN URLs over temporary API URLs
+- server/bunnyStorage.ts - BunnyStorageService for upload/CDN URL management
 
 ## Key Files
 - shared/schema.ts - Database schema, Zod validation schemas, types
@@ -86,9 +90,9 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Admin link visible only to admin users in NavigationHeader
 
 ## Recent Changes
+- Integrated Bunny.net CDN storage: all generated images/videos auto-uploaded to per-user folders, API returns CDN URLs
+- Removed video multi-image reference (API doesn't support yet, will re-add when SeedDance 2.0 API fully launches)
 - Fixed image-to-image sequential generation display bug: now shows all generated images in grid (was only showing 1)
-- Added multi-image reference support for video generation (backend + storage persistence)
-- Updated landing page and home page feature tags to reflect video multi-image capability
 - Added email verification for registration using Resend (6-digit code, 10min expiry, prevents duplicate email registration)
 - Changed video pricing to proportional per-second model: 6.8 credits/sec (API cost × 5), duration slider 2-12 seconds
 - Added text-to-video generation (no image required)
