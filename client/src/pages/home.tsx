@@ -792,7 +792,6 @@ export default function Home() {
                             ))}
                             {additionalImages.length < 4 && (
                               <UnifiedUploader
-                                key={`additional-uploader-${additionalImages.length}`}
                                 onGetUploadParameters={handleGetUploadParameters}
                                 onComplete={handleAdditionalUploadComplete}
                                 onError={handleUploadError}

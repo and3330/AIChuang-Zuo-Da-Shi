@@ -967,31 +967,11 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         const errorText = await response.text();
         console.log(`❌ BytePlus API Error ${response.status}:`);
         console.log(errorText);
-        let friendlyError = `生成失敗（錯誤代碼 ${response.status}），積分已退還。`;
-        try {
-          const errJson = JSON.parse(errorText);
-          const code = errJson?.error?.code || "";
-          if (code === "OutputImageSensitiveContentDetected") {
-            friendlyError = "圖片因包含敏感內容被系統過濾，請修改提示詞後重試。積分已退還。";
-          } else if (code === "InputImageSensitiveContentDetected") {
-            friendlyError = "上傳的圖片包含敏感內容，請換一張圖片。積分已退還。";
-          } else if (code === "InvalidParameter") {
-            friendlyError = `參數錯誤：${errJson?.error?.message || "請檢查輸入設定後重試。"}積分已退還。`;
-          } else if (errJson?.error?.message) {
-            friendlyError = `${errJson.error.message} 積分已退還。`;
-          }
-        } catch {}
-        try {
-          await storage.failImageGenerationAndRefund(generationId, friendlyError, processingTime);
-          console.log(`✅ Credits refunded for failed generation ${generationId}`);
-        } catch (refundError) {
-          console.error("Error refunding credits:", refundError);
-          await storage.updateImageGeneration(generationId, {
-            status: "failed",
-            errorMessage: friendlyError,
-            processingTime
-          });
-        }
+        await storage.updateImageGeneration(generationId, {
+          status: "failed",
+          errorMessage: `API Error: ${response.status} ${errorText}`,
+          processingTime
+        });
         return;
       }
 
