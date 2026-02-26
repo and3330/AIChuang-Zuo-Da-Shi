@@ -110,12 +110,7 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - API: POST /api/chat/send, GET /api/chat/messages, GET /api/chat/unread, POST /api/chat/mark-read
 
 ### Telegram Bot
-- server/telegramBot.ts - Simple Telegram Bot using long-polling
-- Only command: /start - shows welcome message with inline button to website
-- Any non-command message also shows the website button
-- 409 conflict handling: auto-stops polling if production bot is already running
-- Environment secret: TELEGRAM_BOT_TOKEN
-- Website URL: https://cmai-marker.com
+- 已移除，不再整合 Telegram Bot
 
 ## Recent Changes
 - Added Telegram Bot integration: text-to-image, text-to-video, image editing, account binding with email verification
