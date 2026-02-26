@@ -34,7 +34,7 @@ export function startTelegramBot() {
 
   bot.setMyCommands([
     { command: "start", description: "開始使用" },
-  ]);
+  ]).catch(() => {});
 
   const welcomeKeyboard = {
     inline_keyboard: [[
@@ -55,7 +55,7 @@ export function startTelegramBot() {
       `• 高品質 Seedream 5.0 模型\n\n` +
       `點擊下方按鈕立即開始創作 👇`,
       { reply_markup: welcomeKeyboard }
-    );
+    ).catch(() => {});
   });
 
   bot.on("message", (msg) => {
@@ -64,7 +64,7 @@ export function startTelegramBot() {
       msg.chat.id,
       `請點擊下方按鈕進入網站開始創作 👇`,
       { reply_markup: welcomeKeyboard }
-    );
+    ).catch(() => {});
   });
 
   return bot;

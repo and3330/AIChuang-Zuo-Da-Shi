@@ -50,6 +50,14 @@ app.use((req, res, next) => {
   next();
 });
 
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+});
+
 (async () => {
   const server = await registerRoutes(app);
 
