@@ -22,7 +22,28 @@ export function startTelegramBot() {
     return;
   }
 
-  const bot = new TelegramBot(token, { polling: true });
+  const bot = new TelegramBot(token, {
+    polling: {
+      autoStart: true,
+      params: { timeout: 10 }
+    }
+  });
+
+  let pollingErrorCount = 0;
+  bot.on("polling_error", (err: any) => {
+    const errCode = err?.code || err?.response?.statusCode;
+    const is409 = errCode === 409 || (err?.message && err.message.includes("409"));
+    if (is409) {
+      pollingErrorCount++;
+      if (pollingErrorCount === 1) {
+        console.log("⚠️ Telegram Bot: another instance is running (409), stopping local polling to avoid conflict.");
+        bot.stopPolling().catch(() => {});
+      }
+    } else {
+      console.error("Telegram polling error:", err?.message || err);
+    }
+  });
+
   console.log("✅ Telegram Bot started");
 
   bot.setMyCommands([
