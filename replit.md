@@ -110,15 +110,12 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - API: POST /api/chat/send, GET /api/chat/messages, GET /api/chat/unread, POST /api/chat/mark-read
 
 ### Telegram Bot
-- server/telegramBot.ts - Full Telegram Bot integration using long-polling
-- Commands: /start, /bind, /verify, /balance, /generate, /video, /history, /help
-- Account binding via email verification (6-digit code, 10min expiry)
-- Text-to-image generation with Bunny CDN upload, sends image back in chat
-- Text-to-video generation (5sec 720P default), sends video back in chat
-- Image editing: send photo + caption to edit
-- Credit deduction with auto-refund on failure
-- Users table has telegramChatId field for account linking
+- server/telegramBot.ts - Simple Telegram Bot using long-polling
+- Only command: /start - shows welcome message with inline button to website
+- Any non-command message also shows the website button
+- 409 conflict handling: auto-stops polling if production bot is already running
 - Environment secret: TELEGRAM_BOT_TOKEN
+- Website URL: https://cmai-marker.com
 
 ## Recent Changes
 - Added Telegram Bot integration: text-to-image, text-to-video, image editing, account binding with email verification
