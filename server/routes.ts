@@ -8,6 +8,7 @@ import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextT
 import nodemailer from "nodemailer";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
+import sharp from "sharp";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -1274,7 +1275,34 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         for await (const chunk of stream) {
           chunks.push(Buffer.from(chunk));
         }
-        const imageBuffer = Buffer.concat(chunks);
+        let imageBuffer = Buffer.concat(chunks);
+
+        const MIN_RATIO = 0.40;
+        const MAX_RATIO = 2.50;
+
+        const meta = await sharp(imageBuffer).metadata();
+        const w = meta.width || 1;
+        const h = meta.height || 1;
+        const ratio = w / h;
+
+        if (ratio > MAX_RATIO) {
+          const newW = Math.floor(h * MAX_RATIO);
+          const offsetX = Math.floor((w - newW) / 2);
+          console.log(`⚠️ Image aspect ratio ${ratio.toFixed(2)} > 2.50, cropping width ${w} → ${newW}`);
+          imageBuffer = await sharp(imageBuffer)
+            .extract({ left: offsetX, top: 0, width: newW, height: h })
+            .jpeg()
+            .toBuffer();
+        } else if (ratio < MIN_RATIO) {
+          const newH = Math.floor(w / MIN_RATIO);
+          const offsetY = Math.floor((h - newH) / 2);
+          console.log(`⚠️ Image aspect ratio ${ratio.toFixed(2)} < 0.40, cropping height ${h} → ${newH}`);
+          imageBuffer = await sharp(imageBuffer)
+            .extract({ left: 0, top: offsetY, width: w, height: newH })
+            .jpeg()
+            .toBuffer();
+        }
+
         return `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
       };
 
