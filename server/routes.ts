@@ -77,10 +77,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ? `https://${process.env.REPL_SLUG}.replit.app`
       : "https://ai-creative-workshop.replit.app";
 
-  app.get("/api/health", (_req, res) => {
-    res.json({ status: "ok" });
-  });
-
   app.get("/sitemap.xml", (_req, res) => {
     const pages = [
       { loc: "/", priority: "1.0", changefreq: "daily" },
