@@ -755,7 +755,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     }
   });
 
-  app.get("/api/image-generations/:id", async (req, res) => {
+  app.get("/api/image-generations/:id", requireAuth, async (req, res) => {
     try {
       const generation = await storage.getImageGeneration(req.params.id);
       if (!generation) {
@@ -777,7 +777,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     }
   });
 
-  app.get("/api/batch-generations/:batchId", async (req, res) => {
+  app.get("/api/batch-generations/:batchId", requireAuth, async (req, res) => {
     try {
       const rawGenerations = await storage.getImageGenerationsByBatchId(req.params.batchId);
       if (rawGenerations.length === 0) {
@@ -1061,25 +1061,30 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         let bunnyImageUrl: string | undefined;
         let bunnyImageUrls: string[] | undefined;
         if (bunnyStorage.isConfigured()) {
-          try {
-            bunnyImageUrls = [];
-            for (let i = 0; i < generatedImageUrls.length; i++) {
-              const imgResp = await fetch(generatedImageUrls[i]);
-              let imgBuffer = Buffer.from(await imgResp.arrayBuffer());
-              if (generation.watermark !== false) {
-                imgBuffer = await addWatermark(imgBuffer);
-                console.log(`✅ Watermark added to sequential image ${i + 1}`);
+          bunnyImageUrls = [];
+          for (let i = 0; i < generatedImageUrls.length; i++) {
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              try {
+                const imgResp = await fetch(generatedImageUrls[i]);
+                let imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+                if (generation.watermark !== false) {
+                  imgBuffer = await addWatermark(imgBuffer);
+                  console.log(`✅ Watermark added to sequential image ${i + 1}`);
+                }
+                const filename = `${generationId}_${i}.jpg`;
+                const remotePath = `users/${userFolder}/images/${filename}`;
+                const cdnUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
+                bunnyImageUrls.push(cdnUrl);
+                break;
+              } catch (e) {
+                console.error(`Bunny upload failed (sequential img ${i + 1}, attempt ${attempt}):`, e);
+                if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
               }
-              const ext = "jpg";
-              const filename = `${generationId}_${i}.${ext}`;
-              const remotePath = `users/${userFolder}/images/${filename}`;
-              const cdnUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
-              bunnyImageUrls.push(cdnUrl);
             }
+          }
+          if (bunnyImageUrls.length > 0) {
             bunnyImageUrl = bunnyImageUrls[0];
             console.log(`✅ Uploaded ${bunnyImageUrls.length} images to Bunny.net for user ${userFolder}`);
-          } catch (e) {
-            console.error("Bunny upload failed (sequential):", e);
           }
         }
 
@@ -1113,18 +1118,22 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
         let bunnyImageUrl: string | undefined;
         if (bunnyStorage.isConfigured()) {
-          try {
-            const imgResp = await fetch(generatedImageUrl);
-            let imgBuffer = Buffer.from(await imgResp.arrayBuffer());
-            if (generation.watermark !== false) {
-              imgBuffer = await addWatermark(imgBuffer);
-              console.log(`✅ Watermark added to image`);
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            try {
+              const imgResp = await fetch(generatedImageUrl);
+              let imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+              if (generation.watermark !== false) {
+                imgBuffer = await addWatermark(imgBuffer);
+                console.log(`✅ Watermark added to image`);
+              }
+              const remotePath = `users/${userFolder}/images/${generationId}.jpg`;
+              bunnyImageUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
+              console.log(`✅ Uploaded image to Bunny.net for user ${userFolder}: ${bunnyImageUrl}`);
+              break;
+            } catch (e) {
+              console.error(`Bunny upload failed (single, attempt ${attempt}):`, e);
+              if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
             }
-            const remotePath = `users/${userFolder}/images/${generationId}.jpg`;
-            bunnyImageUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
-            console.log(`✅ Uploaded image to Bunny.net for user ${userFolder}: ${bunnyImageUrl}`);
-          } catch (e) {
-            console.error("Bunny upload failed (single):", e);
           }
         }
 
@@ -1202,7 +1211,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     }
   });
 
-  app.get("/api/video-generations/:id", async (req, res) => {
+  app.get("/api/video-generations/:id", requireAuth, async (req, res) => {
     try {
       const generation = await storage.getVideoGeneration(req.params.id);
       if (!generation) {

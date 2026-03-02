@@ -121,6 +121,11 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Environment secret: TELEGRAM_BOT_TOKEN
 
 ## Recent Changes
+- Fixed session store: switched from MemoryStore to PostgreSQL-backed sessions (connect-pg-simple, createTableIfMissing: true), preventing session loss on restart
+- Fixed session cookie: added httpOnly, sameSite: "lax", secure: production-only settings
+- Fixed security: added requireAuth middleware to GET /api/image-generations/:id, /api/batch-generations/:batchId, /api/video-generations/:id
+- Fixed Bunny CDN upload reliability: added 2-attempt retry with 3s delay for both single and sequential image uploads
+- Fixed video input image aspect ratio: auto-crop images outside 0.40-2.50 range using sharp before sending to API
 - Added Telegram Bot integration: text-to-image, text-to-video, image editing, account binding with email verification
 - Fixed admin dashboard cost calculation: dynamic recalculation using correct API pricing formulas
 - Fixed chat system: changed req.user!.id to req.session.userId! for all chat endpoints
