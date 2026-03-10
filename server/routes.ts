@@ -1788,7 +1788,6 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     objectStorageService: ObjectStorageService,
     bunnyStorage: BunnyStorageService
   ) {
-    const startTime = Date.now();
     try {
       await storage.updateStoryGeneration(storyId, { status: "generating" });
       const story = await storage.getStoryGeneration(storyId);
