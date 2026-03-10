@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/use-seo";
 import type { UploadResult } from "@uppy/core";
-import type { ImageGeneration, VideoGeneration } from "@shared/schema";
+import type { ImageGeneration, VideoGeneration, StoryGeneration, StoryScene } from "@shared/schema";
 
 function InfoTooltip({ text }: { text: string }) {
   const [show, setShow] = useState(false);
@@ -44,7 +44,7 @@ export default function Home() {
     description: "使用 AI 創意工坊生成高品質圖片和影片。支援文字生圖、圖片編輯、多圖融合、序列生成、批次處理、AI 影片生成等功能。",
     keywords: "AI生成,文字生圖,圖片編輯,AI影片,批次生成,序列生成,多圖融合",
   });
-  const [mode, setMode] = useState<"image-to-image" | "text-to-image" | "image-to-video" | "text-to-video">("text-to-image");
+  const [mode, setMode] = useState<"image-to-image" | "text-to-image" | "image-to-video" | "text-to-video" | "story">("text-to-image");
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
   const [uploadedImagePath, setUploadedImagePath] = useState<string>("");
   const [prompt, setPrompt] = useState("把泡泡變成愛心形狀");
@@ -76,6 +76,28 @@ export default function Home() {
   const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
+
+  const STORY_STYLES: { label: string; value: string }[] = [
+    { label: "水彩插畫", value: "Watercolor illustration style, soft colors, gentle brush strokes" },
+    { label: "電影感寫實", value: "Cinematic realistic photography, dramatic lighting, high detail" },
+    { label: "日系動漫", value: "Japanese anime style, clean lines, vibrant colors, expressive characters" },
+    { label: "歐式油畫", value: "European oil painting style, rich textures, classical composition" },
+    { label: "簡約線條插畫", value: "Minimalist line art illustration, clean vector style" },
+    { label: "自訂畫風", value: "custom" },
+  ];
+  const [storyTitle, setStoryTitle] = useState("神秘森林的冒險");
+  const [storyStyle, setStoryStyle] = useState(STORY_STYLES[0].value);
+  const [storyCustomStyle, setStoryCustomStyle] = useState("");
+  const [storySceneCount, setStorySceneCount] = useState(4);
+  const [storyScenes, setStoryScenes] = useState<{ title: string; description: string }[]>([
+    { title: "第一幕", description: "主角在森林入口處發現一扇古老的神秘大門" },
+    { title: "第二幕", description: "大門緩緩開啟，出現一道閃爍的金色光芒" },
+    { title: "第三幕", description: "主角穿越大門，來到一片魔法花園" },
+    { title: "第四幕", description: "花園中心有一棵發光的神木，枝頭棲息著奇幻的生靈" },
+  ]);
+  const [storyRefImages, setStoryRefImages] = useState<{ url: string; path: string }[]>([]);
+  const [currentStoryId, setCurrentStoryId] = useState<string>("");
+  const [storyLightboxIdx, setStoryLightboxIdx] = useState<number | null>(null);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -135,6 +157,39 @@ export default function Home() {
     refetchInterval: (query) => {
       const gen = query.state.data as VideoGeneration | undefined;
       return (gen?.status === "pending" || gen?.status === "processing") ? 3000 : false;
+    },
+  });
+
+  const { data: storyGeneration } = useQuery<StoryGeneration>({
+    queryKey: ["/api/story-generations", currentStoryId],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/story-generations/${currentStoryId}`);
+      return response.json();
+    },
+    enabled: !!currentStoryId,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: (query) => {
+      const gen = query.state.data as StoryGeneration | undefined;
+      return (gen?.status === "pending" || gen?.status === "generating") ? 3000 : false;
+    },
+  });
+
+  const storyMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", "/api/story-generations", data);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      setCurrentStoryId(data.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/story-generations", data.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "故事生成已開始", description: `正在生成「${data.title}」，請稍候...` });
+    },
+    onError: (error: any) => {
+      const msg = error?.message || "無法開始故事生成。";
+      const description = msg.includes("積分不足") ? msg : `故事生成請求失敗：${msg}`;
+      toast({ title: "故事生成失敗", description, variant: "destructive" });
     },
   });
 
@@ -233,6 +288,29 @@ export default function Home() {
   };
 
   const handleGenerate = () => {
+    if (mode === "story") {
+      if (!storyTitle.trim()) {
+        toast({ title: "請填寫故事標題", variant: "destructive" });
+        return;
+      }
+      const hasEmptyScenes = storyScenes.some(s => !s.description.trim());
+      if (hasEmptyScenes) {
+        toast({ title: "請填寫所有場景描述", description: "每一幕都需要有描述才能生成。", variant: "destructive" });
+        return;
+      }
+      const effectiveStyle = storyStyle === "custom" ? storyCustomStyle.trim() : storyStyle;
+      if (!effectiveStyle) {
+        toast({ title: "請填寫自訂畫風描述", variant: "destructive" });
+        return;
+      }
+      storyMutation.mutate({
+        title: storyTitle.trim(),
+        style: effectiveStyle,
+        scenes: storyScenes,
+        referenceImageUrls: storyRefImages.map(r => r.path),
+      });
+      return;
+    }
     if (mode === "image-to-image") {
       if (!uploadedImagePath) {
         toast({ title: "缺少圖片", description: "請先上傳圖片。", variant: "destructive" });
@@ -349,6 +427,43 @@ export default function Home() {
     setAdditionalImages(prev => prev.filter((_, i) => i !== index));
   };
 
+  const handleStoryRefUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
+    if (result.successful && result.successful[0]) {
+      const uploadURL = result.successful[0].uploadURL;
+      try {
+        const response = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
+        const data = await response.json();
+        setStoryRefImages(prev => [...prev, { url: data.objectPath, path: data.objectPath }]);
+        toast({ title: "參考圖片上傳成功", description: `已新增第 ${storyRefImages.length + 1} 張參考圖。` });
+      } catch (error) {
+        toast({ title: "上傳錯誤", description: "處理上傳圖片失敗。", variant: "destructive" });
+      }
+    }
+  };
+
+  const removeStoryRefImage = (index: number) => {
+    setStoryRefImages(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const updateStorySceneCount = (count: number) => {
+    setStorySceneCount(count);
+    setStoryScenes(prev => {
+      const arr = [...prev];
+      while (arr.length < count) arr.push({ title: `第 ${arr.length + 1} 幕`, description: "" });
+      return arr.slice(0, count);
+    });
+  };
+
+  const updateStoryScene = (idx: number, field: "title" | "description", value: string) => {
+    setStoryScenes(prev => {
+      const arr = [...prev];
+      arr[idx] = { ...arr[idx], [field]: value };
+      return arr;
+    });
+  };
+
+  const isStoryGenerating = storyMutation.isPending ||
+    (storyGeneration?.status === "pending" || storyGeneration?.status === "generating");
 
   const isGenerating = generateMutation.isPending || videoGenerateMutation.isPending ||
     (generation?.status === "pending" || generation?.status === "processing") ||
@@ -357,6 +472,7 @@ export default function Home() {
 
   const WATERMARK_REMOVAL_COST = 5;
   const getCreditsNeeded = () => {
+    if (mode === "story") return storySceneCount * 3;
     if (mode === "image-to-video" || mode === "text-to-video") return Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8));
     const perImageCost = watermark ? 3 : 3 + WATERMARK_REMOVAL_COST;
     if (mode === "text-to-image") return isSequentialMode ? perImageCost * sequentialCount : perImageCost;
@@ -370,6 +486,7 @@ export default function Home() {
 
   const isSeedDanceMode = mode === "image-to-image" || mode === "text-to-image";
   const isVideoMode = mode === "image-to-video" || mode === "text-to-video";
+  const isStoryMode = mode === "story";
 
   return (
     <div className="bg-gray-50 min-h-screen font-inter">
@@ -450,6 +567,21 @@ export default function Home() {
                   <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">影片</span>
                 </div>
                 {isVideoMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600" />}
+              </button>
+              <button
+                onClick={() => setMode("story")}
+                className={`flex-1 py-3 px-6 text-sm font-medium transition-all relative ${
+                  isStoryMode
+                    ? "text-emerald-700 bg-emerald-50"
+                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-lg">📖</span>
+                  <span className="font-semibold">故事模式</span>
+                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">分鏡</span>
+                </div>
+                {isStoryMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600" />}
               </button>
             </div>
 
@@ -1359,11 +1491,164 @@ export default function Home() {
             </DialogContent>
           </Dialog>
 
+          {/* ============ STORY MODE INPUT ============ */}
+          {isStoryMode && !isStoryGenerating && storyGeneration?.status !== "completed" && (
+            <Card className="bg-white rounded-xl shadow-sm border border-emerald-200">
+              <CardContent className="p-6 space-y-5">
+                <h2 className="text-base font-semibold text-gray-800 flex items-center gap-2">
+                  <span className="text-xl">📖</span>
+                  故事分鏡設定
+                </h2>
+
+                {/* Story Title */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-1.5 block">故事標題</Label>
+                  <Input
+                    placeholder="例如：神秘森林的冒險"
+                    value={storyTitle}
+                    onChange={e => setStoryTitle(e.target.value)}
+                    className="rounded-xl border-gray-200 focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
+                {/* Style Selection */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
+                    畫風選擇
+                    <InfoTooltip text="選擇整個故事的統一畫面風格，每幕圖片都會套用此風格" />
+                  </Label>
+                  <div className="grid grid-cols-3 gap-2">
+                    {STORY_STYLES.map(s => (
+                      <button
+                        key={s.value}
+                        onClick={() => setStoryStyle(s.value)}
+                        className={`p-2.5 rounded-xl border-2 text-xs font-medium transition-all text-left ${
+                          storyStyle === s.value
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                            : "border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 text-gray-600"
+                        }`}
+                      >
+                        {s.label}
+                      </button>
+                    ))}
+                  </div>
+                  {storyStyle === "custom" && (
+                    <Input
+                      className="mt-2 rounded-xl border-gray-200 focus:ring-2 focus:ring-emerald-500"
+                      placeholder="請描述自訂畫風（英文效果最佳）"
+                      value={storyCustomStyle}
+                      onChange={e => setStoryCustomStyle(e.target.value)}
+                    />
+                  )}
+                </div>
+
+                {/* Scene Count */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
+                    場景數量（{storySceneCount} 幕，共 {storySceneCount * 3} 積分）
+                  </Label>
+                  <div className="flex gap-2">
+                    {[2, 3, 4, 5, 6, 7, 8].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => updateStorySceneCount(n)}
+                        className={`w-9 h-9 rounded-lg border-2 text-sm font-semibold transition-all ${
+                          storySceneCount === n
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                            : "border-gray-200 hover:border-emerald-200 text-gray-600"
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Reference Images */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
+                    參考圖片（選填，最多 4 張）
+                    <InfoTooltip text="上傳角色或場景參考圖，讓每幕風格保持一致。有參考圖時 AI 會以圖生圖，無參考圖時純文字生成" />
+                  </Label>
+                  {storyRefImages.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {storyRefImages.map((img, idx) => (
+                        <div key={idx} className="relative group">
+                          <img
+                            src={`/api/objects/view${img.url.startsWith("/") ? img.url : "/" + img.url}`}
+                            alt={`參考圖 ${idx + 1}`}
+                            className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                            onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/64?text=圖" }}
+                          />
+                          <button
+                            onClick={() => removeStoryRefImage(idx)}
+                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                          >
+                            ×
+                          </button>
+                          <span className="absolute bottom-0 left-0 right-0 text-center text-white text-xs bg-black/40 rounded-b-lg">#{idx + 1}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {storyRefImages.length < 4 && (
+                    <UnifiedUploader
+                      maxNumberOfFiles={1}
+                      maxFileSize={10485760}
+                      onGetUploadParameters={handleGetUploadParameters}
+                      onComplete={handleStoryRefUploadComplete}
+                      className="w-full"
+                    >
+                      點擊或拖曳上傳參考圖（{storyRefImages.length}/4）
+                    </UnifiedUploader>
+                  )}
+                </div>
+
+                {/* Scene Cards */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                    各幕場景描述
+                  </Label>
+                  <div className="space-y-3">
+                    {storyScenes.slice(0, storySceneCount).map((scene, idx) => (
+                      <div key={idx} className="border border-gray-200 rounded-xl p-4 space-y-2 hover:border-emerald-200 transition-colors">
+                        <div className="flex items-center gap-2">
+                          <span className="w-7 h-7 bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0">
+                            {idx + 1}
+                          </span>
+                          <Input
+                            value={scene.title}
+                            onChange={e => updateStoryScene(idx, "title", e.target.value)}
+                            className="text-sm font-medium border-none p-0 h-auto focus:ring-0 shadow-none text-gray-700"
+                            placeholder={`第 ${idx + 1} 幕`}
+                          />
+                        </div>
+                        <Textarea
+                          rows={2}
+                          value={scene.description}
+                          onChange={e => updateStoryScene(idx, "description", e.target.value)}
+                          placeholder={`描述第 ${idx + 1} 幕的場景內容（例如：主角站在山頂俯瞰整個城市，夕陽西下）`}
+                          className="resize-none text-sm border-gray-100 bg-gray-50 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <p className="text-xs text-gray-400">
+                  <i className="fas fa-info-circle mr-1"></i>
+                  故事生成按順序逐幕進行，共需 {storySceneCount * 3} 積分（每幕 3 積分）。生成中可即時看到各幕進度。
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Generate Button */}
           <div className="flex flex-col items-center gap-3">
             <Button
               onClick={handleGenerate}
               disabled={
+                isStoryMode ? (isStoryGenerating || !hasEnoughCredits || storyScenes.slice(0, storySceneCount).some(s => !s.description.trim()) || !storyTitle.trim()) :
                 (mode === "image-to-image" && !uploadedImagePath) ||
                 (mode === "image-to-image" && !isBatchMode && !prompt.trim()) ||
                 (mode === "image-to-image" && isBatchMode && batchPrompts.filter(p => p.trim()).length < 2) ||
@@ -1372,9 +1657,27 @@ export default function Home() {
                 (mode === "image-to-video" && (!uploadedImagePath || !videoPrompt.trim())) ||
                 isGenerating || !hasEnoughCredits
               }
-              className={`${isVideoMode ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"} text-white font-semibold px-10 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 flex items-center gap-3 text-base`}
+              className={`${isStoryMode ? "bg-emerald-600 hover:bg-emerald-700" : isVideoMode ? "bg-purple-600 hover:bg-purple-700" : "bg-blue-600 hover:bg-blue-700"} text-white font-semibold px-10 py-4 rounded-xl shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-200 flex items-center gap-3 text-base`}
             >
-              {isGenerating ? (
+              {isStoryMode ? (
+                isStoryGenerating ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>正在生成故事...</span>
+                  </>
+                ) : storyGeneration?.status === "completed" ? (
+                  <>
+                    <i className="fas fa-redo"></i>
+                    <span>重新生成故事</span>
+                  </>
+                ) : (
+                  <>
+                    <span>✨</span>
+                    <span>生成故事（{storySceneCount} 幕）</span>
+                    <span className="text-sm bg-emerald-500 px-2.5 py-0.5 rounded-full">{creditsNeeded} 積分</span>
+                  </>
+                )
+              ) : isGenerating ? (
                 <>
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>
@@ -1817,6 +2120,205 @@ export default function Home() {
                     </Button>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ============ STORY PROGRESS ============ */}
+          {isStoryMode && isStoryGenerating && currentStoryId && (
+            <Card className="bg-white rounded-xl shadow-sm border border-emerald-200">
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin flex-shrink-0" style={{ borderWidth: 3 }} />
+                    <div>
+                      <h3 className="font-semibold text-gray-800">正在生成故事分鏡</h3>
+                      <p className="text-sm text-gray-500">
+                        {(() => {
+                          if (!storyGeneration) return "初始化中...";
+                          const scenes: StoryScene[] = JSON.parse(storyGeneration.scenes || "[]");
+                          const done = scenes.filter(s => s.status === "completed").length;
+                          const total = scenes.length;
+                          return `已完成 ${done} / ${total} 幕，請耐心等待...`;
+                        })()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                      style={{
+                        width: (() => {
+                          if (!storyGeneration) return "5%";
+                          const scenes: StoryScene[] = JSON.parse(storyGeneration.scenes || "[]");
+                          const done = scenes.filter(s => s.status === "completed").length;
+                          return `${Math.max(5, Math.round((done / scenes.length) * 100))}%`;
+                        })()
+                      }}
+                    />
+                  </div>
+                  {storyGeneration && (() => {
+                    const scenes: StoryScene[] = JSON.parse(storyGeneration.scenes || "[]");
+                    return (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
+                        {scenes.map((scene, idx) => (
+                          <div key={idx} className="rounded-xl overflow-hidden border border-gray-200">
+                            {scene.status === "completed" && (scene.bunnyUrl || scene.imageUrl) ? (
+                              <img
+                                src={scene.bunnyUrl || scene.imageUrl}
+                                alt={scene.title}
+                                className="w-full aspect-square object-cover"
+                              />
+                            ) : (
+                              <div className="w-full aspect-square bg-gray-100 flex items-center justify-center">
+                                {scene.status === "generating" ? (
+                                  <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                ) : scene.status === "failed" ? (
+                                  <i className="fas fa-times-circle text-red-400 text-xl"></i>
+                                ) : (
+                                  <span className="text-gray-400 text-xs">第 {idx + 1} 幕</span>
+                                )}
+                              </div>
+                            )}
+                            <div className="p-2 bg-white">
+                              <p className="text-xs font-medium text-gray-700 truncate">{scene.title || `第 ${idx + 1} 幕`}</p>
+                              <span className={`text-xs ${
+                                scene.status === "completed" ? "text-emerald-600" :
+                                scene.status === "generating" ? "text-blue-500" :
+                                scene.status === "failed" ? "text-red-500" : "text-gray-400"
+                              }`}>
+                                {scene.status === "completed" ? "✓ 完成" :
+                                 scene.status === "generating" ? "生成中..." :
+                                 scene.status === "failed" ? "失敗" : "等待中"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ============ STORY RESULT ============ */}
+          {isStoryMode && storyGeneration?.status === "completed" && (
+            <Card className="bg-white rounded-xl shadow-sm border border-emerald-200">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-5">
+                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
+                    <span className="text-xl">📖</span>
+                    {storyGeneration.title}
+                  </h2>
+                  <Button
+                    variant="outline"
+                    className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg text-sm"
+                    onClick={() => {
+                      setCurrentStoryId("");
+                    }}
+                  >
+                    <i className="fas fa-plus mr-2"></i>新故事
+                  </Button>
+                </div>
+
+                {(() => {
+                  const scenes: StoryScene[] = JSON.parse(storyGeneration.scenes || "[]");
+                  const cols = scenes.length <= 3 ? scenes.length : scenes.length <= 6 ? 3 : 4;
+                  return (
+                    <>
+                      <div className={`grid grid-cols-2 ${cols >= 3 ? "sm:grid-cols-3" : ""} ${cols >= 4 ? "lg:grid-cols-4" : ""} gap-4`}>
+                        {scenes.map((scene, idx) => {
+                          const imgUrl = scene.bunnyUrl || scene.imageUrl;
+                          return (
+                            <div key={idx} className="rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
+                              onClick={() => setStoryLightboxIdx(idx)}>
+                              {imgUrl ? (
+                                <div className="relative">
+                                  <img src={imgUrl} alt={scene.title} className="w-full aspect-square object-cover group-hover:scale-105 transition-transform duration-300" />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                    <i className="fas fa-search-plus text-white text-xl"></i>
+                                  </div>
+                                  <span className="absolute top-2 left-2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">第 {idx + 1} 幕</span>
+                                </div>
+                              ) : (
+                                <div className="w-full aspect-square bg-red-50 flex items-center justify-center">
+                                  <i className="fas fa-times-circle text-red-400 text-xl"></i>
+                                </div>
+                              )}
+                              <div className="p-3 bg-white">
+                                <p className="text-xs font-semibold text-gray-700 mb-0.5">{scene.title || `第 ${idx + 1} 幕`}</p>
+                                <p className="text-xs text-gray-500 line-clamp-2">{scene.description}</p>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <div className="mt-5 pt-4 border-t border-gray-100 flex flex-wrap gap-3 justify-center">
+                        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg" onClick={() => {
+                          scenes.filter(s => s.bunnyUrl || s.imageUrl).forEach((scene, idx) => {
+                            const url = scene.bunnyUrl || scene.imageUrl;
+                            if (!url) return;
+                            setTimeout(() => {
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.download = `story-${idx + 1}.jpg`;
+                              link.target = "_blank";
+                              link.click();
+                            }, idx * 150);
+                          });
+                        }}>
+                          <i className="fas fa-download mr-2"></i>下載全部圖片
+                        </Button>
+                        <Button variant="secondary" className="bg-gray-100 hover:bg-gray-200 rounded-lg" onClick={() => setCurrentStoryId("")}>
+                          <i className="fas fa-redo mr-2"></i>重新生成
+                        </Button>
+                      </div>
+
+                      {/* Story Lightbox */}
+                      {storyLightboxIdx !== null && (
+                        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4" onClick={() => setStoryLightboxIdx(null)}>
+                          <div className="relative max-w-2xl w-full" onClick={e => e.stopPropagation()}>
+                            <button className="absolute -top-10 right-0 text-white text-sm hover:text-gray-300" onClick={() => setStoryLightboxIdx(null)}>
+                              <i className="fas fa-times mr-1"></i>關閉
+                            </button>
+                            <div className="flex items-center gap-3">
+                              <button
+                                className="text-white text-2xl hover:text-emerald-400 flex-shrink-0"
+                                onClick={() => setStoryLightboxIdx(Math.max(0, storyLightboxIdx - 1))}
+                                disabled={storyLightboxIdx === 0}
+                              >
+                                <i className="fas fa-chevron-left"></i>
+                              </button>
+                              <div className="flex-1">
+                                {(() => {
+                                  const s = scenes[storyLightboxIdx];
+                                  const url = s?.bunnyUrl || s?.imageUrl;
+                                  return url ? (
+                                    <img src={url} alt={s.title} className="w-full rounded-xl" />
+                                  ) : null;
+                                })()}
+                                <div className="mt-3 text-center">
+                                  <p className="text-white font-semibold">{scenes[storyLightboxIdx]?.title || `第 ${storyLightboxIdx + 1} 幕`}</p>
+                                  <p className="text-gray-300 text-sm mt-1">{scenes[storyLightboxIdx]?.description}</p>
+                                </div>
+                              </div>
+                              <button
+                                className="text-white text-2xl hover:text-emerald-400 flex-shrink-0"
+                                onClick={() => setStoryLightboxIdx(Math.min(scenes.length - 1, storyLightboxIdx + 1))}
+                                disabled={storyLightboxIdx === scenes.length - 1}
+                              >
+                                <i className="fas fa-chevron-right"></i>
+                              </button>
+                            </div>
+                            <p className="text-center text-gray-400 text-xs mt-3">{storyLightboxIdx + 1} / {scenes.length}</p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </CardContent>
             </Card>
           )}

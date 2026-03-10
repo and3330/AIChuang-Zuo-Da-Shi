@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages } from "@shared/schema";
+import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, type StoryGeneration, type InsertStoryGeneration, type StoryScene, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages, storyGenerations } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gt, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -51,6 +51,12 @@ export interface IStorage {
   getChatsOverview(): Promise<{ userId: string; username: string; email: string; lastMessage: string; lastMessageAt: Date | null; unreadCount: number }[]>;
   markChatMessagesRead(userId: string): Promise<void>;
   getUnreadCount(userId: string): Promise<number>;
+
+  createStoryGeneration(data: InsertStoryGeneration & { userId: string; creditsUsed: number }): Promise<StoryGeneration>;
+  getStoryGeneration(id: string): Promise<StoryGeneration | undefined>;
+  updateStoryGeneration(id: string, updates: Partial<StoryGeneration>): Promise<StoryGeneration | undefined>;
+  getUserStoryGenerations(userId: string): Promise<StoryGeneration[]>;
+  failStoryGenerationAndRefund(id: string, errorMessage: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -552,6 +558,59 @@ export class DatabaseStorage implements IStorage {
       and(eq(chatMessages.userId, userId), eq(chatMessages.isAdmin, true), eq(chatMessages.isRead, false))
     );
     return msgs.length;
+  }
+
+  async createStoryGeneration(data: InsertStoryGeneration & { userId: string; creditsUsed: number }): Promise<StoryGeneration> {
+    const scenes: StoryScene[] = data.scenes.map((s, i) => ({
+      id: `scene_${i}`,
+      title: s.title || `第 ${i + 1} 幕`,
+      description: s.description,
+      status: "pending" as const,
+    }));
+    const [row] = await db.insert(storyGenerations).values({
+      userId: data.userId,
+      title: data.title,
+      style: data.style,
+      sceneCount: data.scenes.length,
+      referenceImageUrls: data.referenceImageUrls ?? [],
+      scenes: JSON.stringify(scenes),
+      status: "pending",
+      creditsUsed: data.creditsUsed,
+      cost: 0,
+    }).returning();
+    return row;
+  }
+
+  async getStoryGeneration(id: string): Promise<StoryGeneration | undefined> {
+    const [row] = await db.select().from(storyGenerations).where(eq(storyGenerations.id, id));
+    return row;
+  }
+
+  async updateStoryGeneration(id: string, updates: Partial<StoryGeneration>): Promise<StoryGeneration | undefined> {
+    const dbUpdates: any = { updatedAt: new Date() };
+    if (updates.status !== undefined) dbUpdates.status = updates.status;
+    if (updates.scenes !== undefined) dbUpdates.scenes = updates.scenes;
+    if (updates.errorMessage !== undefined) dbUpdates.errorMessage = updates.errorMessage;
+    if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
+    if (updates.creditsUsed !== undefined) dbUpdates.creditsUsed = updates.creditsUsed;
+    const [row] = await db.update(storyGenerations).set(dbUpdates).where(eq(storyGenerations.id, id)).returning();
+    return row;
+  }
+
+  async getUserStoryGenerations(userId: string): Promise<StoryGeneration[]> {
+    return db.select().from(storyGenerations).where(eq(storyGenerations.userId, userId)).orderBy(desc(storyGenerations.createdAt));
+  }
+
+  async failStoryGenerationAndRefund(id: string, errorMessage: string): Promise<boolean> {
+    const [updated] = await db.update(storyGenerations)
+      .set({ status: "failed", errorMessage, updatedAt: new Date() })
+      .where(sql`${storyGenerations.id} = ${id} AND ${storyGenerations.status} != 'failed'`)
+      .returning();
+    if (!updated) return false;
+    if (updated.userId && updated.creditsUsed && updated.creditsUsed > 0) {
+      await this.atomicAddCredits(updated.userId, updated.creditsUsed, `故事生成失敗退還 ${updated.creditsUsed} 積分`);
+    }
+    return true;
   }
 }
 

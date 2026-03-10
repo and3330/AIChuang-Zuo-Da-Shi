@@ -4,7 +4,7 @@ import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import { storage } from "./storage";
-import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema } from "@shared/schema";
+import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene } from "@shared/schema";
 import nodemailer from "nodemailer";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
@@ -1735,6 +1735,182 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       res.status(500).json({ error: "回覆訊息失敗" });
     }
   });
+
+  app.post("/api/story-generations", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const validated = insertStoryGenerationSchema.safeParse(req.body);
+      if (!validated.success) {
+        return res.status(400).json({ error: "參數錯誤", details: validated.error.flatten() });
+      }
+      const { title, style, scenes, referenceImageUrls } = validated.data;
+      const creditsNeeded = scenes.length * 3;
+
+      const user = await storage.getUser(userId);
+      if (!user || (user.credits ?? 0) < creditsNeeded) {
+        return res.status(400).json({ error: `積分不足，需要 ${creditsNeeded} 積分` });
+      }
+
+      await storage.atomicAddCredits(userId, -creditsNeeded, `故事生成「${title}」${scenes.length} 幕`);
+
+      const storyGen = await storage.createStoryGeneration({
+        userId,
+        title,
+        style,
+        scenes,
+        referenceImageUrls: referenceImageUrls ?? [],
+        creditsUsed: creditsNeeded,
+      });
+
+      processStoryGeneration(storyGen.id, objectStorageService, bunnyStorage).catch(console.error);
+
+      res.json(storyGen);
+    } catch (error) {
+      console.error("Error creating story generation:", error);
+      res.status(500).json({ error: "故事生成建立失敗" });
+    }
+  });
+
+  app.get("/api/story-generations/:id", requireAuth, async (req, res) => {
+    try {
+      const story = await storage.getStoryGeneration(req.params.id);
+      if (!story) return res.status(404).json({ error: "找不到故事生成記錄" });
+      if (story.userId !== req.session.userId!) return res.status(403).json({ error: "無存取權限" });
+      res.json(story);
+    } catch (error) {
+      console.error("Error getting story generation:", error);
+      res.status(500).json({ error: "查詢失敗" });
+    }
+  });
+
+  async function processStoryGeneration(
+    storyId: string,
+    objectStorageService: ObjectStorageService,
+    bunnyStorage: BunnyStorageService
+  ) {
+    const startTime = Date.now();
+    try {
+      await storage.updateStoryGeneration(storyId, { status: "generating" });
+      const story = await storage.getStoryGeneration(storyId);
+      if (!story) return;
+
+      const storyUser = await storage.getUser(story.userId);
+      const userFolder = storyUser?.username || story.userId;
+      const apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY || process.env.ARK_API_KEY;
+      if (!apiKey) throw new Error("圖片生成 API Key 未設定");
+
+      const scenes: StoryScene[] = JSON.parse(story.scenes);
+      const referenceImageUrls = story.referenceImageUrls ?? [];
+      let totalCost = 0;
+
+      const loadRefImageAsBase64 = async (imagePath: string): Promise<string> => {
+        const objectFile = await objectStorageService.getObjectEntityFile(imagePath);
+        const chunks: Buffer[] = [];
+        const stream = objectFile.createReadStream();
+        for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+        return `data:image/jpeg;base64,${Buffer.concat(chunks).toString("base64")}`;
+      };
+
+      let refImageBase64s: string[] = [];
+      if (referenceImageUrls.length > 0) {
+        try {
+          refImageBase64s = await Promise.all(referenceImageUrls.map(loadRefImageAsBase64));
+        } catch (e) {
+          console.error("Failed to load reference images:", e);
+        }
+      }
+
+      for (let i = 0; i < scenes.length; i++) {
+        scenes[i].status = "generating";
+        await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
+
+        try {
+          const scenePrompt = `${story.style}, ${scenes[i].description}`;
+          let requestBody: any;
+
+          if (refImageBase64s.length > 0) {
+            const contentItems: any[] = [
+              { type: "image_url", image_url: { url: refImageBase64s[0] } },
+            ];
+            for (let j = 1; j < refImageBase64s.length; j++) {
+              contentItems.push({ type: "image_url", image_url: { url: refImageBase64s[j] } });
+            }
+            contentItems.push({ type: "text", text: scenePrompt });
+            requestBody = {
+              model: "ep-20251223142939-njrkd",
+              prompt: scenePrompt,
+              response_format: "url",
+              size: "2048x2048",
+              watermark: false,
+              content: contentItems,
+            };
+          } else {
+            requestBody = {
+              model: "ep-20251223142939-njrkd",
+              prompt: scenePrompt,
+              response_format: "url",
+              size: "2048x2048",
+              watermark: false,
+            };
+          }
+
+          const apiResp = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!apiResp.ok) {
+            const errText = await apiResp.text();
+            throw new Error(`API error ${apiResp.status}: ${errText}`);
+          }
+
+          const apiResult = await apiResp.json();
+          const imageUrl = apiResult.data?.[0]?.url;
+          if (!imageUrl) throw new Error("API 未回傳圖片 URL");
+
+          totalCost += 0.05;
+          scenes[i].imageUrl = imageUrl;
+
+          if (bunnyStorage.isConfigured()) {
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              try {
+                const imgResp = await fetch(imageUrl);
+                const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+                const remotePath = `users/${userFolder}/stories/${storyId}_${i}.jpg`;
+                const cdnUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
+                scenes[i].bunnyUrl = cdnUrl;
+                break;
+              } catch (e) {
+                console.error(`Bunny upload failed (story scene ${i}, attempt ${attempt}):`, e);
+                if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
+              }
+            }
+          }
+
+          scenes[i].status = "completed";
+          console.log(`✅ Story scene ${i + 1}/${scenes.length} completed for story ${storyId}`);
+        } catch (sceneError: any) {
+          console.error(`❌ Story scene ${i + 1} failed:`, sceneError.message);
+          scenes[i].status = "failed";
+          scenes[i].imageUrl = undefined;
+        }
+
+        await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes), cost: totalCost });
+      }
+
+      const allFailed = scenes.every(s => s.status === "failed");
+      if (allFailed) {
+        await storage.failStoryGenerationAndRefund(storyId, "所有場景生成失敗");
+      } else {
+        await storage.updateStoryGeneration(storyId, { status: "completed", scenes: JSON.stringify(scenes), cost: totalCost });
+        console.log(`✅ Story generation ${storyId} completed`);
+      }
+    } catch (error: any) {
+      console.error("❌ Story generation failed:", error.message);
+      await storage.failStoryGenerationAndRefund(storyId, error.message);
+    }
+  }
 
   const httpServer = createServer(app);
   return httpServer;

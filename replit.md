@@ -2,7 +2,7 @@
 
 ## Overview
 
-A full-stack commercial AI image and video generation platform using BytePlus ARK API. Supports image editing (image-to-image), text-to-image, image-to-video, sequential generation, multi-image input, and batch generation. Features a member registration/login system, credit-based pricing (1 credit = 1 TWD), and transaction history tracking. Entirely in Chinese (Traditional).
+A full-stack commercial AI image and video generation platform using BytePlus ARK API. Supports image editing (image-to-image), text-to-image, image-to-video, sequential generation, multi-image input, batch generation, and narrative story storyboard generation. Features a member registration/login system, credit-based pricing (1 credit = 1 TWD), and transaction history tracking. Entirely in Chinese (Traditional).
 
 ## User Preferences
 
@@ -119,6 +119,14 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Credit deduction with auto-refund on failure
 - Users table has telegramChatId field for account linking
 - Environment secret: TELEGRAM_BOT_TOKEN
+
+### Story Mode (故事模式)
+- **storyGenerations** DB table: id, userId, title, style, sceneCount, referenceImageUrls (text[]), scenes (JSON string of StoryScene[]), status, creditsUsed, cost, errorMessage, createdAt, updatedAt
+- **StoryScene type**: { id, title, description, imageUrl?, bunnyUrl?, status: pending/generating/completed/failed }
+- **API**: POST /api/story-generations (requireAuth), GET /api/story-generations/:id (requireAuth)
+- **Processing**: Sequential per-scene image generation; reference images loaded as base64 for image-to-image; scenes JSON updated in real-time; Bunny CDN upload per scene (`users/{folder}/stories/{storyId}_{i}.jpg`); full refund on total failure
+- **Pricing**: 3 credits/scene (2-8 scenes, 6-24 credits total)
+- **Frontend**: "故事模式" tab (3rd tab, emerald theme) in home.tsx; input form with title, style selector (5 presets + custom), scene count buttons, reference image upload (≤4), scene description cards; real-time progress grid; storyboard result grid with lightbox
 
 ## Recent Changes
 - Fixed session store: switched from MemoryStore to PostgreSQL-backed sessions (connect-pg-simple, createTableIfMissing: true), preventing session loss on restart

@@ -76,6 +76,22 @@ export const videoGenerations = pgTable("video_generations", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+export const storyGenerations = pgTable("story_generations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  title: text("title").notNull(),
+  style: text("style").notNull(),
+  sceneCount: integer("scene_count").notNull().default(4),
+  referenceImageUrls: text("reference_image_urls").array(),
+  scenes: text("scenes").notNull().default("[]"),
+  status: text("status").notNull().default("pending"),
+  creditsUsed: integer("credits_used").default(0),
+  cost: real("cost").default(0),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const verificationCodes = pgTable("verification_codes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   email: text("email").notNull(),
@@ -180,6 +196,16 @@ export const insertTextToVideoSchema = z.object({
   resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
 });
 
+export const insertStoryGenerationSchema = z.object({
+  title: z.string().min(1).max(100),
+  style: z.string().min(1),
+  scenes: z.array(z.object({
+    title: z.string(),
+    description: z.string().min(1),
+  })).min(2).max(8),
+  referenceImageUrls: z.array(z.string()).max(4).optional(),
+});
+
 export const sendVerificationCodeSchema = z.object({
   email: z.string().email(),
 });
@@ -204,6 +230,17 @@ export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
 export type InsertBatchImageToImage = z.infer<typeof insertBatchImageToImageSchema>;
 export type InsertImageToVideo = z.infer<typeof insertImageToVideoSchema>;
 export type InsertTextToVideo = z.infer<typeof insertTextToVideoSchema>;
+export type InsertStoryGeneration = z.infer<typeof insertStoryGenerationSchema>;
 export type ImageGeneration = typeof imageGenerations.$inferSelect;
 export type VideoGeneration = typeof videoGenerations.$inferSelect;
+export type StoryGeneration = typeof storyGenerations.$inferSelect;
 export type ChatMessage = typeof chatMessages.$inferSelect;
+
+export type StoryScene = {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl?: string;
+  bunnyUrl?: string;
+  status: "pending" | "generating" | "completed" | "failed";
+};
