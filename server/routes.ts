@@ -1460,6 +1460,221 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     }
   }
 
+  // ===== STORY ANIMATION =====
+
+  app.post("/api/story-generations/:storyId/animate", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { storyId } = req.params;
+      const duration = Math.max(4, Math.min(8, Number(req.body.duration) || 5));
+      const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
+      const aspectRatio = ["16:9", "9:16", "1:1"].includes(req.body.aspectRatio) ? req.body.aspectRatio : "16:9";
+      const animationPrompt = (req.body.animationPrompt || "").trim();
+
+      const story = await storage.getStoryGeneration(storyId);
+      if (!story) return res.status(404).json({ error: "找不到故事" });
+      if (story.userId !== userId) return res.status(403).json({ error: "無存取權限" });
+      if (story.status !== "completed") return res.status(400).json({ error: "故事尚未生成完成" });
+
+      const scenes: StoryScene[] = JSON.parse(story.scenes || "[]");
+      const completedScenes = scenes.filter(s => s.status === "completed" && (s.bunnyUrl || s.imageUrl));
+      if (completedScenes.length === 0) return res.status(400).json({ error: "沒有可生成動畫的場景" });
+
+      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 3.4 : 6.8;
+      const creditsPerScene = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
+      const totalCredits = creditsPerScene * completedScenes.length;
+
+      const user = await storage.getUser(userId);
+      if (!user || (user.credits ?? 0) < totalCredits) {
+        return res.status(400).json({ error: `積分不足，需要 ${totalCredits} 積分` });
+      }
+
+      await storage.atomicAddCredits(userId, -totalCredits, `故事「${story.title}」批量動畫生成 ${completedScenes.length} 幕`);
+
+      const storyUser = await storage.getUser(userId);
+      const userFolder = storyUser?.username || userId;
+      const jobs: { sceneIdx: number; sceneTitle: string; videoId: string }[] = [];
+
+      for (const scene of completedScenes) {
+        const sceneIdx = scenes.indexOf(scene);
+        const imageUrl = scene.bunnyUrl || scene.imageUrl!;
+        const prompt = animationPrompt || scene.description;
+
+        const videoGen = await storage.createVideoGeneration({
+          userId,
+          type: "image-to-video",
+          prompt,
+          originalImageUrl: imageUrl,
+          duration,
+          resolution,
+          aspectRatio,
+          cameraFixed: false,
+        });
+
+        jobs.push({ sceneIdx, sceneTitle: scene.title || `第 ${sceneIdx + 1} 幕`, videoId: videoGen.id });
+        processSceneAnimation(videoGen.id, imageUrl, bunnyStorage, userFolder, storyId, sceneIdx, creditsPerScene).catch(console.error);
+      }
+
+      res.json({ jobs, totalCredits });
+    } catch (error: any) {
+      console.error("Error starting story animation:", error);
+      res.status(500).json({ error: error.message || "批量動畫生成失敗" });
+    }
+  });
+
+  async function processSceneAnimation(
+    videoId: string,
+    imageUrl: string,
+    bunnyStorage: BunnyStorageService,
+    userFolder: string,
+    storyId: string,
+    sceneIdx: number,
+    creditsPerScene: number
+  ) {
+    const startTime = Date.now();
+    try {
+      await storage.updateVideoGeneration(videoId, { status: "processing" });
+      const generation = await storage.getVideoGeneration(videoId);
+      if (!generation) return;
+
+      const apiKey = process.env.ARK_API_KEY;
+      if (!apiKey) throw new Error("ARK_API_KEY 未設定");
+
+      const imgResponse = await fetch(imageUrl);
+      if (!imgResponse.ok) throw new Error(`無法下載場景圖片: ${imgResponse.status}`);
+      let imageBuffer = Buffer.from(await imgResponse.arrayBuffer());
+
+      const MIN_RATIO = 0.40;
+      const MAX_RATIO = 2.50;
+      const meta = await sharp(imageBuffer).metadata();
+      const w = meta.width || 1;
+      const h = meta.height || 1;
+      const ratio = w / h;
+      if (ratio > MAX_RATIO) {
+        const newW = Math.floor(h * MAX_RATIO);
+        const offsetX = Math.floor((w - newW) / 2);
+        imageBuffer = await sharp(imageBuffer).extract({ left: offsetX, top: 0, width: newW, height: h }).jpeg().toBuffer();
+      } else if (ratio < MIN_RATIO) {
+        const newH = Math.floor(w / MIN_RATIO);
+        const offsetY = Math.floor((h - newH) / 2);
+        imageBuffer = await sharp(imageBuffer).extract({ left: 0, top: offsetY, width: w, height: newH }).jpeg().toBuffer();
+      }
+
+      const imageDataUri = `data:image/jpeg;base64,${imageBuffer.toString("base64")}`;
+
+      let promptText = generation.prompt || "";
+      promptText += ` --duration ${generation.duration}`;
+      promptText += ` --camerafixed false`;
+      promptText += ` --resolution ${generation.resolution || "720p"}`;
+      if (generation.aspectRatio) promptText += ` --ratio ${generation.aspectRatio}`;
+
+      const requestBody = {
+        model: VIDEO_MODEL,
+        content: [
+          { type: "text", text: promptText },
+          { type: "image_url", image_url: { url: imageDataUri } },
+        ],
+      };
+
+      const createResponse = await fetch(VIDEO_API_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!createResponse.ok) {
+        const errText = await createResponse.text();
+        throw new Error(`Video API error ${createResponse.status}: ${errText}`);
+      }
+
+      const createResult = await createResponse.json();
+      const taskId = createResult.id;
+      if (!taskId) throw new Error("API 未回傳 taskId");
+      await storage.updateVideoGeneration(videoId, { taskId });
+      console.log(`✅ Story scene animation task created: ${taskId} (scene ${sceneIdx})`);
+
+      let videoUrl: string | null = null;
+      let attempts = 0;
+      const maxAttempts = 180;
+
+      while (attempts < maxAttempts) {
+        await new Promise(r => setTimeout(r, 5000));
+        attempts++;
+
+        const pollResponse = await fetch(`${VIDEO_API_ENDPOINT}/${taskId}`, {
+          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        });
+        if (!pollResponse.ok) { console.log(`Poll ${attempts} failed`); continue; }
+
+        const pollResult = await pollResponse.json();
+        console.log(`Story scene ${sceneIdx} poll ${attempts}: ${pollResult.status}`);
+
+        if (pollResult.status === "succeeded") {
+          if (pollResult.content?.video_url && typeof pollResult.content.video_url === "string") {
+            videoUrl = pollResult.content.video_url.replace(/&amp;/g, "&");
+          } else if (pollResult.content && Array.isArray(pollResult.content)) {
+            for (const item of pollResult.content) {
+              if (item.type === "video_url" && item.video_url?.url) {
+                videoUrl = item.video_url.url.replace(/&amp;/g, "&");
+                break;
+              }
+            }
+          }
+          break;
+        } else if (pollResult.status === "failed") {
+          throw new Error(pollResult.error?.message || "影片生成 API 失敗");
+        }
+      }
+
+      if (!videoUrl) throw new Error("影片生成超時");
+
+      const processingTime = (Date.now() - startTime) / 1000;
+      let bunnyVideoUrl: string | undefined;
+      if (bunnyStorage.isConfigured()) {
+        try {
+          const remotePath = `users/${userFolder}/story-videos/${storyId}_${sceneIdx}.mp4`;
+          bunnyVideoUrl = await bunnyStorage.uploadVideoFromUrl(videoUrl, userFolder, `story-anim-${storyId}-${sceneIdx}`);
+          console.log(`✅ Story scene animation uploaded to Bunny: ${bunnyVideoUrl}`);
+        } catch (e) {
+          console.error("Bunny video upload failed for story scene animation:", e);
+        }
+      }
+
+      const duration = generation.duration || 5;
+      const vidRes = generation.resolution || "720p";
+      const vidAspect = generation.aspectRatio || "16:9";
+      let vidW: number, vidH: number;
+      if (vidRes === "720p") {
+        if (vidAspect === "16:9") { vidW = 1280; vidH = 720; }
+        else if (vidAspect === "9:16") { vidW = 720; vidH = 1280; }
+        else { vidW = 720; vidH = 720; }
+      } else {
+        if (vidAspect === "16:9") { vidW = 1920; vidH = 1080; }
+        else if (vidAspect === "9:16") { vidW = 1080; vidH = 1920; }
+        else { vidW = 1080; vidH = 1080; }
+      }
+      const tokenConsumption = (vidW * vidH * 24 * duration) / 1024;
+      const videoCostUsd = (tokenConsumption / 1_000_000) * 2.4;
+
+      await storage.updateVideoGeneration(videoId, {
+        status: "completed",
+        generatedVideoUrl: videoUrl,
+        bunnyVideoUrl,
+        processingTime,
+        cost: parseFloat(videoCostUsd.toFixed(4)),
+      });
+
+      console.log(`✅ Story scene ${sceneIdx} animation completed!`);
+    } catch (error: any) {
+      console.error(`❌ Story scene ${sceneIdx} animation failed:`, error.message);
+      try {
+        await storage.failVideoGenerationAndRefund(videoId, error.message, creditsPerScene);
+      } catch (e) {
+        console.error("Refund failed for scene animation:", e);
+      }
+    }
+  }
+
   function requireAdmin(req: Request, res: Response, next: NextFunction) {
     if (!req.session.userId || !req.session.isAdmin) {
       return res.status(403).json({ error: "需要管理員權限" });

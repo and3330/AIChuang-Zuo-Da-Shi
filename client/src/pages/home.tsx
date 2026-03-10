@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useUser } from "@/App";
 import { NavigationHeader } from "@/pages/account";
@@ -98,6 +98,12 @@ export default function Home() {
   const [storyRefImages, setStoryRefImages] = useState<{ url: string; path: string }[]>([]);
   const [currentStoryId, setCurrentStoryId] = useState<string>("");
   const [storyLightboxIdx, setStoryLightboxIdx] = useState<number | null>(null);
+  const [storyAnimationJobs, setStoryAnimationJobs] = useState<{sceneIdx: number; sceneTitle: string; videoId: string}[]>([]);
+  const [showAnimationSettings, setShowAnimationSettings] = useState(false);
+  const [animDuration, setAnimDuration] = useState(5);
+  const [animResolution, setAnimResolution] = useState<"720p" | "1080p">("720p");
+  const [animAspectRatio, setAnimAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [animPrompt, setAnimPrompt] = useState("");
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -182,6 +188,7 @@ export default function Home() {
     },
     onSuccess: (data: any) => {
       setCurrentStoryId(data.id);
+      setStoryAnimationJobs([]);
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations", data.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "故事生成已開始", description: `正在生成「${data.title}」，請稍候...` });
@@ -191,6 +198,40 @@ export default function Home() {
       const description = msg.includes("積分不足") ? msg : `故事生成請求失敗：${msg}`;
       toast({ title: "故事生成失敗", description, variant: "destructive" });
     },
+  });
+
+  const storyAnimateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/animate`, data);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      setStoryAnimationJobs(data.jobs || []);
+      setShowAnimationSettings(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "批量動畫生成已開始", description: `正在生成 ${data.jobs?.length} 幕動畫，請耐心等待...` });
+    },
+    onError: (error: any) => {
+      const msg = error?.message || "無法開始動畫生成。";
+      toast({ title: "動畫生成失敗", description: msg, variant: "destructive" });
+    },
+  });
+
+  const animationVideoQueries = useQueries({
+    queries: storyAnimationJobs.map(job => ({
+      queryKey: ["/api/video-generations", job.videoId],
+      queryFn: async () => {
+        const response = await apiRequest("GET", `/api/video-generations/${job.videoId}`);
+        return response.json();
+      },
+      enabled: !!job.videoId,
+      staleTime: 0,
+      gcTime: 0,
+      refetchInterval: (query: any) => {
+        const gen = query.state.data as VideoGeneration | undefined;
+        return (gen?.status === "pending" || gen?.status === "processing") ? 4000 : false;
+      },
+    })),
   });
 
   const handleGetUploadParameters = async () => {
@@ -2271,10 +2312,210 @@ export default function Home() {
                         }}>
                           <i className="fas fa-download mr-2"></i>下載全部圖片
                         </Button>
+                        <Button
+                          className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
+                          onClick={() => setShowAnimationSettings(v => !v)}
+                          disabled={storyAnimateMutation.isPending}
+                        >
+                          <i className="fas fa-video mr-2"></i>
+                          {storyAnimationJobs.length > 0 ? "重新生成動畫" : "批量生成動畫"}
+                        </Button>
                         <Button variant="secondary" className="bg-gray-100 hover:bg-gray-200 rounded-lg" onClick={() => setCurrentStoryId("")}>
-                          <i className="fas fa-redo mr-2"></i>重新生成
+                          <i className="fas fa-redo mr-2"></i>重新生成故事
                         </Button>
                       </div>
+
+                      {/* Animation Settings Panel */}
+                      {showAnimationSettings && (
+                        <div className="mt-4 p-5 bg-purple-50 rounded-xl border border-purple-200 space-y-4">
+                          <h3 className="font-semibold text-purple-800 flex items-center gap-2">
+                            <i className="fas fa-sliders-h"></i>動畫參數設定
+                            <span className="text-xs font-normal text-purple-600">（每幕套用相同設定）</span>
+                          </h3>
+
+                          {/* Duration */}
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                              影片時長：<span className="text-purple-700 font-bold">{animDuration} 秒</span>
+                            </Label>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-gray-500">4s</span>
+                              <input
+                                type="range" min={4} max={8} step={1} value={animDuration}
+                                onChange={e => setAnimDuration(Number(e.target.value))}
+                                className="flex-1 accent-purple-600"
+                              />
+                              <span className="text-xs text-gray-500">8s</span>
+                            </div>
+                          </div>
+
+                          {/* Resolution */}
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">解析度</Label>
+                            <div className="flex gap-2">
+                              {(["720p", "1080p"] as const).map(r => (
+                                <button key={r} onClick={() => setAnimResolution(r)}
+                                  className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
+                                    animResolution === r ? "border-purple-500 bg-purple-100 text-purple-700" : "border-gray-200 text-gray-600 hover:border-purple-200"
+                                  }`}>
+                                  {r.toUpperCase()}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Aspect Ratio */}
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">畫面比例</Label>
+                            <div className="flex gap-2">
+                              {(["16:9", "9:16", "1:1"] as const).map(a => (
+                                <button key={a} onClick={() => setAnimAspectRatio(a)}
+                                  className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
+                                    animAspectRatio === a ? "border-purple-500 bg-purple-100 text-purple-700" : "border-gray-200 text-gray-600 hover:border-purple-200"
+                                  }`}>
+                                  {a}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {/* Animation Prompt */}
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 mb-2 block">
+                              動畫提示詞（選填）
+                              <InfoTooltip text="不填時自動使用各幕的場景描述作為提示詞" />
+                            </Label>
+                            <Input
+                              placeholder="例如：鏡頭緩慢推進，光影流動，大氣磅礴"
+                              value={animPrompt}
+                              onChange={e => setAnimPrompt(e.target.value)}
+                              className="rounded-xl border-gray-200"
+                            />
+                          </div>
+
+                          {/* Cost + Confirm */}
+                          {(() => {
+                            const completedCount = scenes.filter(s => s.status === "completed" && (s.bunnyUrl || s.imageUrl)).length;
+                            const rate = animResolution === "720p" ? 3.4 : 6.8;
+                            const totalCost = Math.round(animDuration * rate) * completedCount;
+                            const hasEnough = (user?.credits ?? 0) >= totalCost;
+                            return (
+                              <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-purple-200">
+                                <div className="text-sm">
+                                  <span className="text-gray-600">{completedCount} 幕 × {animDuration}秒 × {rate} = </span>
+                                  <span className="font-bold text-purple-700">{totalCost} 積分</span>
+                                  {!hasEnough && (
+                                    <span className="ml-2 text-red-500 text-xs">
+                                      <i className="fas fa-exclamation-triangle mr-1"></i>積分不足（餘額 {user?.credits ?? 0}）
+                                    </span>
+                                  )}
+                                </div>
+                                <Button
+                                  className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg"
+                                  disabled={!hasEnough || storyAnimateMutation.isPending}
+                                  onClick={() => storyAnimateMutation.mutate({
+                                    duration: animDuration,
+                                    resolution: animResolution,
+                                    aspectRatio: animAspectRatio,
+                                    animationPrompt: animPrompt,
+                                  })}
+                                >
+                                  {storyAnimateMutation.isPending ? (
+                                    <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />送出中...</>
+                                  ) : (
+                                    <><i className="fas fa-play mr-2"></i>確認生成動畫</>
+                                  )}
+                                </Button>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+
+                      {/* Animation Progress / Result */}
+                      {storyAnimationJobs.length > 0 && (
+                        <div className="mt-5 space-y-4">
+                          <h3 className="font-semibold text-gray-800 flex items-center gap-2">
+                            <i className="fas fa-video text-purple-500"></i>動畫生成進度
+                          </h3>
+                          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {storyAnimationJobs.map((job, jobIdx) => {
+                              const vidData = animationVideoQueries[jobIdx]?.data as VideoGeneration | undefined;
+                              const videoUrl = vidData?.bunnyVideoUrl || vidData?.generatedVideoUrl;
+                              const status = vidData?.status || "pending";
+                              return (
+                                <div key={job.videoId} className="rounded-xl overflow-hidden border border-gray-200 shadow-sm">
+                                  {status === "completed" && videoUrl ? (
+                                    <video
+                                      src={videoUrl} muted autoPlay loop playsInline
+                                      className="w-full aspect-video object-cover bg-black"
+                                    />
+                                  ) : (
+                                    <div className={`w-full aspect-video flex items-center justify-center ${
+                                      status === "failed" ? "bg-red-50" : "bg-gray-100"
+                                    }`}>
+                                      {status === "processing" || status === "pending" ? (
+                                        <div className="text-center space-y-2">
+                                          <div className="w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto" />
+                                          <p className="text-xs text-gray-500">生成中</p>
+                                        </div>
+                                      ) : status === "failed" ? (
+                                        <div className="text-center">
+                                          <i className="fas fa-times-circle text-red-400 text-2xl"></i>
+                                          <p className="text-xs text-red-500 mt-1">失敗</p>
+                                        </div>
+                                      ) : (
+                                        <i className="fas fa-hourglass-half text-gray-400 text-2xl"></i>
+                                      )}
+                                    </div>
+                                  )}
+                                  <div className="p-2 bg-white">
+                                    <p className="text-xs font-medium text-gray-700 truncate">{job.sceneTitle}</p>
+                                    <div className="flex items-center justify-between mt-1">
+                                      <span className={`text-xs ${
+                                        status === "completed" ? "text-emerald-600" :
+                                        status === "processing" ? "text-blue-500" :
+                                        status === "failed" ? "text-red-500" : "text-gray-400"
+                                      }`}>
+                                        {status === "completed" ? "✓ 完成" :
+                                         status === "processing" ? "生成中..." :
+                                         status === "failed" ? "失敗" : "等待中"}
+                                      </span>
+                                      {status === "completed" && videoUrl && (
+                                        <a href={videoUrl} download={`scene-anim-${job.sceneIdx + 1}.mp4`} target="_blank"
+                                          className="text-xs text-purple-600 hover:text-purple-800"
+                                          onClick={e => e.stopPropagation()}>
+                                          <i className="fas fa-download"></i>
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                          {animationVideoQueries.every(q => (q.data as VideoGeneration | undefined)?.status === "completed") && animationVideoQueries.length > 0 && (
+                            <div className="flex justify-center pt-2">
+                              <Button className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg" onClick={() => {
+                                storyAnimationJobs.forEach((job, jobIdx) => {
+                                  const vidData = animationVideoQueries[jobIdx]?.data as VideoGeneration | undefined;
+                                  const videoUrl = vidData?.bunnyVideoUrl || vidData?.generatedVideoUrl;
+                                  if (!videoUrl) return;
+                                  setTimeout(() => {
+                                    const a = document.createElement("a");
+                                    a.href = videoUrl;
+                                    a.download = `story-anim-${job.sceneIdx + 1}.mp4`;
+                                    a.target = "_blank";
+                                    a.click();
+                                  }, jobIdx * 200);
+                                });
+                              }}>
+                                <i className="fas fa-download mr-2"></i>下載全部動畫（{storyAnimationJobs.length} 幕）
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Story Lightbox */}
                       {storyLightboxIdx !== null && (
