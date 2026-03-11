@@ -1488,7 +1488,8 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
       const aspectRatio = ["16:9", "9:16", "1:1"].includes(req.body.aspectRatio) ? req.body.aspectRatio : "16:9";
       const animationPrompt = (req.body.animationPrompt || "").trim();
-      const perScenePrompts: string[] = Array.isArray(req.body.perScenePrompts) ? req.body.perScenePrompts : [];
+      const perScenePromptsByActual: Record<string, string> = (typeof req.body.perScenePromptsByActual === "object" && !Array.isArray(req.body.perScenePromptsByActual)) ? req.body.perScenePromptsByActual : {};
+      const perSceneResolutions: Record<string, string> = (typeof req.body.perSceneResolutions === "object" && !Array.isArray(req.body.perSceneResolutions)) ? req.body.perSceneResolutions : {};
 
       const story = await storage.getStoryGeneration(storyId);
       if (!story) return res.status(404).json({ error: "找不到故事" });
@@ -1518,7 +1519,8 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         const scene = completedScenes[si];
         const sceneIdx = scenes.indexOf(scene);
         const imageUrl = scene.bunnyUrl || scene.imageUrl!;
-        const prompt = perScenePrompts[si]?.trim() || animationPrompt || scene.description;
+        const sceneResolution: "720p" | "1080p" = perSceneResolutions[String(sceneIdx)] === "720p" ? "720p" : perSceneResolutions[String(sceneIdx)] === "1080p" ? "1080p" : resolution;
+        const prompt = perScenePromptsByActual[String(sceneIdx)]?.trim() || animationPrompt || scene.description;
 
         const videoGen = await storage.createVideoGeneration({
           userId,
@@ -1526,13 +1528,14 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
           prompt,
           originalImageUrl: imageUrl,
           duration,
-          resolution,
+          resolution: sceneResolution,
           aspectRatio,
           cameraFixed: false,
         });
 
         jobs.push({ sceneIdx, sceneTitle: scene.title || `第 ${sceneIdx + 1} 幕`, videoId: videoGen.id });
-        processSceneAnimation(videoGen.id, imageUrl, bunnyStorage, userFolder, storyId, sceneIdx, creditsPerScene).catch(console.error);
+        const sceneCredits = Math.round(duration * (sceneResolution === "720p" ? 3.4 : 6.8));
+        processSceneAnimation(videoGen.id, imageUrl, bunnyStorage, userFolder, storyId, sceneIdx, sceneCredits).catch(console.error);
       }
 
       res.json({ jobs, totalCredits });
@@ -2215,7 +2218,20 @@ ${completedScenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[節奏角色�
       if (!jsonMatch) return res.status(500).json({ error: "Claude 回應格式錯誤" });
 
       const parsed = JSON.parse(jsonMatch[0]);
-      res.json(parsed);
+      // Map Claude's 0-based completed-scene indices back to ACTUAL scene indices in the full array
+      const completedWithActualIdx = completedScenes.map((s, ci) => ({
+        completedIdx: ci,
+        actualIdx: scenes.indexOf(s),
+      }));
+      const mappedScenes = (parsed.scenes || []).map((s: any, fi: number) => {
+        const mapping = completedWithActualIdx[fi];
+        return {
+          actualSceneIndex: mapping?.actualIdx ?? fi,
+          sceneTitle: s.sceneTitle || completedScenes[fi]?.title || `第 ${fi + 1} 幕`,
+          animation_prompt: s.animation_prompt || "",
+        };
+      });
+      res.json({ scenes: mappedScenes });
     } catch (error: any) {
       console.error("Error generating animation prompts:", error);
       res.status(500).json({ error: error.message || "生成動畫提示詞失敗" });

@@ -122,7 +122,9 @@ export default function Home() {
   const [animResolution, setAnimResolution] = useState<"720p" | "1080p">("720p");
   const [animAspectRatio, setAnimAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [animPrompt, setAnimPrompt] = useState("");
-  const [perSceneAnimPrompts, setPerSceneAnimPrompts] = useState<string[]>([]);
+  // keyed by actual scene index (not completed-scene index)
+  const [perSceneAnimPrompts, setPerSceneAnimPrompts] = useState<Record<number, string>>({});
+  const [perSceneResolution, setPerSceneResolution] = useState<Record<number, "720p" | "1080p">>({});
   const [showStoryHistory, setShowStoryHistory] = useState(false);
   const [editingStoryTitle, setEditingStoryTitle] = useState(false);
   const [editingTitleValue, setEditingTitleValue] = useState("");
@@ -331,9 +333,14 @@ export default function Home() {
       return data;
     },
     onSuccess: (data: any) => {
-      const prompts: string[] = (data.scenes || []).map((s: any) => s.animation_prompt || "");
-      setPerSceneAnimPrompts(prompts);
-      toast({ title: "✨ 分鏡動畫提示詞已生成", description: `已為 ${prompts.length} 幕各別生成動畫提示詞，可自行編輯調整。` });
+      const newPrompts: Record<number, string> = {};
+      (data.scenes || []).forEach((s: any) => {
+        if (typeof s.actualSceneIndex === "number") {
+          newPrompts[s.actualSceneIndex] = s.animation_prompt || "";
+        }
+      });
+      setPerSceneAnimPrompts(newPrompts);
+      toast({ title: "✨ 分鏡動畫提示詞已生成", description: `已為 ${Object.keys(newPrompts).length} 幕各別生成動畫提示詞，可在各幕卡片中編輯調整。` });
     },
     onError: (error: any) => {
       toast({ title: "生成失敗", description: error.message || "無法生成動畫提示詞", variant: "destructive" });
@@ -347,11 +354,13 @@ export default function Home() {
   });
 
   const singleSceneAnimateMutation = useMutation({
-    mutationFn: async ({ sceneIdx }: { sceneIdx: number }) => {
+    mutationFn: async ({ sceneIdx, resolution, prompt }: { sceneIdx: number; resolution?: "720p" | "1080p"; prompt?: string }) => {
+      const res = resolution ?? perSceneResolution[sceneIdx] ?? "720p";
+      const prm = prompt ?? perSceneAnimPrompts[sceneIdx] ?? "";
       const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/animate-scene/${sceneIdx}`, {
         duration: animDuration,
-        resolution: animResolution,
-        aspectRatio: animAspectRatio,
+        resolution: res,
+        animationPrompt: prm,
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "動畫生成失敗");
@@ -2764,136 +2773,151 @@ export default function Home() {
 
                 {(() => {
                   const scenes: StoryScene[] = JSON.parse(storyGeneration.scenes || "[]");
-                  const cols = scenes.length <= 3 ? scenes.length : scenes.length <= 6 ? 3 : 4;
                   return (
                     <>
-                      <div className={`grid grid-cols-2 ${cols >= 3 ? "sm:grid-cols-3" : ""} ${cols >= 4 ? "lg:grid-cols-4" : ""} gap-4`}>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
                         {scenes.map((scene, idx) => {
                           const imgUrl = scene.bunnyUrl || scene.imageUrl;
                           const isRegenerating = scene.status === "generating";
                           const isFailed = scene.status === "failed";
+                          const nInfo = getNarrativeInfo(idx, scenes.length);
+                          const sceneRes = perSceneResolution[idx] ?? "720p";
+                          const sceneCost = Math.round(animDuration * (sceneRes === "720p" ? 3.4 : 6.8));
+                          const animEntry = animJobBySceneIdx[idx];
+                          const vidData = animEntry ? animationVideoQueries[animEntry.queryIdx]?.data as VideoGeneration | undefined : undefined;
+                          const videoUrl = vidData?.bunnyVideoUrl || vidData?.generatedVideoUrl;
+                          const vidAspect = vidData?.aspectRatio || "16:9";
+                          const videoPad: Record<string, string> = { "16:9": "aspect-video", "9:16": "aspect-[9/16]", "1:1": "aspect-square" };
                           return (
-                            <div key={idx} className={`rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow group ${isFailed ? "border-red-200" : "border-gray-200"}`}>
+                            <div key={idx} className={`rounded-xl overflow-hidden border shadow-sm transition-shadow ${isFailed ? "border-red-200" : `border ${nInfo.border}`}`}>
+                              {/* ── Image area ── */}
                               {isRegenerating ? (
                                 <div className="w-full aspect-square bg-emerald-50 flex flex-col items-center justify-center gap-2">
                                   <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
                                   <span className="text-xs text-emerald-600">重新生成中...</span>
                                 </div>
                               ) : imgUrl ? (
-                                <>
-                                  {/* Image with overlays */}
-                                  <div className="relative cursor-pointer" onClick={() => setStoryLightboxIdx(idx)}>
-                                    <img src={imgUrl} alt={scene.title} className="w-full aspect-square object-cover group-hover:scale-105 transition-transform duration-300" />
-                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                      <i className="fas fa-search-plus text-white text-xl"></i>
-                                    </div>
-                                    <span className="absolute top-2 left-2 flex items-center gap-1">
-                      <span className="bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">第 {idx + 1} 幕</span>
-                      {(() => { const n = getNarrativeInfo(idx, scenes.length); return (
-                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${n.bg} ${n.color} ${n.border}`}>{n.icon}{n.short}</span>
-                      ); })()}
-                    </span>
-                                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <a
-                                        href={imgUrl} download={`scene-${idx + 1}.jpg`} target="_blank"
-                                        onClick={e => e.stopPropagation()}
-                                        className="w-7 h-7 bg-black/50 hover:bg-emerald-600 text-white rounded-full text-xs flex items-center justify-center"
-                                        title="下載此幕圖片"
-                                      >
-                                        <i className="fas fa-download text-xs"></i>
-                                      </a>
-                                      <button
-                                        className="w-7 h-7 bg-black/50 hover:bg-purple-600 text-white rounded-full text-xs flex items-center justify-center"
-                                        title={`生成動畫（${Math.round(animDuration * (animResolution === "720p" ? 3.4 : 6.8))} 積分，比例依圖片自動決定）`}
-                                        onClick={e => { e.stopPropagation(); singleSceneAnimateMutation.mutate({ sceneIdx: idx }); }}
-                                        disabled={singleSceneAnimateMutation.isPending}
-                                      >
-                                        <i className="fas fa-film text-xs"></i>
-                                      </button>
-                                      <button
-                                        className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-full text-xs flex items-center justify-center"
-                                        title="重新生成此幕（3 積分）"
-                                        onClick={e => { e.stopPropagation(); regenerateSceneMutation.mutate(idx); }}
-                                        disabled={regenerateSceneMutation.isPending}
-                                      >
-                                        <i className="fas fa-redo text-xs"></i>
-                                      </button>
-                                    </div>
+                                <div className="relative group cursor-pointer" onClick={() => setStoryLightboxIdx(idx)}>
+                                  <img src={imgUrl} alt={scene.title} className="w-full aspect-square object-cover group-hover:scale-105 transition-transform duration-300" />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                    <i className="fas fa-search-plus text-white text-xl"></i>
                                   </div>
-                                  {/* Inline video preview if animation exists for this scene */}
-                                  {(() => {
-                                    const animEntry = animJobBySceneIdx[idx];
-                                    if (!animEntry) return null;
-                                    const vidData = animationVideoQueries[animEntry.queryIdx]?.data as VideoGeneration | undefined;
-                                    const videoUrl = vidData?.bunnyVideoUrl || vidData?.generatedVideoUrl;
-                                    if (!vidData) return null;
-                                    const vidAspect = vidData.aspectRatio || "16:9";
-                                    const aspectPadding: Record<string, string> = { "16:9": "aspect-video", "9:16": "aspect-[9/16]", "1:1": "aspect-square" };
-                                    const videoPad = aspectPadding[vidAspect] || "aspect-video";
-                                    return (
-                                      <div className="border-t border-gray-100 bg-gray-50">
-                                        {vidData.status === "completed" && videoUrl ? (
-                                          <div className="relative">
-                                            <video src={videoUrl} muted autoPlay loop playsInline className={`w-full ${videoPad} object-cover`} />
-                                            {/* Size badge */}
-                                            <span className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">
-                                              {vidAspect}
-                                            </span>
-                                            {/* Regenerate button */}
-                                            <button
-                                              className="absolute top-1.5 right-1.5 w-6 h-6 bg-black/60 hover:bg-purple-700 text-white rounded text-[10px] flex items-center justify-center"
-                                              title="重新生成動畫"
-                                              onClick={() => singleSceneAnimateMutation.mutate({ sceneIdx: idx })}
-                                              disabled={singleSceneAnimateMutation.isPending}
-                                            >
-                                              <i className="fas fa-redo"></i>
-                                            </button>
-                                          </div>
-                                        ) : (
-                                          <div className="w-full aspect-video flex items-center justify-center">
-                                            {vidData.status === "failed" ? (
-                                              <div className="flex flex-col items-center gap-1">
-                                                <span className="text-xs text-red-500"><i className="fas fa-times-circle mr-1"></i>動畫失敗</span>
-                                                <button
-                                                  className="text-[10px] px-2 py-0.5 bg-red-100 text-red-600 rounded hover:bg-red-200"
-                                                  onClick={() => singleSceneAnimateMutation.mutate({ sceneIdx: idx })}
-                                                  disabled={singleSceneAnimateMutation.isPending}
-                                                >
-                                                  重試
-                                                </button>
-                                              </div>
-                                            ) : (
-                                              <><div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mr-2" /><span className="text-xs text-purple-500">動畫生成中...</span></>
-                                            )}
-                                          </div>
-                                        )}
-                                      </div>
-                                    );
-                                  })()}
-                                </>
+                                  {/* Narrative + scene badge */}
+                                  <span className="absolute top-2 left-2 flex items-center gap-1">
+                                    <span className="bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">第 {idx + 1} 幕</span>
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${nInfo.bg} ${nInfo.color} ${nInfo.border}`}>{nInfo.icon}{nInfo.short}</span>
+                                  </span>
+                                  {/* Image controls */}
+                                  <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <a href={imgUrl} download={`scene-${idx + 1}.jpg`} target="_blank" onClick={e => e.stopPropagation()}
+                                      className="w-7 h-7 bg-black/50 hover:bg-emerald-600 text-white rounded-full text-xs flex items-center justify-center" title="下載圖片">
+                                      <i className="fas fa-download text-xs"></i>
+                                    </a>
+                                    <button className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-full text-xs flex items-center justify-center"
+                                      title="重新生成此幕（3 積分）"
+                                      onClick={e => { e.stopPropagation(); regenerateSceneMutation.mutate(idx); }}
+                                      disabled={regenerateSceneMutation.isPending}>
+                                      <i className="fas fa-redo text-xs"></i>
+                                    </button>
+                                  </div>
+                                </div>
                               ) : (
                                 <div className="w-full aspect-square bg-red-50 flex flex-col items-center justify-center gap-2">
                                   <i className="fas fa-times-circle text-red-400 text-xl"></i>
-                                  <button
-                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-700 border border-red-200 hover:bg-red-200 transition-all disabled:opacity-60"
-                                    onClick={() => regenerateSceneMutation.mutate(idx)}
-                                    disabled={regenerateSceneMutation.isPending}
-                                  >
+                                  <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-700 border border-red-200 hover:bg-red-200 transition-all disabled:opacity-60"
+                                    onClick={() => regenerateSceneMutation.mutate(idx)} disabled={regenerateSceneMutation.isPending}>
                                     <i className="fas fa-redo"></i>重新生成（3積分）
                                   </button>
                                 </div>
                               )}
-                              <div className="p-3 bg-white">
-                                <p className="text-xs font-semibold text-gray-700 mb-0.5">{scene.title || `第 ${idx + 1} 幕`}</p>
-                                <p className="text-xs text-gray-500 line-clamp-2">{scene.description}</p>
-                                {/* Animation availability indicator */}
-                                {imgUrl && !animJobBySceneIdx[idx] && (
-                                  <div className="mt-1.5 flex items-center gap-1 text-[10px] text-purple-400">
-                                    <i className="fas fa-film"></i>
-                                    Hover 圖片可生成動畫（比例依圖自動決定）
-                                  </div>
-                                )}
+
+                              {/* ── Card body: title + description ── */}
+                              <div className="px-3 pt-2.5 pb-1 bg-white">
+                                <div className="flex items-center gap-1.5 mb-0.5">
+                                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${nInfo.bg} ${nInfo.color} ${nInfo.border}`}>{nInfo.icon} {nInfo.label}</span>
+                                </div>
+                                <p className="text-xs font-semibold text-gray-700">{scene.title || `第 ${idx + 1} 幕`}</p>
+                                <p className="text-[11px] text-gray-400 line-clamp-2 mt-0.5">{scene.description}</p>
                               </div>
+
+                              {/* ── Animation section ── */}
+                              {imgUrl && (
+                                <div className="px-3 pb-3 bg-white border-t border-dashed border-purple-100 pt-2 space-y-2">
+                                  {/* Prompt textarea */}
+                                  <div>
+                                    <div className="flex items-center justify-between mb-1">
+                                      <span className="text-[10px] font-semibold text-purple-600 uppercase tracking-wide">🎬 動畫提示詞</span>
+                                      {!perSceneAnimPrompts[idx] && (
+                                        <span className="text-[9px] text-gray-400">← AI 生成後自動填入</span>
+                                      )}
+                                    </div>
+                                    <textarea
+                                      rows={2}
+                                      value={perSceneAnimPrompts[idx] || ""}
+                                      onChange={e => setPerSceneAnimPrompts(prev => ({ ...prev, [idx]: e.target.value }))}
+                                      placeholder={`此幕動畫描述，例：slow push in, golden light flows, ${nInfo.short === "起" ? "gentle establishing shot" : nInfo.short === "轉" ? "dramatic zoom, dynamic movement" : "slow fade out, peaceful ending"}`}
+                                      className="w-full text-[11px] border border-gray-200 rounded-lg p-2 resize-none focus:outline-none focus:ring-1 focus:ring-purple-400 placeholder:text-gray-300"
+                                    />
+                                  </div>
+                                  {/* Resolution + Generate */}
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] text-gray-500 flex-shrink-0">解析度</span>
+                                    {(["720p", "1080p"] as const).map(r => (
+                                      <button key={r}
+                                        onClick={() => setPerSceneResolution(prev => ({ ...prev, [idx]: r }))}
+                                        className={`flex-1 py-1 rounded-lg border text-[11px] font-medium transition-all ${sceneRes === r ? "border-purple-500 bg-purple-100 text-purple-700" : "border-gray-200 text-gray-500 hover:border-purple-300"}`}>
+                                        {r} <span className="text-[9px] opacity-70">({Math.round(animDuration * (r === "720p" ? 3.4 : 6.8))}積)</span>
+                                      </button>
+                                    ))}
+                                    <button
+                                      className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1 ${
+                                        (singleSceneAnimateMutation.isPending && singleSceneAnimateMutation.variables?.sceneIdx === idx)
+                                          ? "bg-purple-200 text-purple-500 cursor-not-allowed"
+                                          : vidData?.status === "completed" && videoUrl
+                                          ? "bg-gray-100 text-gray-600 hover:bg-purple-100 hover:text-purple-700 border border-gray-200"
+                                          : "bg-purple-600 text-white hover:bg-purple-700"
+                                      }`}
+                                      onClick={() => singleSceneAnimateMutation.mutate({ sceneIdx: idx })}
+                                      disabled={singleSceneAnimateMutation.isPending && singleSceneAnimateMutation.variables?.sceneIdx === idx}
+                                      title={`生成 ${animDuration}秒 ${sceneRes} 動畫，需 ${sceneCost} 積分`}
+                                    >
+                                      {(singleSceneAnimateMutation.isPending && singleSceneAnimateMutation.variables?.sceneIdx === idx) ? (
+                                        <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                                      ) : vidData?.status === "completed" && videoUrl ? (
+                                        <><i className="fas fa-redo text-[9px]"></i>重生</>
+                                      ) : (
+                                        <><i className="fas fa-film text-[9px]"></i>生成</>
+                                      )}
+                                    </button>
+                                  </div>
+                                  {/* Video preview */}
+                                  {vidData && (
+                                    <div className="rounded-lg overflow-hidden border border-purple-100 mt-1">
+                                      {vidData.status === "completed" && videoUrl ? (
+                                        <div className="relative">
+                                          <video src={videoUrl} muted autoPlay loop playsInline className={`w-full ${videoPad[vidAspect] || "aspect-video"} object-cover`} />
+                                          <span className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded font-medium">{vidAspect}</span>
+                                          <a href={videoUrl} download={`scene-anim-${idx + 1}.mp4`} target="_blank"
+                                            className="absolute top-1.5 right-1.5 w-5 h-5 bg-black/60 hover:bg-emerald-600 text-white rounded text-[9px] flex items-center justify-center" title="下載動畫">
+                                            <i className="fas fa-download"></i>
+                                          </a>
+                                        </div>
+                                      ) : vidData.status === "failed" ? (
+                                        <div className="py-2 flex flex-col items-center gap-1 bg-red-50">
+                                          <span className="text-[10px] text-red-500"><i className="fas fa-times-circle mr-1"></i>動畫失敗</span>
+                                          <button className="text-[9px] px-2 py-0.5 bg-red-100 text-red-600 rounded hover:bg-red-200"
+                                            onClick={() => singleSceneAnimateMutation.mutate({ sceneIdx: idx })}>重試</button>
+                                        </div>
+                                      ) : (
+                                        <div className="py-2 flex items-center justify-center gap-2 bg-purple-50">
+                                          <div className="w-4 h-4 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                                          <span className="text-[10px] text-purple-500">動畫生成中…</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -2933,131 +2957,69 @@ export default function Home() {
                         <i className="fas fa-info-circle mr-1"></i>動畫比例自動對齊各幕圖片尺寸，無需手動設定
                       </div>
 
-                      {/* Animation Settings Panel */}
+                      {/* Animation Global Settings Panel */}
                       {showAnimationSettings && (
                         <div className="mt-4 p-5 bg-purple-50 rounded-xl border border-purple-200 space-y-4">
                           <h3 className="font-semibold text-purple-800 flex items-center gap-2">
-                            <i className="fas fa-sliders-h"></i>動畫參數設定
-                            <span className="text-xs font-normal text-purple-600">（每幕套用相同設定）</span>
+                            <i className="fas fa-sliders-h"></i>批量動畫設定
+                            <span className="text-xs font-normal text-purple-600">（各幕可在卡片中個別選解析度與提示詞）</span>
                           </h3>
 
                           {/* Duration */}
                           <div>
                             <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                              影片時長：<span className="text-purple-700 font-bold">{animDuration} 秒</span>
+                              各幕影片時長：<span className="text-purple-700 font-bold">{animDuration} 秒</span>
                             </Label>
                             <div className="flex items-center gap-3">
                               <span className="text-xs text-gray-500">4s</span>
-                              <input
-                                type="range" min={4} max={12} step={1} value={animDuration}
+                              <input type="range" min={4} max={12} step={1} value={animDuration}
                                 onChange={e => setAnimDuration(Number(e.target.value))}
-                                className="flex-1 accent-purple-600"
-                              />
+                                className="flex-1 accent-purple-600" />
                               <span className="text-xs text-gray-500">12s</span>
                             </div>
                           </div>
 
-                          {/* Resolution */}
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">解析度</Label>
-                            <div className="flex gap-2">
-                              {(["720p", "1080p"] as const).map(r => (
-                                <button key={r} onClick={() => setAnimResolution(r)}
-                                  className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
-                                    animResolution === r ? "border-purple-500 bg-purple-100 text-purple-700" : "border-gray-200 text-gray-600 hover:border-purple-200"
-                                  }`}>
-                                  {r.toUpperCase()}
-                                </button>
-                              ))}
+                          {/* AI generate all prompts */}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-700">AI 自動生成所有分鏡提示詞</p>
+                              <p className="text-xs text-gray-500">Claude 依起承轉合節奏，為每幕生成對應的動畫提示詞</p>
                             </div>
+                            <button
+                              onClick={() => generateAnimPromptsMutation.mutate()}
+                              disabled={generateAnimPromptsMutation.isPending}
+                              className="flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-all disabled:opacity-60 disabled:cursor-not-allowed flex-shrink-0"
+                            >
+                              {generateAnimPromptsMutation.isPending ? (
+                                <><div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />生成中...</>
+                              ) : (
+                                <>✨ AI 生成提示詞</>
+                              )}
+                            </button>
                           </div>
 
-                          {/* Aspect Ratio: auto-detected from image, no manual selection */}
                           <div className="text-xs text-gray-500 bg-white/60 rounded-lg px-3 py-2 border border-gray-100">
                             <i className="fas fa-info-circle mr-1 text-purple-400"></i>
-                            動畫比例自動對齊各幕圖片尺寸（16:9 橫圖→橫影片、9:16 直圖→直影片、1:1 方圖→方影片）
+                            動畫比例自動依各幕圖片尺寸決定；各幕的解析度和提示詞請在上方分鏡卡片中設定
                           </div>
 
-                          {/* Animation Prompts */}
-                          <div className="space-y-3">
-                            <div className="flex items-center justify-between">
-                              <Label className="text-sm font-medium text-gray-700">
-                                分鏡動畫提示詞
-                                <InfoTooltip text="點擊「AI 生成」讓 Claude 根據故事腳本，自動為每幕生成符合劇情的動畫提示詞；也可手動填寫全局提示詞套用到所有幕" />
-                              </Label>
-                              <button
-                                onClick={() => generateAnimPromptsMutation.mutate()}
-                                disabled={generateAnimPromptsMutation.isPending}
-                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 hover:border-violet-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                              >
-                                {generateAnimPromptsMutation.isPending ? (
-                                  <><div className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />生成中...</>
-                                ) : (
-                                  <><i className="fas fa-magic" />✨ AI 生成分鏡提示詞</>
-                                )}
-                              </button>
-                            </div>
-
-                            {perSceneAnimPrompts.length > 0 ? (
-                              // Per-scene prompts (AI generated, editable)
-                              <div className="space-y-2">
-                                {(() => {
-                                  const completedScenesList = JSON.parse(storyGeneration?.scenes || "[]").filter((s: any) => s.status === "completed" && (s.bunnyUrl || s.imageUrl));
-                                  return completedScenesList.map((scene: any, idx: number) => {
-                                    const nInfo = getNarrativeInfo(idx, completedScenesList.length);
-                                    return (
-                                    <div key={idx} className={`bg-white rounded-lg border p-2.5 ${nInfo.border}`}>
-                                      <div className="flex items-center gap-1.5 mb-1.5">
-                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex items-center gap-0.5 ${nInfo.bg} ${nInfo.color} ${nInfo.border}`}>
-                                          {nInfo.icon}{nInfo.short}
-                                        </span>
-                                        <span className="text-xs font-medium text-violet-700">{scene.title || `第 ${idx + 1} 幕`}</span>
-                                      </div>
-                                      <textarea
-                                        value={perSceneAnimPrompts[idx] || ""}
-                                        onChange={e => setPerSceneAnimPrompts(prev => {
-                                          const updated = [...prev];
-                                          updated[idx] = e.target.value;
-                                          return updated;
-                                        })}
-                                        rows={2}
-                                        className="w-full text-xs border border-gray-200 rounded-lg p-2 resize-none focus:outline-none focus:ring-1 focus:ring-violet-400"
-                                        placeholder="此幕的動畫提示詞..."
-                                      />
-                                    </div>
-                                  ); });
-                                })()}
-                                <button
-                                  onClick={() => setPerSceneAnimPrompts([])}
-                                  className="text-xs text-gray-400 hover:text-gray-600 underline"
-                                >清除，改用全局提示詞</button>
-                              </div>
-                            ) : (
-                              // Global prompt fallback
-                              <Input
-                                placeholder="全局提示詞（選填）：所有幕套用，例：鏡頭緩慢推進，光影流動"
-                                value={animPrompt}
-                                onChange={e => setAnimPrompt(e.target.value)}
-                                className="rounded-xl border-gray-200 text-sm"
-                              />
-                            )}
-                          </div>
-
-                          {/* Cost + Confirm */}
+                          {/* Batch Cost + Confirm */}
                           {(() => {
-                            const completedCount = scenes.filter(s => s.status === "completed" && (s.bunnyUrl || s.imageUrl)).length;
-                            const rate = animResolution === "720p" ? 3.4 : 6.8;
-                            const totalCost = Math.round(animDuration * rate) * completedCount;
+                            const completedScenes = scenes.filter(s => s.status === "completed" && (s.bunnyUrl || s.imageUrl));
+                            const totalCost = completedScenes.reduce((sum, s) => {
+                              const si = scenes.indexOf(s);
+                              const res = perSceneResolution[si] ?? "720p";
+                              return sum + Math.round(animDuration * (res === "720p" ? 3.4 : 6.8));
+                            }, 0);
                             const hasEnough = (user?.credits ?? 0) >= totalCost;
                             return (
                               <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-purple-200">
                                 <div className="text-sm">
-                                  <span className="text-gray-600">{completedCount} 幕 × {animDuration}秒 × {rate} = </span>
+                                  <span className="text-gray-600">{completedScenes.length} 幕合計 </span>
                                   <span className="font-bold text-purple-700">{totalCost} 積分</span>
+                                  <span className="text-gray-400 text-xs ml-1">（依各幕個別解析度計算）</span>
                                   {!hasEnough && (
-                                    <span className="ml-2 text-red-500 text-xs">
-                                      <i className="fas fa-exclamation-triangle mr-1"></i>積分不足（餘額 {user?.credits ?? 0}）
-                                    </span>
+                                    <span className="ml-2 text-red-500 text-xs"><i className="fas fa-exclamation-triangle mr-1"></i>積分不足（餘額 {user?.credits ?? 0}）</span>
                                   )}
                                 </div>
                                 <Button
@@ -3066,15 +3028,14 @@ export default function Home() {
                                   onClick={() => storyAnimateMutation.mutate({
                                     duration: animDuration,
                                     resolution: animResolution,
-                                    aspectRatio: animAspectRatio,
-                                    animationPrompt: animPrompt,
-                                    perScenePrompts: perSceneAnimPrompts,
+                                    perScenePromptsByActual: perSceneAnimPrompts,
+                                    perSceneResolutions: perSceneResolution,
                                   })}
                                 >
                                   {storyAnimateMutation.isPending ? (
                                     <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />送出中...</>
                                   ) : (
-                                    <><i className="fas fa-play mr-2"></i>確認生成動畫</>
+                                    <><i className="fas fa-play mr-2"></i>批量生成全部動畫</>
                                   )}
                                 </Button>
                               </div>
