@@ -2768,7 +2768,7 @@ export default function Home() {
                                       </a>
                                       <button
                                         className="w-7 h-7 bg-black/50 hover:bg-purple-600 text-white rounded-full text-xs flex items-center justify-center"
-                                        title={`生成動畫（${Math.round(animDuration * (animResolution === "720p" ? 3.4 : 6.8))} 積分）`}
+                                        title={`生成動畫 ${animAspectRatio}（${Math.round(animDuration * (animResolution === "720p" ? 3.4 : 6.8))} 積分）`}
                                         onClick={e => { e.stopPropagation(); singleSceneAnimateMutation.mutate({ sceneIdx: idx }); }}
                                         disabled={singleSceneAnimateMutation.isPending}
                                       >
@@ -2856,6 +2856,33 @@ export default function Home() {
                         <Button variant="secondary" className="bg-gray-100 hover:bg-gray-200 rounded-lg" onClick={() => setCurrentStoryId("")}>
                           <i className="fas fa-redo mr-2"></i>重新生成故事
                         </Button>
+                      </div>
+
+                      {/* Compact animation aspect ratio selector — always visible */}
+                      <div className="mt-3 flex items-center justify-center gap-3">
+                        <span className="text-xs text-gray-500 flex items-center gap-1">
+                          <i className="fas fa-film text-purple-400"></i>動畫比例：
+                        </span>
+                        <div className="flex gap-1.5">
+                          {([
+                            { val: "16:9", icon: "⬜", label: "16:9 橫" },
+                            { val: "9:16", icon: "▭", label: "9:16 直" },
+                            { val: "1:1",  icon: "◻", label: "1:1 方" },
+                          ] as const).map(({ val, label }) => (
+                            <button
+                              key={val}
+                              onClick={() => setAnimAspectRatio(val)}
+                              className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${
+                                animAspectRatio === val
+                                  ? "border-purple-500 bg-purple-100 text-purple-700"
+                                  : "border-gray-200 bg-white text-gray-600 hover:border-purple-300"
+                              }`}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <span className="text-xs text-gray-400">（影響每幕動畫影片尺寸）</span>
                       </div>
 
                       {/* Animation Settings Panel */}
