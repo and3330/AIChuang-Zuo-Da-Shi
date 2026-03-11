@@ -496,16 +496,22 @@ export default function Home() {
   };
 
   const handleStoryRefUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
-    if (result.successful && result.successful[0]) {
-      const uploadURL = result.successful[0].uploadURL;
-      try {
+    if (!result.successful || result.successful.length === 0) return;
+    try {
+      const uploaded: { url: string; path: string }[] = [];
+      for (const file of result.successful) {
+        const uploadURL = file.uploadURL;
         const response = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
         const data = await response.json();
-        setStoryRefImages(prev => [...prev, { url: data.objectPath, path: data.objectPath }]);
-        toast({ title: "參考圖片上傳成功", description: `已新增第 ${storyRefImages.length + 1} 張參考圖。` });
-      } catch (error) {
-        toast({ title: "上傳錯誤", description: "處理上傳圖片失敗。", variant: "destructive" });
+        uploaded.push({ url: data.objectPath, path: data.objectPath });
       }
+      setStoryRefImages(prev => {
+        const combined = [...prev, ...uploaded].slice(0, 4);
+        return combined;
+      });
+      toast({ title: "參考圖片上傳成功", description: `已新增 ${uploaded.length} 張參考圖。` });
+    } catch (error) {
+      toast({ title: "上傳錯誤", description: "處理上傳圖片失敗。", variant: "destructive" });
     }
   };
 
@@ -1661,13 +1667,13 @@ export default function Home() {
                   )}
                   {storyRefImages.length < 4 && (
                     <UnifiedUploader
-                      maxNumberOfFiles={1}
+                      maxNumberOfFiles={4 - storyRefImages.length}
                       maxFileSize={10485760}
                       onGetUploadParameters={handleGetUploadParameters}
                       onComplete={handleStoryRefUploadComplete}
                       className="w-full"
                     >
-                      點擊或拖曳上傳參考圖（{storyRefImages.length}/4）
+                      點擊或拖曳上傳參考圖（{storyRefImages.length}/4，可一次選多張）
                     </UnifiedUploader>
                   )}
                 </div>

@@ -50,10 +50,11 @@ export function UnifiedUploader({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dragCounterRef = useRef(0);
+  const uppyRef = useRef<InstanceType<typeof Uppy> | null>(null);
 
   // Initialize Uppy instance
-  const [uppy] = useState(() =>
-    new Uppy({
+  const [uppy] = useState(() => {
+    const instance = new Uppy({
       restrictions: {
         maxNumberOfFiles,
         maxFileSize,
@@ -83,14 +84,18 @@ export function UnifiedUploader({
         setUploadProgress(0);
         setSelectedFile(null);
         onComplete?.(result);
+        // Clear all tracked files so next batch upload works correctly
+        uppyRef.current?.getFiles().forEach(f => uppyRef.current?.removeFile(f.id));
       })
       .on("upload-error", (file, error) => {
         setIsUploading(false);
         setUploadProgress(0);
         setSelectedFile(null);
         onError?.(error);
-      })
-  );
+      });
+    uppyRef.current = instance;
+    return instance;
+  });
 
   const validateFile = useCallback((file: File): { valid: boolean; error?: string } => {
     // Check file type
@@ -108,31 +113,33 @@ export function UnifiedUploader({
   }, [maxFileSize]);
 
   const handleFileSelection = useCallback((files: FileList | File[]) => {
-    const fileArray = Array.from(files);
+    const fileArray = Array.from(files).slice(0, maxNumberOfFiles);
     if (fileArray.length === 0) return;
 
-    const file = fileArray[0]; // Take only the first file for single upload
-    const validation = validateFile(file);
-
-    if (!validation.valid) {
-      onError?.(new Error(validation.error || "Invalid file"));
-      return;
+    for (const file of fileArray) {
+      const validation = validateFile(file);
+      if (!validation.valid) {
+        onError?.(new Error(validation.error || "Invalid file"));
+        return;
+      }
     }
 
-    setSelectedFile(file);
-    
-    // Add file to Uppy and start upload
+    setSelectedFile(fileArray[0]);
+
+    // Add all files to Uppy and start upload
     try {
-      uppy.addFile({
-        name: file.name,
-        type: file.type,
-        data: file,
-        source: "unified-uploader",
-      });
+      for (const file of fileArray) {
+        uppy.addFile({
+          name: file.name,
+          type: file.type,
+          data: file,
+          source: "unified-uploader",
+        });
+      }
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error("Upload failed"));
     }
-  }, [uppy, validateFile, onError]);
+  }, [uppy, validateFile, onError, maxNumberOfFiles]);
 
   // Drag and drop handlers
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -276,6 +283,7 @@ export function UnifiedUploader({
         type="file"
         accept="image/jpeg,image/png"
         className="hidden"
+        multiple={maxNumberOfFiles > 1}
         onChange={handleFileInputChange}
         data-testid="unified-file-input"
       />
