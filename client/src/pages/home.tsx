@@ -1980,7 +1980,15 @@ export default function Home() {
                     <Label className="text-sm font-medium text-gray-700">
                       各幕場景描述
                     </Label>
-                    <div className="flex gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Step indicator */}
+                      <span className="hidden sm:flex items-center gap-1 text-[10px] text-gray-400 mr-1">
+                        <span className="w-4 h-4 rounded-full bg-emerald-100 text-emerald-700 text-[9px] font-bold flex items-center justify-center">1</span>
+                        AI 中文大綱
+                        <span className="text-gray-300">→</span>
+                        <span className="w-4 h-4 rounded-full bg-violet-100 text-violet-700 text-[9px] font-bold flex items-center justify-center">2</span>
+                        Claude 加強
+                      </span>
                       <button
                         type="button"
                         onClick={() => {
@@ -1991,12 +1999,13 @@ export default function Home() {
                           claudeOutlineMutation.mutate();
                         }}
                         disabled={claudeOutlineMutation.isPending || claudeEnhanceMutation.isPending}
+                        title="第一步：AI 依起承轉合結構自動生成中文分鏡大綱"
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {claudeOutlineMutation.isPending ? (
                           <><div className="w-3 h-3 border border-emerald-600 border-t-transparent rounded-full animate-spin" />生成中...</>
                         ) : (
-                          <>✨ AI 生成大綱</>
+                          <><span className="text-emerald-500 mr-0.5">①</span> AI 生成大綱</>
                         )}
                       </button>
                       <button
@@ -2013,6 +2022,7 @@ export default function Home() {
                           claudeEnhanceMutation.mutate();
                         }}
                         disabled={claudeEnhanceMutation.isPending || claudeOutlineMutation.isPending}
+                        title="第二步：Claude 將中文大綱加強為專業英文提示詞，保留起承轉合節奏"
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 hover:border-violet-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {claudeEnhanceMutation.isPending ? (
@@ -2021,7 +2031,7 @@ export default function Home() {
                             Claude 生成中...
                           </>
                         ) : (
-                          <>Claude 優化提示詞</>
+                          <><span className="text-violet-400 mr-0.5">②</span> Claude 加強提示詞</>
                         )}
                       </button>
                     </div>
@@ -2119,7 +2129,7 @@ export default function Home() {
                           </div>
                         </div>
                       </div>
-                    ))}
+                    ); })}
                   </div>
                 </div>
 
