@@ -2035,22 +2035,37 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
       const duration = Math.max(4, Math.min(12, Number(req.body.duration) || 5));
 
-      const prompt = `你是一位專業的影片分鏡師，擅長為 AI 影片生成工具撰寫動態提示詞。請根據以下故事資訊，為每個場景生成符合影片動畫的英文提示詞。
+      // Assign narrative arc roles for animation pacing
+      const animTotal = completedScenes.length;
+      const getAnimNarrativeRole = (i: number): string => {
+        if (animTotal === 1) return "完整故事";
+        if (animTotal === 2) return i === 0 ? "起（開場，輕鬆節奏）" : "合（結局，緩慢收尾）";
+        if (animTotal === 3) return ["起（開場）", "轉（高潮）", "合（結局）"][i] ?? "承";
+        const ratio = i / (animTotal - 1);
+        if (i === 0) return "起（開場，建立氛圍，鏡頭緩慢推進）";
+        if (i === animTotal - 1) return "合（結局，鏡頭緩慢拉遠或淡出，情緒平靜圓滿）";
+        if (ratio < 0.35) return "承（故事發展，節奏逐漸加快）";
+        if (ratio < 0.72) return "轉（高潮轉折，動態強烈，戲劇性鏡頭）";
+        return "合前段（衝突化解，節奏放緩）";
+      };
+
+      const prompt = `你是一位專業的影片分鏡師，擅長為 AI 影片生成工具撰寫動態提示詞。請根據以下故事資訊，為每個場景生成符合影片動畫的英文提示詞，並確保整體動畫節奏符合「起承轉合」的故事弧線。
 
 故事標題：${story.title}
 畫風設定：${story.style}
 每幕影片時長：${duration} 秒
+總幕數：${animTotal} 幕
 
-場景列表：
-${completedScenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).join("\n")}
+場景列表（每幕附有敘事節奏角色）：
+${completedScenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[節奏角色：${getAnimNarrativeRole(i)}]：${s.description}`).join("\n")}
 
 請為每個場景生成專業的英文影片動畫提示詞，要求：
-1. 明確描述 ${duration} 秒內的主要動態動作（人物行為、場景變化）
-2. 包含適合的鏡頭運動（如：slow push in, gentle pan left, dramatic zoom out, tracking shot 等）
-3. 描述光影和氣氛的動態變化
-4. 保持故事整體敘事的連貫性與風格一致性
+1. 鏡頭節奏必須符合該幕的節奏角色（起：緩慢建立、承：穩定推進、轉：強烈動態、合：緩慢收尾）
+2. 最後一幕必須有明確的「結束感」：鏡頭緩慢拉遠或淡出，情緒趨於平靜
+3. 包含具體的鏡頭運動（如：slow push in, gentle pan left, dramatic zoom out, slow fade 等）
+4. 描述 ${duration} 秒內主要的動態變化（人物動作、場景變化、光影流動）
 5. 每個提示詞 30-60 個英文單字，簡潔但具體
-6. 提示詞要適合圖轉影片（image-to-video）生成，圖片已固定，描述動態即可
+6. 提示詞適合圖轉影片（image-to-video）生成，圖片已固定，描述動態即可
 
 請嚴格用以下 JSON 格式回應，不要有任何其他文字：
 {
@@ -2105,21 +2120,38 @@ ${completedScenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.descript
         ? `\n故事全文內容（請參考以下內容理解故事背景、角色與細節）：\n${storyContent.trim()}\n`
         : "";
 
-      const prompt = `你是一位專業的 AI 圖像生成提示詞設計師。請根據以下故事資訊，為每個場景生成高品質的英文圖片生成提示詞（image generation prompt）。
+      // Assign narrative arc roles based on scene position
+      const total = scenes.length;
+      const getNarrativeRole = (i: number): string => {
+        if (total === 1) return "完整故事（起承轉合）";
+        if (total === 2) return i === 0 ? "起（開場，建立角色與世界觀）" : "合（結局，故事完整結束）";
+        if (total === 3) return ["起（開場）", "轉（高潮轉折）", "合（結局圓滿）"][i] ?? "承";
+        const ratio = i / (total - 1);
+        if (i === 0) return "起（開場，建立世界觀與角色，吸引觀眾）";
+        if (i === total - 1) return "合（結局，故事圓滿落幕，給觀眾完整感）";
+        if (ratio < 0.35) return "承（故事發展，鋪陳情節、建立張力）";
+        if (ratio < 0.72) return "轉（情節轉折或高潮，衝突達到頂點）";
+        return "合前段（走向結局，衝突逐漸化解）";
+      };
+
+      const prompt = `你是一位專業的 AI 圖像生成提示詞設計師，同時也是資深故事敘事師。請根據以下故事資訊，為每個場景生成高品質的英文圖片生成提示詞，並確保所有幕合起來形成完整的「起承轉合」故事弧線，有明確的結局。
 
 故事標題：${title}
 畫風設定：${styleDesc}
-${storyContentSection}
-場景列表：
-${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).join("\n")}
+總幕數：${total} 幕${storyContentSection}
+
+場景列表（每幕附有敘事結構角色，請確保提示詞的視覺內容與情緒符合該角色）：
+${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[敘事角色：${getNarrativeRole(i)}]：${s.description}`).join("\n")}
 
 請為每個場景生成一個專業的英文提示詞，要求：
 1. 包含畫風關鍵詞（對應「${styleDesc}」）
-2. 描述場景主體、環境、光線、情緒
-3. 加入畫質提升詞（如 masterpiece, high quality, detailed 等）
-4. 保持場景間的視覺風格一致性
-5. 每個提示詞 50-100 個英文單字
-6. 不要加入任何暴力、色情等不當內容
+2. 視覺內容與情緒必須符合該幕的敘事角色（起：輕鬆建立、承：發展緊張、轉：戲劇衝突、合：平靜圓滿）
+3. 最後一幕（結局）必須有明顯的「結束感」，如：溫暖光芒、人物滿足表情、場景回歸平靜等視覺元素
+4. 描述場景主體、環境、光線、情緒
+5. 加入畫質提升詞（如 masterpiece, high quality, detailed 等）
+6. 保持場景間的視覺風格一致性，讓觀眾能感受到故事的流動
+7. 每個提示詞 50-100 個英文單字
+8. 不要加入任何暴力、色情等不當內容
 
 請嚴格用以下 JSON 格式回應，不要有任何其他文字：
 {
