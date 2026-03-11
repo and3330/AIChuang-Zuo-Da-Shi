@@ -1564,17 +1564,43 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       if (!imgResponse.ok) throw new Error(`無法下載場景圖片: ${imgResponse.status}`);
       let imageBuffer = Buffer.from(await imgResponse.arrayBuffer());
 
+      // Pre-crop image to target aspect ratio so API output matches selection
+      const targetAspect = generation.aspectRatio || "16:9";
+      const targetRatioMap: Record<string, number> = { "16:9": 16/9, "9:16": 9/16, "1:1": 1 };
+      const targetRatio = targetRatioMap[targetAspect] ?? 16/9;
+
+      const meta = await sharp(imageBuffer).metadata();
+      let w = meta.width || 1;
+      let h = meta.height || 1;
+      const currentRatio = w / h;
+
+      if (Math.abs(currentRatio - targetRatio) > 0.02) {
+        if (currentRatio > targetRatio) {
+          // Too wide: crop width
+          const newW = Math.round(h * targetRatio);
+          const offsetX = Math.floor((w - newW) / 2);
+          console.log(`🎬 Cropping scene image for animation: ${w}x${h} → ${newW}x${h} (target ${targetAspect})`);
+          imageBuffer = await sharp(imageBuffer).extract({ left: offsetX, top: 0, width: newW, height: h }).jpeg().toBuffer();
+          w = newW;
+        } else {
+          // Too tall: crop height
+          const newH = Math.round(w / targetRatio);
+          const offsetY = Math.floor((h - newH) / 2);
+          console.log(`🎬 Cropping scene image for animation: ${w}x${h} → ${w}x${newH} (target ${targetAspect})`);
+          imageBuffer = await sharp(imageBuffer).extract({ left: 0, top: offsetY, width: w, height: newH }).jpeg().toBuffer();
+          h = newH;
+        }
+      }
+
+      // Also enforce API limits (0.40–2.50)
       const MIN_RATIO = 0.40;
       const MAX_RATIO = 2.50;
-      const meta = await sharp(imageBuffer).metadata();
-      const w = meta.width || 1;
-      const h = meta.height || 1;
-      const ratio = w / h;
-      if (ratio > MAX_RATIO) {
+      const finalRatio = w / h;
+      if (finalRatio > MAX_RATIO) {
         const newW = Math.floor(h * MAX_RATIO);
         const offsetX = Math.floor((w - newW) / 2);
         imageBuffer = await sharp(imageBuffer).extract({ left: offsetX, top: 0, width: newW, height: h }).jpeg().toBuffer();
-      } else if (ratio < MIN_RATIO) {
+      } else if (finalRatio < MIN_RATIO) {
         const newH = Math.floor(w / MIN_RATIO);
         const offsetY = Math.floor((h - newH) / 2);
         imageBuffer = await sharp(imageBuffer).extract({ left: 0, top: offsetY, width: w, height: newH }).jpeg().toBuffer();
