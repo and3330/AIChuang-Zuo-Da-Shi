@@ -2289,7 +2289,12 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[敘事角色：${getNar
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
-      res.json(parsed);
+      const rawScenes: Array<{ enhanced_prompt: string }> = parsed.scenes || [];
+      const fixedScenes = rawScenes.slice(0, scenes.length).map((s, i) => ({
+        index: i,
+        enhanced_prompt: s.enhanced_prompt || "",
+      }));
+      res.json({ scenes: fixedScenes });
     } catch (error) {
       console.error("Claude enhance story prompts error:", error);
       res.status(500).json({ error: "Claude 提示詞優化失敗，請稍後再試" });
@@ -2526,7 +2531,14 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) return res.status(500).json({ error: "Claude 回應格式錯誤" });
 
-      res.json(JSON.parse(jsonMatch[0]));
+      const parsed = JSON.parse(jsonMatch[0]);
+      const rawScenes: Array<{ title: string; description: string }> = parsed.scenes || [];
+      const scenes = rawScenes.slice(0, total).map((s, i) => ({
+        index: i,
+        title: s.title || `第 ${i + 1} 幕`,
+        description: s.description || "",
+      }));
+      res.json({ scenes });
     } catch (error: any) {
       console.error("Error generating story outline:", error);
       res.status(500).json({ error: error.message || "生成大綱失敗" });
