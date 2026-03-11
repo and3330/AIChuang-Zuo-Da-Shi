@@ -101,7 +101,9 @@ export default function Home() {
     { title: "第七幕", description: "" },
     { title: "第八幕", description: "" },
   ]);
-  const [storyRefImages, setStoryRefImages] = useState<{ url: string; path: string }[]>([]);
+  const [storyCharacterImages, setStoryCharacterImages] = useState<{ url: string; path: string }[]>([]);
+  const [storySceneRefImages, setStorySceneRefImages] = useState<{ url: string; path: string }[]>([]);
+  const [storyStyleImages, setStoryStyleImages] = useState<{ url: string; path: string }[]>([]);
   const [currentStoryId, setCurrentStoryId] = useState<string>("");
   const [storyLightboxIdx, setStoryLightboxIdx] = useState<number | null>(null);
   const [storyAnimationJobs, setStoryAnimationJobs] = useState<{sceneIdx: number; sceneTitle: string; videoId: string}[]>([]);
@@ -383,9 +385,11 @@ export default function Home() {
         title: storyTitle.trim(),
         style: effectiveStyle,
         scenes: activeScenes,
-        referenceImageUrls: storyRefImages.map(r => r.path),
         storyContent: storyContent.trim() || undefined,
         sceneSize: storySceneSize,
+        characterImageUrls: storyCharacterImages.map(r => r.path),
+        sceneRefImageUrls: storySceneRefImages.map(r => r.path),
+        styleImageUrls: storyStyleImages.map(r => r.path),
       });
       return;
     }
@@ -505,7 +509,11 @@ export default function Home() {
     setAdditionalImages(prev => prev.filter((_, i) => i !== index));
   };
 
-  const handleStoryRefUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
+  const makeStoryRefUploadHandler = (
+    setter: React.Dispatch<React.SetStateAction<{ url: string; path: string }[]>>,
+    max: number,
+    label: string,
+  ) => async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
     if (!result.successful || result.successful.length === 0) return;
     try {
       const uploaded: { url: string; path: string }[] = [];
@@ -515,19 +523,16 @@ export default function Home() {
         const data = await response.json();
         uploaded.push({ url: data.objectPath, path: data.objectPath });
       }
-      setStoryRefImages(prev => {
-        const combined = [...prev, ...uploaded].slice(0, 4);
-        return combined;
-      });
-      toast({ title: "參考圖片上傳成功", description: `已新增 ${uploaded.length} 張參考圖。` });
+      setter(prev => [...prev, ...uploaded].slice(0, max));
+      toast({ title: `${label}上傳成功`, description: `已新增 ${uploaded.length} 張圖。` });
     } catch (error) {
       toast({ title: "上傳錯誤", description: "處理上傳圖片失敗。", variant: "destructive" });
     }
   };
 
-  const removeStoryRefImage = (index: number) => {
-    setStoryRefImages(prev => prev.filter((_, i) => i !== index));
-  };
+  const handleCharacterImageUpload = makeStoryRefUploadHandler(setStoryCharacterImages, 2, "主角長相參考");
+  const handleSceneRefImageUpload = makeStoryRefUploadHandler(setStorySceneRefImages, 2, "場景參考圖");
+  const handleStyleImageUpload = makeStoryRefUploadHandler(setStoryStyleImages, 2, "畫風參考圖");
 
   const updateStorySceneCount = (count: number) => {
     setStorySceneCount(count);
@@ -1711,45 +1716,58 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* Reference Images */}
-                <div>
-                  <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
-                    參考圖片（選填，最多 4 張）
-                    <InfoTooltip text="上傳角色或場景參考圖，讓每幕風格保持一致。有參考圖時 AI 會以圖生圖，無參考圖時純文字生成" />
-                  </Label>
-                  {storyRefImages.length > 0 && (
-                    <div className="flex flex-wrap gap-2 mb-3">
-                      {storyRefImages.map((img, idx) => (
-                        <div key={idx} className="relative group">
-                          <img
-                            src={img.url.startsWith("/objects/") ? img.url : `/objects/${img.url.replace(/^\//, "")}`}
-                            alt={`參考圖 ${idx + 1}`}
-                            className="w-16 h-16 object-cover rounded-lg border border-gray-200"
-                            onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/64?text=圖" }}
-                          />
-                          <button
-                            onClick={() => removeStoryRefImage(idx)}
-                            className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                          >
-                            ×
-                          </button>
-                          <span className="absolute bottom-0 left-0 right-0 text-center text-white text-xs bg-black/40 rounded-b-lg">#{idx + 1}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {storyRefImages.length < 4 && (
-                    <UnifiedUploader
-                      maxNumberOfFiles={4 - storyRefImages.length}
-                      maxFileSize={10485760}
-                      onGetUploadParameters={handleGetUploadParameters}
-                      onComplete={handleStoryRefUploadComplete}
-                      className="w-full"
-                    >
-                      點擊或拖曳上傳參考圖（{storyRefImages.length}/4，可一次選多張）
-                    </UnifiedUploader>
-                  )}
-                </div>
+                {/* Reference Images - three categories */}
+                {(
+                  [
+                    { label: "主角長相", sub: "保持每幕角色外貌一致", icon: "🧑", images: storyCharacterImages, setter: setStoryCharacterImages, handler: handleCharacterImageUpload, color: "violet" },
+                    { label: "場景參考圖", sub: "構圖、場景、環境風格", icon: "🏞️", images: storySceneRefImages, setter: setStorySceneRefImages, handler: handleSceneRefImageUpload, color: "blue" },
+                    { label: "畫風參考圖", sub: "整體美術風格與質感", icon: "🎨", images: storyStyleImages, setter: setStoryStyleImages, handler: handleStyleImageUpload, color: "pink" },
+                  ] as const
+                ).map(({ label, sub, icon, images, setter, handler, color }) => (
+                  <div key={label} className={`p-3 rounded-xl border-2 ${
+                    images.length > 0
+                      ? color === "violet" ? "border-violet-200 bg-violet-50/40"
+                        : color === "blue" ? "border-blue-200 bg-blue-50/40"
+                        : "border-pink-200 bg-pink-50/40"
+                      : "border-gray-100 bg-gray-50/50"
+                  }`}>
+                    <Label className="text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1.5">
+                      <span>{icon}</span>
+                      <span>{label}</span>
+                      <span className="text-xs text-gray-400 font-normal">（選填，最多 2 張）</span>
+                      <InfoTooltip text={`上傳「${label}」參考圖，AI 將在生成每幕時參考此圖的${sub}`} />
+                    </Label>
+                    {images.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mb-2">
+                        {images.map((img, idx) => (
+                          <div key={idx} className="relative group">
+                            <img
+                              src={img.url.startsWith("/objects/") ? img.url : `/objects/${img.url.replace(/^\//, "")}`}
+                              alt={`${label} ${idx + 1}`}
+                              className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                              onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/64?text=圖" }}
+                            />
+                            <button
+                              onClick={() => setter(prev => prev.filter((_, i) => i !== idx))}
+                              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                            >×</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {images.length < 2 && (
+                      <UnifiedUploader
+                        maxNumberOfFiles={2 - images.length}
+                        maxFileSize={10485760}
+                        onGetUploadParameters={handleGetUploadParameters}
+                        onComplete={handler}
+                        className="w-full"
+                      >
+                        點擊上傳{label}（{images.length}/2）
+                      </UnifiedUploader>
+                    )}
+                  </div>
+                ))}
 
                 {/* Scene Cards */}
                 <div>

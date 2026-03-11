@@ -1976,7 +1976,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       if (!validated.success) {
         return res.status(400).json({ error: "參數錯誤", details: validated.error.flatten() });
       }
-      const { title, style, scenes, referenceImageUrls, sceneSize } = validated.data;
+      const { title, style, scenes, referenceImageUrls, sceneSize, characterImageUrls, sceneRefImageUrls, styleImageUrls } = validated.data;
       const creditsNeeded = scenes.length * 3;
 
       const user = await storage.getUser(userId);
@@ -1993,6 +1993,9 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         scenes,
         referenceImageUrls: referenceImageUrls ?? [],
         sceneSize: sceneSize ?? "1:1",
+        characterImageUrls: characterImageUrls ?? [],
+        sceneRefImageUrls: sceneRefImageUrls ?? [],
+        styleImageUrls: styleImageUrls ?? [],
         creditsUsed: creditsNeeded,
       });
 
@@ -2123,41 +2126,54 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
         return `data:image/jpeg;base64,${Buffer.concat(chunks).toString("base64")}`;
       };
 
-      let refImageBase64s: string[] = [];
-      if (referenceImageUrls.length > 0) {
+      // Load all three reference image categories
+      const loadImageList = async (urls: string[]): Promise<string[]> => {
+        if (!urls || urls.length === 0) return [];
         try {
-          refImageBase64s = await Promise.all(referenceImageUrls.map(loadRefImageAsBase64));
+          return await Promise.all(urls.map(loadRefImageAsBase64));
         } catch (e) {
           console.error("Failed to load reference images:", e);
+          return [];
         }
-      }
+      };
+
+      const characterBase64s = await loadImageList(story.characterImageUrls ?? []);
+      const sceneRefBase64s = await loadImageList(story.sceneRefImageUrls ?? []);
+      const styleBase64s = await loadImageList(story.styleImageUrls ?? []);
+
+      // Build reference label string for prompt
+      const refLabels: string[] = [];
+      if (characterBase64s.length > 0) refLabels.push(`請嚴格保持角色外貌與第${refLabels.length + 1}${characterBase64s.length > 1 ? `至第${refLabels.length + characterBase64s.length}` : ""}張圖片的主角形象一致`);
+      if (sceneRefBase64s.length > 0) refLabels.push(`場景構圖和環境請參考${characterBase64s.length + 1}${sceneRefBase64s.length > 1 ? `至第${characterBase64s.length + sceneRefBase64s.length}` : ""}張圖片`);
+      if (styleBase64s.length > 0) refLabels.push(`整體畫風請參考第${characterBase64s.length + sceneRefBase64s.length + 1}張圖片`);
 
       for (let i = 0; i < scenes.length; i++) {
         scenes[i].status = "generating";
         await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
 
         try {
-          const scenePrompt = `${story.style}, ${scenes[i].description}`;
+          const refNote = refLabels.length > 0 ? `（${refLabels.join("；")}）` : "";
+          const scenePrompt = `${story.style}, ${scenes[i].description}${refNote}`;
           let requestBody: any;
 
-          // Prefer per-scene reference image; fall back to global reference images
-          let sceneRefBase64s = refImageBase64s;
+          // Combine all global reference images in order: character → scene → style
+          let globalBase64s = [...characterBase64s, ...sceneRefBase64s, ...styleBase64s];
+
+          // Per-scene reference image overrides only the scene ref slot
           if (scenes[i].sceneReferenceImageUrl) {
             try {
-              const sceneRefBase64 = await loadRefImageAsBase64(scenes[i].sceneReferenceImageUrl!);
-              sceneRefBase64s = [sceneRefBase64];
+              const perSceneBase64 = await loadRefImageAsBase64(scenes[i].sceneReferenceImageUrl!);
+              globalBase64s = [...characterBase64s, perSceneBase64, ...styleBase64s];
             } catch (e) {
-              console.error(`Failed to load scene ${i} reference image, using global refs:`, e);
+              console.error(`Failed to load scene ${i} reference image:`, e);
             }
           }
 
-          if (sceneRefBase64s.length > 0) {
-            const contentItems: any[] = [
-              { type: "image_url", image_url: { url: sceneRefBase64s[0] } },
-            ];
-            for (let j = 1; j < sceneRefBase64s.length; j++) {
-              contentItems.push({ type: "image_url", image_url: { url: sceneRefBase64s[j] } });
-            }
+          if (globalBase64s.length > 0) {
+            const contentItems: any[] = globalBase64s.map(b64 => ({
+              type: "image_url",
+              image_url: { url: b64 },
+            }));
             contentItems.push({ type: "text", text: scenePrompt });
             requestBody = {
               model: "ep-20251223142939-njrkd",

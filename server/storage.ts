@@ -579,6 +579,9 @@ export class DatabaseStorage implements IStorage {
       creditsUsed: data.creditsUsed,
       cost: 0,
       sceneSize: (data as any).sceneSize ?? "1:1",
+      characterImageUrls: (data as any).characterImageUrls ?? [],
+      sceneRefImageUrls: (data as any).sceneRefImageUrls ?? [],
+      styleImageUrls: (data as any).styleImageUrls ?? [],
     }).returning();
     return row;
   }
