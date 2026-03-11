@@ -107,7 +107,7 @@ export default function Home() {
   const [currentStoryId, setCurrentStoryId] = useState<string>("");
   const [storyLightboxIdx, setStoryLightboxIdx] = useState<number | null>(null);
   const [storyAnimationJobs, setStoryAnimationJobs] = useState<{sceneIdx: number; sceneTitle: string; videoId: string}[]>([]);
-  const [showAnimationSettings, setShowAnimationSettings] = useState(false);
+  const [showAnimationSettings, setShowAnimationSettings] = useState(true);
   const [animDuration, setAnimDuration] = useState(5);
   const [animResolution, setAnimResolution] = useState<"720p" | "1080p">("720p");
   const [animAspectRatio, setAnimAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
@@ -2536,11 +2536,11 @@ export default function Home() {
                             <div className="flex items-center gap-3">
                               <span className="text-xs text-gray-500">4s</span>
                               <input
-                                type="range" min={4} max={8} step={1} value={animDuration}
+                                type="range" min={4} max={12} step={1} value={animDuration}
                                 onChange={e => setAnimDuration(Number(e.target.value))}
                                 className="flex-1 accent-purple-600"
                               />
-                              <span className="text-xs text-gray-500">8s</span>
+                              <span className="text-xs text-gray-500">12s</span>
                             </div>
                           </div>
 
