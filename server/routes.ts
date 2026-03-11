@@ -2141,19 +2141,12 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
       const sceneRefBase64s = await loadImageList(story.sceneRefImageUrls ?? []);
       const styleBase64s = await loadImageList(story.styleImageUrls ?? []);
 
-      // Build reference label string for prompt
-      const refLabels: string[] = [];
-      if (characterBase64s.length > 0) refLabels.push(`請嚴格保持角色外貌與第${refLabels.length + 1}${characterBase64s.length > 1 ? `至第${refLabels.length + characterBase64s.length}` : ""}張圖片的主角形象一致`);
-      if (sceneRefBase64s.length > 0) refLabels.push(`場景構圖和環境請參考${characterBase64s.length + 1}${sceneRefBase64s.length > 1 ? `至第${characterBase64s.length + sceneRefBase64s.length}` : ""}張圖片`);
-      if (styleBase64s.length > 0) refLabels.push(`整體畫風請參考第${characterBase64s.length + sceneRefBase64s.length + 1}張圖片`);
-
       for (let i = 0; i < scenes.length; i++) {
         scenes[i].status = "generating";
         await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
 
         try {
-          const refNote = refLabels.length > 0 ? `（${refLabels.join("；")}）` : "";
-          const scenePrompt = `${story.style}, ${scenes[i].description}${refNote}`;
+          const scenePrompt = `${story.style}, ${scenes[i].description}`;
           let requestBody: any;
 
           // Combine all global reference images in order: character → scene → style
@@ -2170,18 +2163,30 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
           }
 
           if (globalBase64s.length > 0) {
-            const contentItems: any[] = globalBase64s.map(b64 => ({
-              type: "image_url",
-              image_url: { url: b64 },
-            }));
-            contentItems.push({ type: "text", text: scenePrompt });
+            // Build an explicit prompt labeling what each reference image is for
+            const labelParts: string[] = [];
+            let imgIdx = 1;
+            if (characterBase64s.length > 0) {
+              labelParts.push(`第 ${imgIdx}${characterBase64s.length > 1 ? `-${imgIdx + characterBase64s.length - 1}` : ""} 張圖為主角外貌，保持角色一致`);
+              imgIdx += characterBase64s.length;
+            }
+            const sceneCount = scenes[i].sceneReferenceImageUrl ? 1 : sceneRefBase64s.length;
+            if (sceneCount > 0) {
+              labelParts.push(`第 ${imgIdx}${sceneCount > 1 ? `-${imgIdx + sceneCount - 1}` : ""} 張圖為場景構圖參考`);
+              imgIdx += sceneCount;
+            }
+            if (styleBase64s.length > 0) {
+              labelParts.push(`第 ${imgIdx}${styleBase64s.length > 1 ? `-${imgIdx + styleBase64s.length - 1}` : ""} 張圖為畫風風格參考`);
+            }
+            const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
+            const fullPrompt = `${scenePrompt}${labelNote}`;
             requestBody = {
               model: "ep-20251223142939-njrkd",
-              prompt: scenePrompt,
+              prompt: fullPrompt,
+              image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
               response_format: "url",
               size: imageSize,
               watermark: false,
-              content: contentItems,
             };
           } else {
             requestBody = {
