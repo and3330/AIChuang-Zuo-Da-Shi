@@ -2018,10 +2018,11 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
   app.post("/api/claude/enhance-story-prompts", requireAuth, async (req, res) => {
     try {
-      const { title, style, scenes } = req.body as {
+      const { title, style, scenes, storyContent } = req.body as {
         title: string;
         style: string;
         scenes: Array<{ title: string; description: string }>;
+        storyContent?: string;
       };
 
       if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
@@ -2038,12 +2039,15 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       };
 
       const styleDesc = styleGuide[style] || style;
+      const storyContentSection = storyContent?.trim()
+        ? `\n故事全文內容（請參考以下內容理解故事背景、角色與細節）：\n${storyContent.trim()}\n`
+        : "";
 
       const prompt = `你是一位專業的 AI 圖像生成提示詞設計師。請根據以下故事資訊，為每個場景生成高品質的英文圖片生成提示詞（image generation prompt）。
 
 故事標題：${title}
 畫風設定：${styleDesc}
-
+${storyContentSection}
 場景列表：
 ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).join("\n")}
 
@@ -2128,12 +2132,23 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
           const scenePrompt = `${story.style}, ${scenes[i].description}`;
           let requestBody: any;
 
-          if (refImageBase64s.length > 0) {
+          // Prefer per-scene reference image; fall back to global reference images
+          let sceneRefBase64s = refImageBase64s;
+          if (scenes[i].sceneReferenceImageUrl) {
+            try {
+              const sceneRefBase64 = await loadRefImageAsBase64(scenes[i].sceneReferenceImageUrl!);
+              sceneRefBase64s = [sceneRefBase64];
+            } catch (e) {
+              console.error(`Failed to load scene ${i} reference image, using global refs:`, e);
+            }
+          }
+
+          if (sceneRefBase64s.length > 0) {
             const contentItems: any[] = [
-              { type: "image_url", image_url: { url: refImageBase64s[0] } },
+              { type: "image_url", image_url: { url: sceneRefBase64s[0] } },
             ];
-            for (let j = 1; j < refImageBase64s.length; j++) {
-              contentItems.push({ type: "image_url", image_url: { url: refImageBase64s[j] } });
+            for (let j = 1; j < sceneRefBase64s.length; j++) {
+              contentItems.push({ type: "image_url", image_url: { url: sceneRefBase64s[j] } });
             }
             contentItems.push({ type: "text", text: scenePrompt });
             requestBody = {

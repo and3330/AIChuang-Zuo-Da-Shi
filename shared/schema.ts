@@ -202,8 +202,10 @@ export const insertStoryGenerationSchema = z.object({
   scenes: z.array(z.object({
     title: z.string(),
     description: z.string().min(1),
+    sceneReferenceImageUrl: z.string().optional(),
   })).min(2).max(8),
   referenceImageUrls: z.array(z.string()).max(4).optional(),
+  storyContent: z.string().optional(),
 });
 
 export const sendVerificationCodeSchema = z.object({
@@ -240,6 +242,7 @@ export type StoryScene = {
   id: string;
   title: string;
   description: string;
+  sceneReferenceImageUrl?: string;
   imageUrl?: string;
   bunnyUrl?: string;
   status: "pending" | "generating" | "completed" | "failed";

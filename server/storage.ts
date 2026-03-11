@@ -565,6 +565,7 @@ export class DatabaseStorage implements IStorage {
       id: `scene_${i}`,
       title: s.title || `第 ${i + 1} 幕`,
       description: s.description,
+      sceneReferenceImageUrl: (s as any).sceneReferenceImageUrl || undefined,
       status: "pending" as const,
     }));
     const [row] = await db.insert(storyGenerations).values({

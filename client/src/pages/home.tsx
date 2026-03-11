@@ -86,14 +86,19 @@ export default function Home() {
     { label: "自訂畫風", value: "custom" },
   ];
   const [storyTitle, setStoryTitle] = useState("神秘森林的冒險");
+  const [storyContent, setStoryContent] = useState("");
   const [storyStyle, setStoryStyle] = useState(STORY_STYLES[0].value);
   const [storyCustomStyle, setStoryCustomStyle] = useState("");
   const [storySceneCount, setStorySceneCount] = useState(4);
-  const [storyScenes, setStoryScenes] = useState<{ title: string; description: string }[]>([
+  const [storyScenes, setStoryScenes] = useState<{ title: string; description: string; sceneReferenceImageUrl?: string }[]>([
     { title: "第一幕", description: "主角在森林入口處發現一扇古老的神秘大門" },
     { title: "第二幕", description: "大門緩緩開啟，出現一道閃爍的金色光芒" },
     { title: "第三幕", description: "主角穿越大門，來到一片魔法花園" },
     { title: "第四幕", description: "花園中心有一棵發光的神木，枝頭棲息著奇幻的生靈" },
+    { title: "第五幕", description: "" },
+    { title: "第六幕", description: "" },
+    { title: "第七幕", description: "" },
+    { title: "第八幕", description: "" },
   ]);
   const [storyRefImages, setStoryRefImages] = useState<{ url: string; path: string }[]>([]);
   const [currentStoryId, setCurrentStoryId] = useState<string>("");
@@ -187,6 +192,7 @@ export default function Home() {
         title: storyTitle,
         style: storyStyle,
         scenes: storyScenes.slice(0, storySceneCount),
+        storyContent: storyContent.trim() || undefined,
       });
       return response.json();
     },
@@ -361,7 +367,8 @@ export default function Home() {
         toast({ title: "請填寫故事標題", variant: "destructive" });
         return;
       }
-      const hasEmptyScenes = storyScenes.some(s => !s.description.trim());
+      const activeScenes = storyScenes.slice(0, storySceneCount);
+      const hasEmptyScenes = activeScenes.some(s => !s.description.trim());
       if (hasEmptyScenes) {
         toast({ title: "請填寫所有場景描述", description: "每一幕都需要有描述才能生成。", variant: "destructive" });
         return;
@@ -374,8 +381,9 @@ export default function Home() {
       storyMutation.mutate({
         title: storyTitle.trim(),
         style: effectiveStyle,
-        scenes: storyScenes,
+        scenes: activeScenes,
         referenceImageUrls: storyRefImages.map(r => r.path),
+        storyContent: storyContent.trim() || undefined,
       });
       return;
     }
@@ -523,17 +531,36 @@ export default function Home() {
     setStorySceneCount(count);
     setStoryScenes(prev => {
       const arr = [...prev];
-      while (arr.length < count) arr.push({ title: `第 ${arr.length + 1} 幕`, description: "" });
-      return arr.slice(0, count);
+      while (arr.length < 8) arr.push({ title: `第 ${arr.length + 1} 幕`, description: "" });
+      return arr;
     });
   };
 
-  const updateStoryScene = (idx: number, field: "title" | "description", value: string) => {
+  const updateStoryScene = (idx: number, field: "title" | "description" | "sceneReferenceImageUrl", value: string) => {
     setStoryScenes(prev => {
       const arr = [...prev];
       arr[idx] = { ...arr[idx], [field]: value };
       return arr;
     });
+  };
+
+  const [sceneUploadingIdx, setSceneUploadingIdx] = useState<number | null>(null);
+
+  const handleSceneImageSelect = async (idx: number, file: File) => {
+    setSceneUploadingIdx(idx);
+    try {
+      const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
+      const { uploadURL } = await uploadRes.json();
+      await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+      const pathRes = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
+      const { objectPath } = await pathRes.json();
+      updateStoryScene(idx, "sceneReferenceImageUrl", objectPath);
+      toast({ title: `第 ${idx + 1} 幕場景圖上傳成功` });
+    } catch {
+      toast({ title: "場景圖上傳失敗", variant: "destructive" });
+    } finally {
+      setSceneUploadingIdx(null);
+    }
   };
 
   const isStoryGenerating = storyMutation.isPending ||
@@ -1585,6 +1612,21 @@ export default function Home() {
                   />
                 </div>
 
+                {/* Story Full Content */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
+                    故事內容（選填）
+                    <InfoTooltip text="貼上已寫好的故事全文，Claude 會根據內容自動生成更精準的場景描述與圖片提示詞" />
+                  </Label>
+                  <Textarea
+                    rows={4}
+                    placeholder="貼上你已經寫好的故事內容（例如劇本、腳本、故事大綱），Claude 優化提示詞時會參考此內容..."
+                    value={storyContent}
+                    onChange={e => setStoryContent(e.target.value)}
+                    className="resize-y text-sm border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+
                 {/* Style Selection */}
                 <div>
                   <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
@@ -1729,13 +1771,52 @@ export default function Home() {
                             placeholder={`第 ${idx + 1} 幕`}
                           />
                         </div>
-                        <Textarea
-                          rows={2}
-                          value={scene.description}
-                          onChange={e => updateStoryScene(idx, "description", e.target.value)}
-                          placeholder={`描述第 ${idx + 1} 幕的場景內容（例如：主角站在山頂俯瞰整個城市，夕陽西下）`}
-                          className="resize-none text-sm border-gray-100 bg-gray-50 rounded-lg focus:ring-2 focus:ring-emerald-500"
-                        />
+                        <div className="flex gap-2">
+                          <Textarea
+                            rows={2}
+                            value={scene.description}
+                            onChange={e => updateStoryScene(idx, "description", e.target.value)}
+                            placeholder={`描述第 ${idx + 1} 幕的場景內容（例如：主角站在山頂俯瞰整個城市，夕陽西下）`}
+                            className="resize-none text-sm border-gray-100 bg-gray-50 rounded-lg focus:ring-2 focus:ring-emerald-500 flex-1"
+                          />
+                          <div className="flex-shrink-0">
+                            {scene.sceneReferenceImageUrl ? (
+                              <div className="relative group w-16 h-16">
+                                <img
+                                  src={scene.sceneReferenceImageUrl.startsWith("/objects/") ? scene.sceneReferenceImageUrl : `/objects/${scene.sceneReferenceImageUrl.replace(/^\//, "")}`}
+                                  alt="場景參考"
+                                  className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                                  onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/64?text=圖" }}
+                                />
+                                <button
+                                  onClick={() => updateStoryScene(idx, "sceneReferenceImageUrl", "")}
+                                  className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-red-500 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                >×</button>
+                              </div>
+                            ) : (
+                              <label className="w-16 h-16 border-2 border-dashed border-gray-200 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-emerald-400 hover:bg-emerald-50 transition-colors group">
+                                {sceneUploadingIdx === idx ? (
+                                  <div className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                  <>
+                                    <svg className="w-5 h-5 text-gray-300 group-hover:text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                                    <span className="text-[9px] text-gray-400 group-hover:text-emerald-600 mt-0.5">上傳</span>
+                                  </>
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/jpeg,image/png"
+                                  className="hidden"
+                                  onChange={e => {
+                                    const file = e.target.files?.[0];
+                                    if (file) handleSceneImageSelect(idx, file);
+                                    e.target.value = "";
+                                  }}
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>
