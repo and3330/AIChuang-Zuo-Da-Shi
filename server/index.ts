@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { startTelegramBot } from "./telegramBot";
 
 const app = express();
+app.set("trust proxy", 1);
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
