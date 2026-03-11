@@ -2110,8 +2110,8 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
 
       const sceneSizeMap: Record<string, string> = {
         "1:1": "2048x2048",
-        "9:16": "1152x2048",
-        "16:9": "2048x1152",
+        "9:16": "1440x2560",
+        "16:9": "2560x1440",
       };
       const imageSize = sceneSizeMap[story.sceneSize ?? "1:1"] || "2048x2048";
 
