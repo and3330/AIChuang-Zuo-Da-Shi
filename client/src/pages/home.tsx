@@ -2791,14 +2791,41 @@ export default function Home() {
                                     const vidData = animationVideoQueries[animEntry.queryIdx]?.data as VideoGeneration | undefined;
                                     const videoUrl = vidData?.bunnyVideoUrl || vidData?.generatedVideoUrl;
                                     if (!vidData) return null;
+                                    const vidAspect = vidData.aspectRatio || "16:9";
+                                    const aspectPadding: Record<string, string> = { "16:9": "aspect-video", "9:16": "aspect-[9/16]", "1:1": "aspect-square" };
+                                    const videoPad = aspectPadding[vidAspect] || "aspect-video";
                                     return (
                                       <div className="border-t border-gray-100 bg-gray-50">
                                         {vidData.status === "completed" && videoUrl ? (
-                                          <video src={videoUrl} muted autoPlay loop playsInline className="w-full aspect-video object-cover" />
+                                          <div className="relative">
+                                            <video src={videoUrl} muted autoPlay loop playsInline className={`w-full ${videoPad} object-cover`} />
+                                            {/* Size badge */}
+                                            <span className="absolute top-1.5 left-1.5 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded font-medium">
+                                              {vidAspect}
+                                            </span>
+                                            {/* Regenerate button */}
+                                            <button
+                                              className="absolute top-1.5 right-1.5 w-6 h-6 bg-black/60 hover:bg-purple-700 text-white rounded text-[10px] flex items-center justify-center"
+                                              title="重新生成動畫"
+                                              onClick={() => singleSceneAnimateMutation.mutate({ sceneIdx: idx })}
+                                              disabled={singleSceneAnimateMutation.isPending}
+                                            >
+                                              <i className="fas fa-redo"></i>
+                                            </button>
+                                          </div>
                                         ) : (
                                           <div className="w-full aspect-video flex items-center justify-center">
                                             {vidData.status === "failed" ? (
-                                              <span className="text-xs text-red-500"><i className="fas fa-times-circle mr-1"></i>動畫失敗</span>
+                                              <div className="flex flex-col items-center gap-1">
+                                                <span className="text-xs text-red-500"><i className="fas fa-times-circle mr-1"></i>動畫失敗</span>
+                                                <button
+                                                  className="text-[10px] px-2 py-0.5 bg-red-100 text-red-600 rounded hover:bg-red-200"
+                                                  onClick={() => singleSceneAnimateMutation.mutate({ sceneIdx: idx })}
+                                                  disabled={singleSceneAnimateMutation.isPending}
+                                                >
+                                                  重試
+                                                </button>
+                                              </div>
                                             ) : (
                                               <><div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mr-2" /><span className="text-xs text-purple-500">動畫生成中...</span></>
                                             )}
@@ -2823,6 +2850,13 @@ export default function Home() {
                               <div className="p-3 bg-white">
                                 <p className="text-xs font-semibold text-gray-700 mb-0.5">{scene.title || `第 ${idx + 1} 幕`}</p>
                                 <p className="text-xs text-gray-500 line-clamp-2">{scene.description}</p>
+                                {/* Show what animation size will be generated */}
+                                {imgUrl && !animJobBySceneIdx[idx] && (
+                                  <div className="mt-1.5 flex items-center gap-1 text-[10px] text-purple-500">
+                                    <i className="fas fa-film"></i>
+                                    動畫比例：<span className="font-semibold">{animAspectRatio}</span>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
