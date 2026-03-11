@@ -332,7 +332,7 @@ export default function Home() {
 
   const { data: storyHistory = [] } = useQuery<StoryGeneration[]>({
     queryKey: ["/api/story-generations"],
-    enabled: isStoryMode && showStoryHistory,
+    enabled: mode === "story" && showStoryHistory,
     staleTime: 30000,
   });
 

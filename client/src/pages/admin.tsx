@@ -56,7 +56,9 @@ interface GenerationRecord {
   userId: string;
   username: string;
   email: string;
-  category: "image" | "video";
+  category: "image" | "video" | "story";
+  sceneCount?: number;
+  completedCount?: number;
   type: string;
   prompt: string;
   status: string;
@@ -148,7 +150,7 @@ export default function AdminPage() {
   });
 
   const [genSearch, setGenSearch] = useState("");
-  const [genFilter, setGenFilter] = useState<"all" | "image" | "video">("all");
+  const [genFilter, setGenFilter] = useState<"all" | "image" | "video" | "story">("all");
   const { data: generations, isLoading: generationsLoading } = useQuery<GenerationRecord[]>({
     queryKey: ["/api/admin/generations"],
     enabled: !!user?.isAdmin && activeTab === "generations",
