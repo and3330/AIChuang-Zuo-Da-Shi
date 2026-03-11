@@ -254,6 +254,12 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         return res.status(401).json({ error: "用户名或密码错误" });
       }
 
+      const adminEmailList = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+      if (adminEmailList.includes(user.email.toLowerCase()) && !user.isAdmin) {
+        await storage.setUserAdmin(user.id, true);
+        user = { ...user, isAdmin: true };
+      }
+
       req.session.userId = user.id;
       req.session.username = user.username;
       req.session.isAdmin = user.isAdmin || false;
@@ -384,6 +390,11 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       }
 
       if (user) {
+        const adminEmailsGoogle = (process.env.ADMIN_EMAILS || "").split(",").map(e => e.trim().toLowerCase()).filter(Boolean);
+        if (adminEmailsGoogle.includes(user.email.toLowerCase()) && !user.isAdmin) {
+          await storage.setUserAdmin(user.id, true);
+          user = { ...user, isAdmin: true };
+        }
         req.session.userId = user.id;
         req.session.username = user.username;
         req.session.isAdmin = user.isAdmin || false;
