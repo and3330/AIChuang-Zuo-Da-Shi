@@ -578,6 +578,7 @@ export class DatabaseStorage implements IStorage {
       status: "pending",
       creditsUsed: data.creditsUsed,
       cost: 0,
+      sceneSize: (data as any).sceneSize ?? "1:1",
     }).returning();
     return row;
   }

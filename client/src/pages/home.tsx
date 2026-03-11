@@ -90,6 +90,7 @@ export default function Home() {
   const [storyStyle, setStoryStyle] = useState(STORY_STYLES[0].value);
   const [storyCustomStyle, setStoryCustomStyle] = useState("");
   const [storySceneCount, setStorySceneCount] = useState(4);
+  const [storySceneSize, setStorySceneSize] = useState<"1:1" | "9:16" | "16:9">("1:1");
   const [storyScenes, setStoryScenes] = useState<{ title: string; description: string; sceneReferenceImageUrl?: string }[]>([
     { title: "第一幕", description: "主角在森林入口處發現一扇古老的神秘大門" },
     { title: "第二幕", description: "大門緩緩開啟，出現一道閃爍的金色光芒" },
@@ -384,6 +385,7 @@ export default function Home() {
         scenes: activeScenes,
         referenceImageUrls: storyRefImages.map(r => r.path),
         storyContent: storyContent.trim() || undefined,
+        sceneSize: storySceneSize,
       });
       return;
     }
@@ -1675,6 +1677,35 @@ export default function Home() {
                         }`}
                       >
                         {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Scene Size */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
+                    場景圖比例
+                    <InfoTooltip text="選擇生成圖片的尺寸比例，手機直向適合短影音、IG 限時動態；正方形適合社群貼文；橫向適合桌面或影片截圖" />
+                  </Label>
+                  <div className="flex gap-2">
+                    {[
+                      { value: "1:1" as const, label: "1:1", sub: "正方形", icon: "⬜" },
+                      { value: "9:16" as const, label: "9:16", sub: "手機直向", icon: "📱" },
+                      { value: "16:9" as const, label: "16:9", sub: "橫向寬屏", icon: "🖥️" },
+                    ].map(opt => (
+                      <button
+                        key={opt.value}
+                        onClick={() => setStorySceneSize(opt.value)}
+                        className={`flex-1 py-2.5 px-2 rounded-xl border-2 text-xs font-medium transition-all text-center ${
+                          storySceneSize === opt.value
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                            : "border-gray-200 hover:border-emerald-200 hover:bg-emerald-50/30 text-gray-600"
+                        }`}
+                      >
+                        <div className="text-base mb-0.5">{opt.icon}</div>
+                        <div className="font-semibold">{opt.label}</div>
+                        <div className="text-[10px] opacity-70">{opt.sub}</div>
                       </button>
                     ))}
                   </div>

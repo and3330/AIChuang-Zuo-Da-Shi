@@ -88,6 +88,7 @@ export const storyGenerations = pgTable("story_generations", {
   creditsUsed: integer("credits_used").default(0),
   cost: real("cost").default(0),
   errorMessage: text("error_message"),
+  sceneSize: text("scene_size").default("1:1"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -206,6 +207,7 @@ export const insertStoryGenerationSchema = z.object({
   })).min(2).max(8),
   referenceImageUrls: z.array(z.string()).max(4).optional(),
   storyContent: z.string().optional(),
+  sceneSize: z.enum(["1:1", "9:16", "16:9"]).optional().default("1:1"),
 });
 
 export const sendVerificationCodeSchema = z.object({

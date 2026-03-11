@@ -1976,7 +1976,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       if (!validated.success) {
         return res.status(400).json({ error: "參數錯誤", details: validated.error.flatten() });
       }
-      const { title, style, scenes, referenceImageUrls } = validated.data;
+      const { title, style, scenes, referenceImageUrls, sceneSize } = validated.data;
       const creditsNeeded = scenes.length * 3;
 
       const user = await storage.getUser(userId);
@@ -1992,6 +1992,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         style,
         scenes,
         referenceImageUrls: referenceImageUrls ?? [],
+        sceneSize: sceneSize ?? "1:1",
         creditsUsed: creditsNeeded,
       });
 
@@ -2107,6 +2108,13 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
       const referenceImageUrls = story.referenceImageUrls ?? [];
       let totalCost = 0;
 
+      const sceneSizeMap: Record<string, string> = {
+        "1:1": "2048x2048",
+        "9:16": "1152x2048",
+        "16:9": "2048x1152",
+      };
+      const imageSize = sceneSizeMap[story.sceneSize ?? "1:1"] || "2048x2048";
+
       const loadRefImageAsBase64 = async (imagePath: string): Promise<string> => {
         const objectFile = await objectStorageService.getObjectEntityFile(imagePath);
         const chunks: Buffer[] = [];
@@ -2155,7 +2163,7 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
               model: "ep-20251223142939-njrkd",
               prompt: scenePrompt,
               response_format: "url",
-              size: "2048x2048",
+              size: imageSize,
               watermark: false,
               content: contentItems,
             };
@@ -2164,7 +2172,7 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
               model: "ep-20251223142939-njrkd",
               prompt: scenePrompt,
               response_format: "url",
-              size: "2048x2048",
+              size: imageSize,
               watermark: false,
             };
           }
