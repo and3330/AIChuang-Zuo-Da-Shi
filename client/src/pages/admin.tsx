@@ -754,6 +754,14 @@ export default function AdminPage() {
                   >
                     <i className="fas fa-video mr-1"></i>影片
                   </button>
+                  <button
+                    onClick={() => setGenFilter("story")}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                      genFilter === "story" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                    }`}
+                  >
+                    <i className="fas fa-book-open mr-1"></i>故事
+                  </button>
                 </div>
               </div>
               {generationsLoading ? (
@@ -791,7 +799,7 @@ export default function AdminPage() {
                       </div>
                       <div className="p-3 bg-yellow-50 rounded-lg text-center">
                         <p className="text-xs text-gray-500">處理中</p>
-                        <p className="text-xl font-bold text-yellow-600">{filtered.filter(g => g.status === "pending" || g.status === "processing").length}</p>
+                        <p className="text-xl font-bold text-yellow-600">{filtered.filter(g => g.status === "pending" || g.status === "processing" || g.status === "generating").length}</p>
                       </div>
                       <div className="p-3 bg-red-50 rounded-lg text-center">
                         <p className="text-xs text-gray-500">失敗</p>
@@ -826,9 +834,14 @@ export default function AdminPage() {
                                   <span className="px-2 py-0.5 text-xs rounded-full bg-purple-100 text-purple-700">
                                     {g.type === "text-to-image" ? "文字生圖" : "圖片編輯"}
                                   </span>
+                                ) : g.category === "story" ? (
+                                  <span className="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-700">
+                                    {(g as any).type || "故事"}
+                                    {(g as any).completedCount != null && <span className="ml-1 text-gray-400">({(g as any).completedCount}/{(g as any).sceneCount})</span>}
+                                  </span>
                                 ) : (
                                   <span className="px-2 py-0.5 text-xs rounded-full bg-indigo-100 text-indigo-700">
-                                    影片 {g.duration || 5}秒
+                                    影片 {(g as any).duration || 5}秒
                                   </span>
                                 )}
                               </td>
@@ -839,7 +852,9 @@ export default function AdminPage() {
                                   onClick={() => setPromptDialog({
                                     open: true,
                                     prompt: g.prompt,
-                                    type: g.category === "image" ? (g.type === "text-to-image" ? "文字生圖" : "圖片編輯") : `影片 ${g.duration || 5}秒`
+                                    type: g.category === "image" ? (g.type === "text-to-image" ? "文字生圖" : "圖片編輯") :
+                                           g.category === "story" ? (g as any).type :
+                                           `影片 ${(g as any).duration || 5}秒`
                                   })}
                                 >
                                   {g.prompt}
@@ -849,20 +864,20 @@ export default function AdminPage() {
                               <td className="px-3 py-2 text-right font-medium">{g.creditsUsed}</td>
                               <td className="px-3 py-2">
                                 {g.thumbnailUrl ? (
-                                  g.category === "image" ? (
-                                    <img
-                                      src={g.thumbnailUrl}
-                                      alt="生成結果"
-                                      className="w-10 h-10 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
-                                      onClick={() => setMediaDialog({ open: true, url: g.thumbnailUrl!, type: "image" })}
-                                    />
-                                  ) : (
+                                  g.category === "video" ? (
                                     <div
                                       className="w-10 h-10 bg-gray-100 rounded flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors"
                                       onClick={() => setMediaDialog({ open: true, url: g.thumbnailUrl!, type: "video" })}
                                     >
                                       <i className="fas fa-play text-xs text-purple-600"></i>
                                     </div>
+                                  ) : (
+                                    <img
+                                      src={g.thumbnailUrl}
+                                      alt="生成結果"
+                                      className="w-10 h-10 object-cover rounded cursor-pointer hover:opacity-80 transition-opacity"
+                                      onClick={() => setMediaDialog({ open: true, url: g.thumbnailUrl!, type: "image" })}
+                                    />
                                   )
                                 ) : (
                                   <div className="w-10 h-10 bg-gray-50 rounded flex items-center justify-center">

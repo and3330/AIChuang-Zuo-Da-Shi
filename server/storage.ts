@@ -56,6 +56,7 @@ export interface IStorage {
   getStoryGeneration(id: string): Promise<StoryGeneration | undefined>;
   updateStoryGeneration(id: string, updates: Partial<StoryGeneration>): Promise<StoryGeneration | undefined>;
   getUserStoryGenerations(userId: string): Promise<StoryGeneration[]>;
+  getAllStoryGenerations(): Promise<StoryGeneration[]>;
   failStoryGenerationAndRefund(id: string, errorMessage: string): Promise<boolean>;
 }
 
@@ -604,6 +605,10 @@ export class DatabaseStorage implements IStorage {
 
   async getUserStoryGenerations(userId: string): Promise<StoryGeneration[]> {
     return db.select().from(storyGenerations).where(eq(storyGenerations.userId, userId)).orderBy(desc(storyGenerations.createdAt));
+  }
+
+  async getAllStoryGenerations(): Promise<StoryGeneration[]> {
+    return db.select().from(storyGenerations).orderBy(desc(storyGenerations.createdAt));
   }
 
   async failStoryGenerationAndRefund(id: string, errorMessage: string): Promise<boolean> {

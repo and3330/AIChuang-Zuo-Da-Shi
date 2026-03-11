@@ -1825,6 +1825,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
 
       const rawImages = await storage.getAllImageGenerations();
       const rawVideos = await storage.getAllVideoGenerations();
+      const rawStories = await storage.getAllStoryGenerations();
 
       const images = rawImages.map(g => {
         const r = { ...g };
@@ -1866,7 +1867,30 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
         };
       });
 
-      const all = [...images, ...videos].sort((a, b) =>
+      const stories = rawStories.map(g => {
+        const userInfo = userMap.get(g.userId);
+        const scenes: StoryScene[] = (() => { try { return JSON.parse(g.scenes || "[]"); } catch { return []; } })();
+        const firstScene = scenes.find(s => s.bunnyUrl || s.imageUrl);
+        const sceneCount = scenes.length;
+        const completedCount = scenes.filter(s => s.status === "completed").length;
+        return {
+          id: g.id,
+          userId: g.userId,
+          username: userInfo?.username || "未知",
+          email: userInfo?.email || "",
+          category: "story" as const,
+          type: `故事（${sceneCount}幕）`,
+          prompt: g.title,
+          status: g.status,
+          creditsUsed: g.creditsUsed || sceneCount * 3,
+          sceneCount,
+          completedCount,
+          createdAt: g.createdAt,
+          thumbnailUrl: firstScene?.bunnyUrl || firstScene?.imageUrl || null,
+        };
+      });
+
+      const all = [...images, ...videos, ...stories].sort((a, b) =>
         new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime()
       );
 
@@ -2019,6 +2043,96 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     } catch (error) {
       console.error("Error getting story generation:", error);
       res.status(500).json({ error: "查詢失敗" });
+    }
+  });
+
+  // List user's story generations (history)
+  app.get("/api/story-generations", requireAuth, async (req, res) => {
+    try {
+      const stories = await storage.getUserStoryGenerations(req.session.userId!);
+      res.json(stories);
+    } catch (error) {
+      console.error("Error listing story generations:", error);
+      res.status(500).json({ error: "查詢失敗" });
+    }
+  });
+
+  // Update story title (inline edit)
+  app.patch("/api/story-generations/:storyId", requireAuth, async (req, res) => {
+    try {
+      const { storyId } = req.params;
+      const story = await storage.getStoryGeneration(storyId);
+      if (!story) return res.status(404).json({ error: "找不到故事" });
+      if (story.userId !== req.session.userId!) return res.status(403).json({ error: "無存取權限" });
+      const updates: Partial<typeof story> = {};
+      if (typeof req.body.title === "string" && req.body.title.trim()) updates.title = req.body.title.trim();
+      const updated = await storage.updateStoryGeneration(storyId, updates);
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || "更新失敗" });
+    }
+  });
+
+  // Animate a single scene
+  app.post("/api/story-generations/:storyId/animate-scene/:sceneIdx", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { storyId, sceneIdx: sceneIdxStr } = req.params;
+      const sceneIdx = parseInt(sceneIdxStr, 10);
+      const duration = Math.max(4, Math.min(12, Number(req.body.duration) || 5));
+      const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
+      const aspectRatio = ["16:9", "9:16", "1:1"].includes(req.body.aspectRatio) ? req.body.aspectRatio : "16:9";
+      const animationPrompt = (req.body.animationPrompt || "").trim();
+
+      const story = await storage.getStoryGeneration(storyId);
+      if (!story) return res.status(404).json({ error: "找不到故事" });
+      if (story.userId !== userId) return res.status(403).json({ error: "無存取權限" });
+
+      const scenes: StoryScene[] = JSON.parse(story.scenes || "[]");
+      if (isNaN(sceneIdx) || sceneIdx < 0 || sceneIdx >= scenes.length) {
+        return res.status(400).json({ error: "場景索引無效" });
+      }
+      const scene = scenes[sceneIdx];
+      if (scene.status !== "completed" || !(scene.bunnyUrl || scene.imageUrl)) {
+        return res.status(400).json({ error: "此幕圖片尚未生成完成" });
+      }
+
+      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 3.4 : 6.8;
+      const credits = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
+      const user = await storage.getUser(userId);
+      if (!user || (user.credits ?? 0) < credits) {
+        return res.status(400).json({ error: `積分不足，需要 ${credits} 積分` });
+      }
+
+      await storage.atomicAddCredits(userId, -credits, `故事「${story.title}」第 ${sceneIdx + 1} 幕動畫生成`);
+
+      const storyUser = await storage.getUser(userId);
+      const userFolder = storyUser?.username || userId;
+      const imageUrl = scene.bunnyUrl || scene.imageUrl!;
+      const prompt = animationPrompt || scene.description;
+
+      const videoGen = await storage.createVideoGeneration({
+        userId,
+        type: "image-to-video",
+        prompt,
+        originalImageUrl: imageUrl,
+        duration,
+        resolution,
+        aspectRatio,
+        cameraFixed: false,
+      });
+
+      processSceneAnimation(videoGen.id, imageUrl, bunnyStorage, userFolder, storyId, sceneIdx, credits).catch(console.error);
+
+      res.json({
+        sceneIdx,
+        sceneTitle: scene.title || `第 ${sceneIdx + 1} 幕`,
+        videoId: videoGen.id,
+        credits,
+      });
+    } catch (error: any) {
+      console.error("Error starting single scene animation:", error);
+      res.status(500).json({ error: error.message || "動畫生成失敗" });
     }
   });
 

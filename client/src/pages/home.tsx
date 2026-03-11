@@ -113,6 +113,10 @@ export default function Home() {
   const [animAspectRatio, setAnimAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [animPrompt, setAnimPrompt] = useState("");
   const [perSceneAnimPrompts, setPerSceneAnimPrompts] = useState<string[]>([]);
+  const [showStoryHistory, setShowStoryHistory] = useState(false);
+  const [editingStoryTitle, setEditingStoryTitle] = useState(false);
+  const [editingTitleValue, setEditingTitleValue] = useState("");
+  const [dragSourceIdx, setDragSourceIdx] = useState<number | null>(null);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -279,7 +283,9 @@ export default function Home() {
     onSuccess: (data: any) => {
       setCurrentStoryId(data.id);
       setStoryAnimationJobs([]);
+      setEditingStoryTitle(false);
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations", data.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/story-generations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "故事生成已開始", description: `正在生成「${data.title}」，請稍候...` });
     },
@@ -323,6 +329,55 @@ export default function Home() {
       toast({ title: "生成失敗", description: error.message || "無法生成動畫提示詞", variant: "destructive" });
     },
   });
+
+  const { data: storyHistory = [] } = useQuery<StoryGeneration[]>({
+    queryKey: ["/api/story-generations"],
+    enabled: isStoryMode && showStoryHistory,
+    staleTime: 30000,
+  });
+
+  const singleSceneAnimateMutation = useMutation({
+    mutationFn: async ({ sceneIdx }: { sceneIdx: number }) => {
+      const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/animate-scene/${sceneIdx}`, {
+        duration: animDuration,
+        resolution: animResolution,
+        aspectRatio: animAspectRatio,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "動畫生成失敗");
+      return data;
+    },
+    onSuccess: (data: any) => {
+      setStoryAnimationJobs(prev => {
+        const filtered = prev.filter(j => j.sceneIdx !== data.sceneIdx);
+        return [...filtered, { sceneIdx: data.sceneIdx, sceneTitle: data.sceneTitle, videoId: data.videoId }];
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: `第 ${data.sceneIdx + 1} 幕動畫生成中`, description: `扣除 ${data.credits} 積分，完成後自動顯示` });
+    },
+    onError: (error: any) => {
+      toast({ title: "動畫生成失敗", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const editStoryTitleMutation = useMutation({
+    mutationFn: async (title: string) => {
+      const response = await apiRequest("PATCH", `/api/story-generations/${currentStoryId}`, { title });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "更新失敗");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/story-generations", currentStoryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/story-generations"] });
+      setEditingStoryTitle(false);
+    },
+    onError: (error: any) => {
+      toast({ title: "更新失敗", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const animJobBySceneIdx = Object.fromEntries(storyAnimationJobs.map((job, i) => [job.sceneIdx, { job, queryIdx: i }]));
 
   const animationVideoQueries = useQueries({
     queries: storyAnimationJobs.map(job => ({
@@ -1670,7 +1725,76 @@ export default function Home() {
             </DialogContent>
           </Dialog>
 
-          {/* ============ STORY MODE INPUT ============ */}
+          {/* ============ STORY HISTORY + FORM ============ */}
+          {isStoryMode && !isStoryGenerating && (
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => { setShowStoryHistory(v => !v); }}
+                className="flex items-center gap-2 text-sm text-emerald-700 hover:text-emerald-900 font-medium transition-colors"
+              >
+                <i className={`fas fa-${showStoryHistory ? "chevron-up" : "history"}`}></i>
+                {showStoryHistory ? "收起歷史記錄" : "我的故事歷史"}
+              </button>
+            </div>
+          )}
+          {isStoryMode && showStoryHistory && !isStoryGenerating && (
+            <Card className="bg-white rounded-xl shadow-sm border border-emerald-200">
+              <CardContent className="p-4">
+                <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                  <i className="fas fa-history text-emerald-600"></i>故事歷史紀錄
+                  <span className="text-xs font-normal text-gray-400">（點擊可重新載入查看）</span>
+                </h3>
+                {storyHistory.length === 0 ? (
+                  <p className="text-sm text-gray-400 text-center py-4">尚無故事紀錄</p>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {storyHistory.map(story => {
+                      const scenes: StoryScene[] = (() => { try { return JSON.parse(story.scenes || "[]"); } catch { return []; } })();
+                      const thumb = scenes.find(s => s.bunnyUrl || s.imageUrl);
+                      const doneCount = scenes.filter(s => s.status === "completed").length;
+                      return (
+                        <div
+                          key={story.id}
+                          className={`rounded-xl overflow-hidden border cursor-pointer hover:shadow-md transition-shadow ${
+                            story.id === currentStoryId ? "border-emerald-400 ring-2 ring-emerald-200" : "border-gray-200"
+                          }`}
+                          onClick={() => {
+                            setCurrentStoryId(story.id);
+                            setStoryAnimationJobs([]);
+                            setShowStoryHistory(false);
+                          }}
+                        >
+                          {thumb ? (
+                            <img src={thumb.bunnyUrl || thumb.imageUrl} className="w-full aspect-square object-cover" alt={story.title} />
+                          ) : (
+                            <div className="w-full aspect-square bg-emerald-50 flex items-center justify-center">
+                              <i className="fas fa-book-open text-emerald-300 text-2xl"></i>
+                            </div>
+                          )}
+                          <div className="p-2">
+                            <p className="text-xs font-semibold text-gray-700 truncate">{story.title}</p>
+                            <div className="flex items-center justify-between mt-0.5">
+                              <span className={`text-xs ${
+                                story.status === "completed" ? "text-emerald-600" :
+                                story.status === "generating" ? "text-blue-500" :
+                                story.status === "failed" ? "text-red-500" : "text-gray-400"
+                              }`}>
+                                {story.status === "completed" ? `✓ ${doneCount}幕完成` :
+                                 story.status === "generating" ? "生成中..." :
+                                 story.status === "failed" ? "失敗" : "等待中"}
+                              </span>
+                              <span className="text-xs text-gray-400">{new Date(story.createdAt!).toLocaleDateString("zh-TW")}</span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
           {isStoryMode && !isStoryGenerating && storyGeneration?.status !== "completed" && (
             <Card className="bg-white rounded-xl shadow-sm border border-emerald-200">
               <CardContent className="p-6 space-y-5">
@@ -1894,8 +2018,29 @@ export default function Home() {
                   </div>
                   <div className="space-y-3">
                     {storyScenes.slice(0, storySceneCount).map((scene, idx) => (
-                      <div key={idx} className="border border-gray-200 rounded-xl p-4 space-y-2 hover:border-emerald-200 transition-colors">
+                      <div
+                        key={idx}
+                        draggable
+                        onDragStart={() => setDragSourceIdx(idx)}
+                        onDragOver={e => { e.preventDefault(); }}
+                        onDrop={e => {
+                          e.preventDefault();
+                          if (dragSourceIdx === null || dragSourceIdx === idx) return;
+                          setStoryScenes(prev => {
+                            const arr = [...prev];
+                            const [removed] = arr.splice(dragSourceIdx, 1);
+                            arr.splice(idx, 0, removed);
+                            return arr;
+                          });
+                          setDragSourceIdx(null);
+                        }}
+                        onDragEnd={() => setDragSourceIdx(null)}
+                        className={`border rounded-xl p-4 space-y-2 transition-all cursor-grab active:cursor-grabbing ${
+                          dragSourceIdx === idx ? "opacity-50 border-emerald-400 bg-emerald-50" : "border-gray-200 hover:border-emerald-200"
+                        }`}
+                      >
                         <div className="flex items-center gap-2">
+                          <i className="fas fa-grip-vertical text-gray-300 text-sm flex-shrink-0 cursor-grab" />
                           <span className="w-7 h-7 bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0">
                             {idx + 1}
                           </span>
@@ -2538,10 +2683,42 @@ export default function Home() {
             <Card className="bg-white rounded-xl shadow-sm border border-emerald-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-5">
-                  <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2">
-                    <span className="text-xl">📖</span>
-                    {storyGeneration.title}
-                  </h2>
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="text-xl flex-shrink-0">📖</span>
+                    {editingStoryTitle ? (
+                      <form className="flex items-center gap-2 flex-1" onSubmit={e => { e.preventDefault(); editStoryTitleMutation.mutate(editingTitleValue); }}>
+                        <input
+                          autoFocus
+                          value={editingTitleValue}
+                          onChange={e => setEditingTitleValue(e.target.value)}
+                          className="flex-1 text-lg font-bold border-b-2 border-emerald-400 bg-transparent outline-none text-gray-800"
+                          onBlur={() => { if (editingTitleValue.trim()) editStoryTitleMutation.mutate(editingTitleValue); else setEditingStoryTitle(false); }}
+                        />
+                        <button type="submit" className="text-emerald-600 hover:text-emerald-800 text-sm"><i className="fas fa-check"></i></button>
+                        <button type="button" onClick={() => setEditingStoryTitle(false)} className="text-gray-400 hover:text-gray-600 text-sm"><i className="fas fa-times"></i></button>
+                      </form>
+                    ) : (
+                      <h2 className="text-lg font-bold text-gray-800 flex items-center gap-2 truncate">
+                        {storyGeneration.title}
+                        <button
+                          onClick={() => { setEditingTitleValue(storyGeneration.title); setEditingStoryTitle(true); }}
+                          className="text-gray-300 hover:text-emerald-500 transition-colors flex-shrink-0"
+                          title="編輯標題"
+                        >
+                          <i className="fas fa-pencil-alt text-sm"></i>
+                        </button>
+                      </h2>
+                    )}
+                  </div>
+                  <div className="flex gap-2 flex-shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs"
+                      onClick={() => { setShowStoryHistory(true); setCurrentStoryId(""); }}
+                    >
+                      <i className="fas fa-history mr-1.5"></i>歷史
+                    </Button>
                   <Button
                     variant="outline"
                     className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg text-sm"
@@ -2551,6 +2728,7 @@ export default function Home() {
                   >
                     <i className="fas fa-plus mr-2"></i>新故事
                   </Button>
+                  </div>
                 </div>
 
                 {(() => {
@@ -2566,27 +2744,70 @@ export default function Home() {
                           return (
                             <div key={idx} className={`rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow group ${isFailed ? "border-red-200" : "border-gray-200"}`}>
                               {isRegenerating ? (
-                                <div className="w-full aspect-square bg-emerald-50 flex flex-col items-center justify-center gap-2"
-                                  onClick={() => setStoryLightboxIdx(idx)}>
+                                <div className="w-full aspect-square bg-emerald-50 flex flex-col items-center justify-center gap-2">
                                   <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
                                   <span className="text-xs text-emerald-600">重新生成中...</span>
                                 </div>
                               ) : imgUrl ? (
-                                <div className="relative cursor-pointer" onClick={() => setStoryLightboxIdx(idx)}>
-                                  <img src={imgUrl} alt={scene.title} className="w-full aspect-square object-cover group-hover:scale-105 transition-transform duration-300" />
-                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                                    <i className="fas fa-search-plus text-white text-xl"></i>
+                                <>
+                                  {/* Image with overlays */}
+                                  <div className="relative cursor-pointer" onClick={() => setStoryLightboxIdx(idx)}>
+                                    <img src={imgUrl} alt={scene.title} className="w-full aspect-square object-cover group-hover:scale-105 transition-transform duration-300" />
+                                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                      <i className="fas fa-search-plus text-white text-xl"></i>
+                                    </div>
+                                    <span className="absolute top-2 left-2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">第 {idx + 1} 幕</span>
+                                    <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <a
+                                        href={imgUrl} download={`scene-${idx + 1}.jpg`} target="_blank"
+                                        onClick={e => e.stopPropagation()}
+                                        className="w-7 h-7 bg-black/50 hover:bg-emerald-600 text-white rounded-full text-xs flex items-center justify-center"
+                                        title="下載此幕圖片"
+                                      >
+                                        <i className="fas fa-download text-xs"></i>
+                                      </a>
+                                      <button
+                                        className="w-7 h-7 bg-black/50 hover:bg-purple-600 text-white rounded-full text-xs flex items-center justify-center"
+                                        title={`生成動畫（${Math.round(animDuration * (animResolution === "720p" ? 3.4 : 6.8))} 積分）`}
+                                        onClick={e => { e.stopPropagation(); singleSceneAnimateMutation.mutate({ sceneIdx: idx }); }}
+                                        disabled={singleSceneAnimateMutation.isPending}
+                                      >
+                                        <i className="fas fa-film text-xs"></i>
+                                      </button>
+                                      <button
+                                        className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-full text-xs flex items-center justify-center"
+                                        title="重新生成此幕（3 積分）"
+                                        onClick={e => { e.stopPropagation(); regenerateSceneMutation.mutate(idx); }}
+                                        disabled={regenerateSceneMutation.isPending}
+                                      >
+                                        <i className="fas fa-redo text-xs"></i>
+                                      </button>
+                                    </div>
                                   </div>
-                                  <span className="absolute top-2 left-2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">第 {idx + 1} 幕</span>
-                                  <button
-                                    className="absolute top-2 right-2 w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                                    title="重新生成此幕（3 積分）"
-                                    onClick={e => { e.stopPropagation(); regenerateSceneMutation.mutate(idx); }}
-                                    disabled={regenerateSceneMutation.isPending}
-                                  >
-                                    <i className="fas fa-redo text-xs"></i>
-                                  </button>
-                                </div>
+                                  {/* Inline video preview if animation exists for this scene */}
+                                  {(() => {
+                                    const animEntry = animJobBySceneIdx[idx];
+                                    if (!animEntry) return null;
+                                    const vidData = animationVideoQueries[animEntry.queryIdx]?.data as VideoGeneration | undefined;
+                                    const videoUrl = vidData?.bunnyVideoUrl || vidData?.generatedVideoUrl;
+                                    if (!vidData) return null;
+                                    return (
+                                      <div className="border-t border-gray-100 bg-gray-50">
+                                        {vidData.status === "completed" && videoUrl ? (
+                                          <video src={videoUrl} muted autoPlay loop playsInline className="w-full aspect-video object-cover" />
+                                        ) : (
+                                          <div className="w-full aspect-video flex items-center justify-center">
+                                            {vidData.status === "failed" ? (
+                                              <span className="text-xs text-red-500"><i className="fas fa-times-circle mr-1"></i>動畫失敗</span>
+                                            ) : (
+                                              <><div className="w-5 h-5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mr-2" /><span className="text-xs text-purple-500">動畫生成中...</span></>
+                                            )}
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })()}
+                                </>
                               ) : (
                                 <div className="w-full aspect-square bg-red-50 flex flex-col items-center justify-center gap-2">
                                   <i className="fas fa-times-circle text-red-400 text-xl"></i>
