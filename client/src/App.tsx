@@ -89,8 +89,11 @@ function AuthPage() {
     setIsSubmitting(true);
 
     try {
+      let userData: any;
       if (activeTab === "login") {
-        await apiRequest("POST", "/api/auth/login", { username, password });
+        const res = await apiRequest("POST", "/api/auth/login", { username, password });
+        const data = await res.json();
+        userData = data.user;
       } else {
         if (!email) {
           setError("請輸入電子郵件");
@@ -102,9 +105,11 @@ function AuthPage() {
           setIsSubmitting(false);
           return;
         }
-        await apiRequest("POST", "/api/auth/register", { username, email, password, verificationCode });
+        const res = await apiRequest("POST", "/api/auth/register", { username, email, password, verificationCode });
+        const data = await res.json();
+        userData = data.user;
       }
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.setQueryData(["/api/auth/me"], userData);
       toast({
         title: activeTab === "login" ? "登入成功" : "註冊成功",
         description: activeTab === "register" ? "歡迎加入！已獲得 10 積分" : "歡迎回來！",
