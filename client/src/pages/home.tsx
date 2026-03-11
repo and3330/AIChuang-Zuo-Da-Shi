@@ -2787,7 +2787,12 @@ export default function Home() {
                                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                                       <i className="fas fa-search-plus text-white text-xl"></i>
                                     </div>
-                                    <span className="absolute top-2 left-2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">第 {idx + 1} 幕</span>
+                                    <span className="absolute top-2 left-2 flex items-center gap-1">
+                      <span className="bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">第 {idx + 1} 幕</span>
+                      {(() => { const n = getNarrativeInfo(idx, scenes.length); return (
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border ${n.bg} ${n.color} ${n.border}`}>{n.icon}{n.short}</span>
+                      ); })()}
+                    </span>
                                     <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                       <a
                                         href={imgUrl} download={`scene-${idx + 1}.jpg`} target="_blank"
@@ -2998,9 +3003,16 @@ export default function Home() {
                               <div className="space-y-2">
                                 {(() => {
                                   const completedScenesList = JSON.parse(storyGeneration?.scenes || "[]").filter((s: any) => s.status === "completed" && (s.bunnyUrl || s.imageUrl));
-                                  return completedScenesList.map((scene: any, idx: number) => (
-                                    <div key={idx} className="bg-white rounded-lg border border-violet-200 p-2.5">
-                                      <div className="text-xs font-medium text-violet-700 mb-1.5">{scene.title || `第 ${idx + 1} 幕`}</div>
+                                  return completedScenesList.map((scene: any, idx: number) => {
+                                    const nInfo = getNarrativeInfo(idx, completedScenesList.length);
+                                    return (
+                                    <div key={idx} className={`bg-white rounded-lg border p-2.5 ${nInfo.border}`}>
+                                      <div className="flex items-center gap-1.5 mb-1.5">
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex items-center gap-0.5 ${nInfo.bg} ${nInfo.color} ${nInfo.border}`}>
+                                          {nInfo.icon}{nInfo.short}
+                                        </span>
+                                        <span className="text-xs font-medium text-violet-700">{scene.title || `第 ${idx + 1} 幕`}</span>
+                                      </div>
                                       <textarea
                                         value={perSceneAnimPrompts[idx] || ""}
                                         onChange={e => setPerSceneAnimPrompts(prev => {
@@ -3013,7 +3025,7 @@ export default function Home() {
                                         placeholder="此幕的動畫提示詞..."
                                       />
                                     </div>
-                                  ));
+                                  ); });
                                 })()}
                                 <button
                                   onClick={() => setPerSceneAnimPrompts([])}
