@@ -181,6 +181,33 @@ export default function Home() {
     },
   });
 
+  const claudeEnhanceMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/claude/enhance-story-prompts", {
+        title: storyTitle,
+        style: storyStyle,
+        scenes: storyScenes.slice(0, storySceneCount),
+      });
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      const enhanced: Array<{ index: number; enhanced_prompt: string }> = data.scenes || [];
+      if (enhanced.length === 0) {
+        toast({ title: "Claude 優化失敗", description: "未收到有效的提示詞", variant: "destructive" });
+        return;
+      }
+      setStoryScenes(prev => prev.map((scene, idx) => {
+        const found = enhanced.find(e => e.index === idx);
+        if (found) return { ...scene, description: found.enhanced_prompt };
+        return scene;
+      }));
+      toast({ title: "✨ 提示詞優化完成", description: `Claude 已為 ${enhanced.length} 幕場景生成專業英文提示詞` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Claude 優化失敗", description: error?.message || "請稍後再試", variant: "destructive" });
+    },
+  });
+
   const storyMutation = useMutation({
     mutationFn: async (data: any) => {
       const response = await apiRequest("POST", "/api/story-generations", data);
@@ -1647,9 +1674,41 @@ export default function Home() {
 
                 {/* Scene Cards */}
                 <div>
-                  <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                    各幕場景描述
-                  </Label>
+                  <div className="flex items-center justify-between mb-2">
+                    <Label className="text-sm font-medium text-gray-700">
+                      各幕場景描述
+                    </Label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!storyTitle.trim()) {
+                          toast({ title: "請先填寫故事標題", variant: "destructive" });
+                          return;
+                        }
+                        if (storyScenes.slice(0, storySceneCount).some(s => !s.title.trim() && !s.description.trim())) {
+                          toast({ title: "請至少填寫場景標題或描述", variant: "destructive" });
+                          return;
+                        }
+                        claudeEnhanceMutation.mutate();
+                      }}
+                      disabled={claudeEnhanceMutation.isPending}
+                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 hover:border-violet-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                      {claudeEnhanceMutation.isPending ? (
+                        <>
+                          <div className="w-3 h-3 border border-violet-600 border-t-transparent rounded-full animate-spin" />
+                          Claude 生成中...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                          </svg>
+                          Claude 優化提示詞
+                        </>
+                      )}
+                    </button>
+                  </div>
                   <div className="space-y-3">
                     {storyScenes.slice(0, storySceneCount).map((scene, idx) => (
                       <div key={idx} className="border border-gray-200 rounded-xl p-4 space-y-2 hover:border-emerald-200 transition-colors">

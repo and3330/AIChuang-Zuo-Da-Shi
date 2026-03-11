@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
+import Anthropic from "@anthropic-ai/sdk";
 import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene } from "@shared/schema";
 import nodemailer from "nodemailer";
@@ -11,6 +12,11 @@ import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import sharp from "sharp";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
+
+const anthropic = new Anthropic({
+  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+  baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+});
 
 function fixBunnyCdnUrl(url: string | null | undefined): string | null | undefined {
   if (!url) return url;
@@ -1995,6 +2001,74 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     } catch (error) {
       console.error("Error getting story generation:", error);
       res.status(500).json({ error: "查詢失敗" });
+    }
+  });
+
+  app.post("/api/claude/enhance-story-prompts", requireAuth, async (req, res) => {
+    try {
+      const { title, style, scenes } = req.body as {
+        title: string;
+        style: string;
+        scenes: Array<{ title: string; description: string }>;
+      };
+
+      if (!scenes || !Array.isArray(scenes) || scenes.length === 0) {
+        return res.status(400).json({ error: "請提供場景資料" });
+      }
+
+      const styleGuide: Record<string, string> = {
+        watercolor: "水彩畫風格，柔和色調，透明感，水漬邊緣效果",
+        cinematic: "電影感風格，寬銀幕構圖，戲劇性光影，電影色調分級",
+        anime: "日系動漫風格，清晰線條，鮮豔色彩，精緻細節",
+        oil_painting: "油畫風格，厚重筆觸，豐富紋理，古典繪畫質感",
+        line_art: "線條藝術風格，黑白或簡單色彩，乾淨的輪廓線",
+        custom: style,
+      };
+
+      const styleDesc = styleGuide[style] || style;
+
+      const prompt = `你是一位專業的 AI 圖像生成提示詞設計師。請根據以下故事資訊，為每個場景生成高品質的英文圖片生成提示詞（image generation prompt）。
+
+故事標題：${title}
+畫風設定：${styleDesc}
+
+場景列表：
+${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).join("\n")}
+
+請為每個場景生成一個專業的英文提示詞，要求：
+1. 包含畫風關鍵詞（對應「${styleDesc}」）
+2. 描述場景主體、環境、光線、情緒
+3. 加入畫質提升詞（如 masterpiece, high quality, detailed 等）
+4. 保持場景間的視覺風格一致性
+5. 每個提示詞 50-100 個英文單字
+6. 不要加入任何暴力、色情等不當內容
+
+請嚴格用以下 JSON 格式回應，不要有任何其他文字：
+{
+  "scenes": [
+    { "index": 0, "enhanced_prompt": "..." },
+    { "index": 1, "enhanced_prompt": "..." }
+  ]
+}`;
+
+      const message = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 2048,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
+
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        return res.status(500).json({ error: "Claude 回應格式錯誤" });
+      }
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      res.json(parsed);
+    } catch (error) {
+      console.error("Claude enhance story prompts error:", error);
+      res.status(500).json({ error: "Claude 提示詞優化失敗，請稍後再試" });
     }
   });
 
