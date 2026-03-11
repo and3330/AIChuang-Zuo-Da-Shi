@@ -112,6 +112,7 @@ export default function Home() {
   const [animResolution, setAnimResolution] = useState<"720p" | "1080p">("720p");
   const [animAspectRatio, setAnimAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   const [animPrompt, setAnimPrompt] = useState("");
+  const [perSceneAnimPrompts, setPerSceneAnimPrompts] = useState<string[]>([]);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -250,6 +251,23 @@ export default function Home() {
     onError: (error: any) => {
       const msg = error?.message || "無法開始動畫生成。";
       toast({ title: "動畫生成失敗", description: msg, variant: "destructive" });
+    },
+  });
+
+  const generateAnimPromptsMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/generate-animation-prompts`, { duration: animDuration });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "生成失敗");
+      return data;
+    },
+    onSuccess: (data: any) => {
+      const prompts: string[] = (data.scenes || []).map((s: any) => s.animation_prompt || "");
+      setPerSceneAnimPrompts(prompts);
+      toast({ title: "✨ 分鏡動畫提示詞已生成", description: `已為 ${prompts.length} 幕各別生成動畫提示詞，可自行編輯調整。` });
+    },
+    onError: (error: any) => {
+      toast({ title: "生成失敗", description: error.message || "無法生成動畫提示詞", variant: "destructive" });
     },
   });
 
@@ -2574,18 +2592,62 @@ export default function Home() {
                             </div>
                           </div>
 
-                          {/* Animation Prompt */}
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                              動畫提示詞（選填）
-                              <InfoTooltip text="不填時自動使用各幕的場景描述作為提示詞" />
-                            </Label>
-                            <Input
-                              placeholder="例如：鏡頭緩慢推進，光影流動，大氣磅礴"
-                              value={animPrompt}
-                              onChange={e => setAnimPrompt(e.target.value)}
-                              className="rounded-xl border-gray-200"
-                            />
+                          {/* Animation Prompts */}
+                          <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                              <Label className="text-sm font-medium text-gray-700">
+                                分鏡動畫提示詞
+                                <InfoTooltip text="點擊「AI 生成」讓 Claude 根據故事腳本，自動為每幕生成符合劇情的動畫提示詞；也可手動填寫全局提示詞套用到所有幕" />
+                              </Label>
+                              <button
+                                onClick={() => generateAnimPromptsMutation.mutate()}
+                                disabled={generateAnimPromptsMutation.isPending}
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 hover:border-violet-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                {generateAnimPromptsMutation.isPending ? (
+                                  <><div className="w-3 h-3 border-2 border-violet-500 border-t-transparent rounded-full animate-spin" />生成中...</>
+                                ) : (
+                                  <><i className="fas fa-magic" />✨ AI 生成分鏡提示詞</>
+                                )}
+                              </button>
+                            </div>
+
+                            {perSceneAnimPrompts.length > 0 ? (
+                              // Per-scene prompts (AI generated, editable)
+                              <div className="space-y-2">
+                                {(() => {
+                                  const completedScenesList = JSON.parse(storyGeneration?.scenes || "[]").filter((s: any) => s.status === "completed" && (s.bunnyUrl || s.imageUrl));
+                                  return completedScenesList.map((scene: any, idx: number) => (
+                                    <div key={idx} className="bg-white rounded-lg border border-violet-200 p-2.5">
+                                      <div className="text-xs font-medium text-violet-700 mb-1.5">{scene.title || `第 ${idx + 1} 幕`}</div>
+                                      <textarea
+                                        value={perSceneAnimPrompts[idx] || ""}
+                                        onChange={e => setPerSceneAnimPrompts(prev => {
+                                          const updated = [...prev];
+                                          updated[idx] = e.target.value;
+                                          return updated;
+                                        })}
+                                        rows={2}
+                                        className="w-full text-xs border border-gray-200 rounded-lg p-2 resize-none focus:outline-none focus:ring-1 focus:ring-violet-400"
+                                        placeholder="此幕的動畫提示詞..."
+                                      />
+                                    </div>
+                                  ));
+                                })()}
+                                <button
+                                  onClick={() => setPerSceneAnimPrompts([])}
+                                  className="text-xs text-gray-400 hover:text-gray-600 underline"
+                                >清除，改用全局提示詞</button>
+                              </div>
+                            ) : (
+                              // Global prompt fallback
+                              <Input
+                                placeholder="全局提示詞（選填）：所有幕套用，例：鏡頭緩慢推進，光影流動"
+                                value={animPrompt}
+                                onChange={e => setAnimPrompt(e.target.value)}
+                                className="rounded-xl border-gray-200 text-sm"
+                              />
+                            )}
                           </div>
 
                           {/* Cost + Confirm */}
@@ -2613,6 +2675,7 @@ export default function Home() {
                                     resolution: animResolution,
                                     aspectRatio: animAspectRatio,
                                     animationPrompt: animPrompt,
+                                    perScenePrompts: perSceneAnimPrompts,
                                   })}
                                 >
                                   {storyAnimateMutation.isPending ? (

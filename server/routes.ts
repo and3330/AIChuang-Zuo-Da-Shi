@@ -1484,10 +1484,11 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     try {
       const userId = req.session.userId!;
       const { storyId } = req.params;
-      const duration = Math.max(4, Math.min(8, Number(req.body.duration) || 5));
+      const duration = Math.max(4, Math.min(12, Number(req.body.duration) || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
       const aspectRatio = ["16:9", "9:16", "1:1"].includes(req.body.aspectRatio) ? req.body.aspectRatio : "16:9";
       const animationPrompt = (req.body.animationPrompt || "").trim();
+      const perScenePrompts: string[] = Array.isArray(req.body.perScenePrompts) ? req.body.perScenePrompts : [];
 
       const story = await storage.getStoryGeneration(storyId);
       if (!story) return res.status(404).json({ error: "找不到故事" });
@@ -1513,10 +1514,11 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       const userFolder = storyUser?.username || userId;
       const jobs: { sceneIdx: number; sceneTitle: string; videoId: string }[] = [];
 
-      for (const scene of completedScenes) {
+      for (let si = 0; si < completedScenes.length; si++) {
+        const scene = completedScenes[si];
         const sceneIdx = scenes.indexOf(scene);
         const imageUrl = scene.bunnyUrl || scene.imageUrl!;
-        const prompt = animationPrompt || scene.description;
+        const prompt = perScenePrompts[si]?.trim() || animationPrompt || scene.description;
 
         const videoGen = await storage.createVideoGeneration({
           userId,
@@ -2017,6 +2019,62 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
     } catch (error) {
       console.error("Error getting story generation:", error);
       res.status(500).json({ error: "查詢失敗" });
+    }
+  });
+
+  app.post("/api/story-generations/:storyId/generate-animation-prompts", requireAuth, async (req, res) => {
+    try {
+      const { storyId } = req.params;
+      const story = await storage.getStoryGeneration(storyId);
+      if (!story) return res.status(404).json({ error: "找不到故事" });
+      if (story.userId !== req.session.userId!) return res.status(403).json({ error: "無存取權限" });
+
+      const scenes: StoryScene[] = JSON.parse(story.scenes || "[]");
+      const completedScenes = scenes.filter(s => s.status === "completed");
+      if (completedScenes.length === 0) return res.status(400).json({ error: "沒有已完成的場景" });
+
+      const duration = Math.max(4, Math.min(12, Number(req.body.duration) || 5));
+
+      const prompt = `你是一位專業的影片分鏡師，擅長為 AI 影片生成工具撰寫動態提示詞。請根據以下故事資訊，為每個場景生成符合影片動畫的英文提示詞。
+
+故事標題：${story.title}
+畫風設定：${story.style}
+每幕影片時長：${duration} 秒
+
+場景列表：
+${completedScenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).join("\n")}
+
+請為每個場景生成專業的英文影片動畫提示詞，要求：
+1. 明確描述 ${duration} 秒內的主要動態動作（人物行為、場景變化）
+2. 包含適合的鏡頭運動（如：slow push in, gentle pan left, dramatic zoom out, tracking shot 等）
+3. 描述光影和氣氛的動態變化
+4. 保持故事整體敘事的連貫性與風格一致性
+5. 每個提示詞 30-60 個英文單字，簡潔但具體
+6. 提示詞要適合圖轉影片（image-to-video）生成，圖片已固定，描述動態即可
+
+請嚴格用以下 JSON 格式回應，不要有任何其他文字：
+{
+  "scenes": [
+    { "index": 0, "sceneTitle": "...", "animation_prompt": "..." },
+    { "index": 1, "sceneTitle": "...", "animation_prompt": "..." }
+  ]
+}`;
+
+      const message = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 2048,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return res.status(500).json({ error: "Claude 回應格式錯誤" });
+
+      const parsed = JSON.parse(jsonMatch[0]);
+      res.json(parsed);
+    } catch (error: any) {
+      console.error("Error generating animation prompts:", error);
+      res.status(500).json({ error: error.message || "生成動畫提示詞失敗" });
     }
   });
 
