@@ -93,7 +93,7 @@ export function UnifiedUploader({
         setSelectedFile(null);
         onError?.(error);
       });
-    uppyRef.current = instance;
+    uppyRef.current = instance as any;
     return instance;
   });
 
