@@ -1493,7 +1493,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       const story = await storage.getStoryGeneration(storyId);
       if (!story) return res.status(404).json({ error: "找不到故事" });
       if (story.userId !== userId) return res.status(403).json({ error: "無存取權限" });
-      if (story.status !== "completed") return res.status(400).json({ error: "故事尚未生成完成" });
+      if (!["completed", "generating"].includes(story.status)) return res.status(400).json({ error: "故事尚未開始生成" });
 
       const scenes: StoryScene[] = JSON.parse(story.scenes || "[]");
       const completedScenes = scenes.filter(s => s.status === "completed" && (s.bunnyUrl || s.imageUrl));
@@ -2182,6 +2182,243 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[敘事角色：${getNar
     }
   });
 
+  // Regenerate a single scene
+  app.post("/api/story-generations/:storyId/regenerate-scene/:sceneIdx", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { storyId, sceneIdx: sceneIdxStr } = req.params;
+      const sceneIdx = parseInt(sceneIdxStr, 10);
+
+      const story = await storage.getStoryGeneration(storyId);
+      if (!story) return res.status(404).json({ error: "找不到故事" });
+      if (story.userId !== userId) return res.status(403).json({ error: "無存取權限" });
+
+      const scenes: StoryScene[] = JSON.parse(story.scenes || "[]");
+      if (isNaN(sceneIdx) || sceneIdx < 0 || sceneIdx >= scenes.length) {
+        return res.status(400).json({ error: "場景索引無效" });
+      }
+
+      const user = await storage.getUser(userId);
+      if (!user || (user.credits ?? 0) < 3) {
+        return res.status(400).json({ error: "積分不足，重新生成需要 3 積分" });
+      }
+
+      await storage.atomicAddCredits(userId, -3, `故事「${story.title}」第 ${sceneIdx + 1} 幕重新生成`);
+
+      scenes[sceneIdx].status = "generating";
+      scenes[sceneIdx].imageUrl = undefined;
+      scenes[sceneIdx].bunnyUrl = undefined;
+      await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
+
+      res.json({ ok: true });
+
+      regenerateStoryScene(storyId, sceneIdx, objectStorageService, bunnyStorage).catch(console.error);
+    } catch (error: any) {
+      console.error("Error triggering scene regeneration:", error);
+      res.status(500).json({ error: error.message || "重新生成失敗" });
+    }
+  });
+
+  async function regenerateStoryScene(
+    storyId: string,
+    sceneIdx: number,
+    objectStorageService: ObjectStorageService,
+    bunnyStorage: BunnyStorageService
+  ) {
+    try {
+      const story = await storage.getStoryGeneration(storyId);
+      if (!story) return;
+
+      const storyUser = await storage.getUser(story.userId);
+      const userFolder = storyUser?.username || story.userId;
+      const apiKey = process.env.ARK_API_KEY;
+      if (!apiKey) throw new Error("圖片生成 API Key 未設定");
+
+      const scenes: StoryScene[] = JSON.parse(story.scenes);
+
+      const sceneSizeMap: Record<string, string> = {
+        "1:1": "2048x2048",
+        "9:16": "1440x2560",
+        "16:9": "2560x1440",
+      };
+      const imageSize = sceneSizeMap[story.sceneSize ?? "1:1"] || "2048x2048";
+
+      const loadRefImageAsBase64 = async (imagePath: string): Promise<string> => {
+        const objectFile = await objectStorageService.getObjectEntityFile(imagePath);
+        const chunks: Buffer[] = [];
+        const stream = objectFile.createReadStream();
+        for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+        return `data:image/jpeg;base64,${Buffer.concat(chunks).toString("base64")}`;
+      };
+
+      const loadImageList = async (urls: string[]): Promise<string[]> => {
+        if (!urls || urls.length === 0) return [];
+        try { return await Promise.all(urls.map(loadRefImageAsBase64)); }
+        catch { return []; }
+      };
+
+      const characterBase64s = await loadImageList(story.characterImageUrls ?? []);
+      const sceneRefBase64sGlobal = await loadImageList(story.sceneRefImageUrls ?? []);
+      const styleBase64s = await loadImageList(story.styleImageUrls ?? []);
+
+      const scene = scenes[sceneIdx];
+      const scenePrompt = `${story.style}, ${scene.description}`;
+      let globalBase64s = [...characterBase64s, ...sceneRefBase64sGlobal, ...styleBase64s];
+      if (scene.sceneReferenceImageUrl) {
+        try {
+          const perSceneBase64 = await loadRefImageAsBase64(scene.sceneReferenceImageUrl);
+          globalBase64s = [...characterBase64s, perSceneBase64, ...styleBase64s];
+        } catch { /* use global refs */ }
+      }
+
+      let requestBody: any;
+      if (globalBase64s.length > 0) {
+        requestBody = {
+          model: "ep-20251223142939-njrkd",
+          prompt: scenePrompt,
+          image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
+          response_format: "url",
+          size: imageSize,
+          watermark: true,
+        };
+      } else {
+        requestBody = {
+          model: "ep-20251223142939-njrkd",
+          prompt: scenePrompt,
+          response_format: "url",
+          size: imageSize,
+          watermark: true,
+        };
+      }
+
+      const apiResp = await fetch(ARK_API_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!apiResp.ok) {
+        const errText = await apiResp.text();
+        throw new Error(`API error ${apiResp.status}: ${errText}`);
+      }
+
+      const apiResult = await apiResp.json();
+      const imageUrl = apiResult.data?.[0]?.url;
+      if (!imageUrl) throw new Error("API 未回傳圖片 URL");
+
+      scenes[sceneIdx].imageUrl = imageUrl;
+
+      if (bunnyStorage.isConfigured()) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const imgResp = await fetch(imageUrl);
+            const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+            const remotePath = `users/${userFolder}/stories/${storyId}_${sceneIdx}.jpg`;
+            const cdnUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
+            scenes[sceneIdx].bunnyUrl = cdnUrl;
+            break;
+          } catch (e) {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
+          }
+        }
+      }
+
+      scenes[sceneIdx].status = "completed";
+      await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
+      console.log(`✅ Scene ${sceneIdx + 1} regenerated for story ${storyId}`);
+    } catch (error: any) {
+      console.error(`❌ Scene ${sceneIdx + 1} regeneration failed:`, error.message);
+      try {
+        const story = await storage.getStoryGeneration(storyId);
+        if (story) {
+          const scenes: StoryScene[] = JSON.parse(story.scenes);
+          scenes[sceneIdx].status = "failed";
+          await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
+        }
+        await storage.atomicAddCredits(story?.userId || "", 3, `退款：故事第 ${sceneIdx + 1} 幕重新生成失敗`);
+      } catch { /* ignore refund error */ }
+    }
+  }
+
+  // Generate story scene outline with Claude
+  app.post("/api/claude/generate-story-outline", requireAuth, async (req, res) => {
+    try {
+      const { title, style, sceneCount, storyContent } = req.body as {
+        title: string;
+        style: string;
+        sceneCount: number;
+        storyContent?: string;
+      };
+
+      if (!title || !sceneCount || sceneCount < 2 || sceneCount > 8) {
+        return res.status(400).json({ error: "請提供標題與幕數（2-8 幕）" });
+      }
+
+      const styleGuide: Record<string, string> = {
+        watercolor: "水彩畫風格，柔和色調",
+        cinematic: "電影感風格，戲劇性光影",
+        anime: "日系動漫風格",
+        oil_painting: "油畫風格",
+        line_art: "線條藝術風格",
+        custom: style,
+      };
+      const styleDesc = styleGuide[style] || style;
+
+      const total = sceneCount;
+      const getNarrativeRole = (i: number): string => {
+        if (total === 2) return i === 0 ? "起（開場）" : "合（結局）";
+        if (total === 3) return ["起（開場）", "轉（高潮）", "合（結局）"][i] ?? "承";
+        const ratio = i / (total - 1);
+        if (i === 0) return "起（開場）";
+        if (i === total - 1) return "合（結局）";
+        if (ratio < 0.35) return "承（發展）";
+        if (ratio < 0.72) return "轉（高潮）";
+        return "合前段（化解）";
+      };
+
+      const storyContentSection = storyContent?.trim()
+        ? `\n故事全文：\n${storyContent.trim()}\n`
+        : "";
+
+      const prompt = `你是專業的故事編劇。請根據以下資訊，為圖片故事生成 ${total} 幕的場景大綱，確保有完整的「起承轉合」故事弧線，最後一幕有明確的結局。
+
+故事標題：${title}
+畫風：${styleDesc}
+總幕數：${total} 幕${storyContentSection}
+
+每幕的敘事角色：
+${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole(i)}`).join("\n")}
+
+請為每幕生成：
+1. 簡短的幕名（3-8 字，中文）
+2. 場景描述（20-60 字，描述畫面中的主要視覺元素、人物動作、環境氣氛）
+3. 描述要具體且適合生成圖片
+4. 最後一幕必須有明確的故事結局感
+
+請嚴格用以下 JSON 格式回應，不要有任何其他文字：
+{
+  "scenes": [
+    { "index": 0, "title": "...", "description": "..." }
+  ]
+}`;
+
+      const message = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 2048,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      const text = message.content[0].type === "text" ? message.content[0].text : "";
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) return res.status(500).json({ error: "Claude 回應格式錯誤" });
+
+      res.json(JSON.parse(jsonMatch[0]));
+    } catch (error: any) {
+      console.error("Error generating story outline:", error);
+      res.status(500).json({ error: error.message || "生成大綱失敗" });
+    }
+  });
+
   async function processStoryGeneration(
     storyId: string,
     objectStorageService: ObjectStorageService,
@@ -2276,7 +2513,7 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[敘事角色：${getNar
               image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
               response_format: "url",
               size: imageSize,
-              watermark: false,
+              watermark: true,
             };
           } else {
             requestBody = {
@@ -2284,7 +2521,7 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[敘事角色：${getNar
               prompt: scenePrompt,
               response_format: "url",
               size: imageSize,
-              watermark: false,
+              watermark: true,
             };
           }
 

@@ -186,7 +186,12 @@ export default function Home() {
     gcTime: 0,
     refetchInterval: (query) => {
       const gen = query.state.data as StoryGeneration | undefined;
-      return (gen?.status === "pending" || gen?.status === "generating") ? 3000 : false;
+      if (gen?.status === "pending" || gen?.status === "generating") return 3000;
+      if (gen?.status === "completed") {
+        const scenes: StoryScene[] = JSON.parse(gen.scenes || "[]");
+        if (scenes.some(s => s.status === "generating")) return 3000;
+      }
+      return false;
     },
   });
 
@@ -215,6 +220,54 @@ export default function Home() {
     },
     onError: (error: any) => {
       toast({ title: "Claude 優化失敗", description: error?.message || "請稍後再試", variant: "destructive" });
+    },
+  });
+
+  const claudeOutlineMutation = useMutation({
+    mutationFn: async () => {
+      const response = await apiRequest("POST", "/api/claude/generate-story-outline", {
+        title: storyTitle,
+        style: storyStyle === "custom" ? storyCustomStyle : storyStyle,
+        sceneCount: storySceneCount,
+        storyContent: storyContent.trim() || undefined,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "生成失敗");
+      return data;
+    },
+    onSuccess: (data: any) => {
+      const scenes: Array<{ index: number; title: string; description: string }> = data.scenes || [];
+      if (scenes.length === 0) return;
+      setStoryScenes(prev => {
+        const updated = [...prev];
+        scenes.forEach(s => {
+          if (s.index >= 0 && s.index < updated.length) {
+            updated[s.index] = { ...updated[s.index], title: s.title, description: s.description };
+          }
+        });
+        return updated;
+      });
+      toast({ title: "✨ 故事大綱已生成", description: `Claude 已自動生成 ${scenes.length} 幕起承轉合的場景大綱` });
+    },
+    onError: (error: any) => {
+      toast({ title: "大綱生成失敗", description: error?.message || "請稍後再試", variant: "destructive" });
+    },
+  });
+
+  const regenerateSceneMutation = useMutation({
+    mutationFn: async (sceneIdx: number) => {
+      const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/regenerate-scene/${sceneIdx}`, {});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "重新生成失敗");
+      return data;
+    },
+    onSuccess: (_data, sceneIdx) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/story-generations", currentStoryId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: `第 ${sceneIdx + 1} 幕重新生成中`, description: "請稍候，生成完成後自動更新..." });
+    },
+    onError: (error: any) => {
+      toast({ title: "重新生成失敗", description: error?.message, variant: "destructive" });
     },
   });
 
@@ -1789,40 +1842,55 @@ export default function Home() {
 
                 {/* Scene Cards */}
                 <div>
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                     <Label className="text-sm font-medium text-gray-700">
                       各幕場景描述
                     </Label>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (!storyTitle.trim()) {
-                          toast({ title: "請先填寫故事標題", variant: "destructive" });
-                          return;
-                        }
-                        if (storyScenes.slice(0, storySceneCount).some(s => !s.title.trim() && !s.description.trim())) {
-                          toast({ title: "請至少填寫場景標題或描述", variant: "destructive" });
-                          return;
-                        }
-                        claudeEnhanceMutation.mutate();
-                      }}
-                      disabled={claudeEnhanceMutation.isPending}
-                      className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 hover:border-violet-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {claudeEnhanceMutation.isPending ? (
-                        <>
-                          <div className="w-3 h-3 border border-violet-600 border-t-transparent rounded-full animate-spin" />
-                          Claude 生成中...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
-                          </svg>
-                          Claude 優化提示詞
-                        </>
-                      )}
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!storyTitle.trim()) {
+                            toast({ title: "請先填寫故事標題", variant: "destructive" });
+                            return;
+                          }
+                          claudeOutlineMutation.mutate();
+                        }}
+                        disabled={claudeOutlineMutation.isPending || claudeEnhanceMutation.isPending}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {claudeOutlineMutation.isPending ? (
+                          <><div className="w-3 h-3 border border-emerald-600 border-t-transparent rounded-full animate-spin" />生成中...</>
+                        ) : (
+                          <>✨ AI 生成大綱</>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!storyTitle.trim()) {
+                            toast({ title: "請先填寫故事標題", variant: "destructive" });
+                            return;
+                          }
+                          if (storyScenes.slice(0, storySceneCount).some(s => !s.title.trim() && !s.description.trim())) {
+                            toast({ title: "請至少填寫場景標題或描述", variant: "destructive" });
+                            return;
+                          }
+                          claudeEnhanceMutation.mutate();
+                        }}
+                        disabled={claudeEnhanceMutation.isPending || claudeOutlineMutation.isPending}
+                        className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 hover:border-violet-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                      >
+                        {claudeEnhanceMutation.isPending ? (
+                          <>
+                            <div className="w-3 h-3 border border-violet-600 border-t-transparent rounded-full animate-spin" />
+                            Claude 生成中...
+                          </>
+                        ) : (
+                          <>Claude 優化提示詞</>
+                        )}
+                      </button>
+                    </div>
                   </div>
                   <div className="space-y-3">
                     {storyScenes.slice(0, storySceneCount).map((scene, idx) => (
@@ -2385,22 +2453,31 @@ export default function Home() {
                 <div className="space-y-4">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin flex-shrink-0" style={{ borderWidth: 3 }} />
-                    <div>
+                    <div className="flex-1">
                       <h3 className="font-semibold text-gray-800">正在生成故事分鏡</h3>
                       <p className="text-sm text-gray-500">
                         {(() => {
                           if (!storyGeneration) return "初始化中...";
                           const scenes: StoryScene[] = JSON.parse(storyGeneration.scenes || "[]");
                           const done = scenes.filter(s => s.status === "completed").length;
+                          const failed = scenes.filter(s => s.status === "failed").length;
                           const total = scenes.length;
-                          return `已完成 ${done} / ${total} 幕，請耐心等待...`;
+                          const generating = scenes.find(s => s.status === "generating");
+                          const remaining = total - done - failed;
+                          const estSec = remaining * 25;
+                          const estText = estSec >= 60 ? `約 ${Math.ceil(estSec / 60)} 分鐘` : `約 ${estSec} 秒`;
+                          return <>
+                            第 <span className="font-semibold text-emerald-600">{done + 1}</span> / {total} 幕
+                            {generating ? `「${generating.title}」` : ""}生成中
+                            {done > 0 && <span className="text-xs text-gray-400 ml-1">· 預估剩餘 {estText}</span>}
+                          </>;
                         })()}
                       </p>
                     </div>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div className="w-full bg-gray-200 rounded-full h-2.5">
                     <div
-                      className="bg-emerald-500 h-2 rounded-full transition-all duration-500"
+                      className="bg-emerald-500 h-2.5 rounded-full transition-all duration-500"
                       style={{
                         width: (() => {
                           if (!storyGeneration) return "5%";
@@ -2457,7 +2534,7 @@ export default function Home() {
           )}
 
           {/* ============ STORY RESULT ============ */}
-          {isStoryMode && storyGeneration?.status === "completed" && (
+          {isStoryMode && (storyGeneration?.status === "completed" || (storyGeneration?.status === "generating" && (() => { const s: StoryScene[] = JSON.parse(storyGeneration?.scenes || "[]"); return s.some(x => x.status === "completed" || x.status === "failed"); })())) && (
             <Card className="bg-white rounded-xl shadow-sm border border-emerald-200">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between mb-5">
@@ -2484,20 +2561,42 @@ export default function Home() {
                       <div className={`grid grid-cols-2 ${cols >= 3 ? "sm:grid-cols-3" : ""} ${cols >= 4 ? "lg:grid-cols-4" : ""} gap-4`}>
                         {scenes.map((scene, idx) => {
                           const imgUrl = scene.bunnyUrl || scene.imageUrl;
+                          const isRegenerating = scene.status === "generating";
+                          const isFailed = scene.status === "failed";
                           return (
-                            <div key={idx} className="rounded-xl overflow-hidden border border-gray-200 shadow-sm hover:shadow-md transition-shadow cursor-pointer group"
-                              onClick={() => setStoryLightboxIdx(idx)}>
-                              {imgUrl ? (
-                                <div className="relative">
+                            <div key={idx} className={`rounded-xl overflow-hidden border shadow-sm hover:shadow-md transition-shadow group ${isFailed ? "border-red-200" : "border-gray-200"}`}>
+                              {isRegenerating ? (
+                                <div className="w-full aspect-square bg-emerald-50 flex flex-col items-center justify-center gap-2"
+                                  onClick={() => setStoryLightboxIdx(idx)}>
+                                  <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                                  <span className="text-xs text-emerald-600">重新生成中...</span>
+                                </div>
+                              ) : imgUrl ? (
+                                <div className="relative cursor-pointer" onClick={() => setStoryLightboxIdx(idx)}>
                                   <img src={imgUrl} alt={scene.title} className="w-full aspect-square object-cover group-hover:scale-105 transition-transform duration-300" />
                                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                                     <i className="fas fa-search-plus text-white text-xl"></i>
                                   </div>
                                   <span className="absolute top-2 left-2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">第 {idx + 1} 幕</span>
+                                  <button
+                                    className="absolute top-2 right-2 w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-full text-xs flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                    title="重新生成此幕（3 積分）"
+                                    onClick={e => { e.stopPropagation(); regenerateSceneMutation.mutate(idx); }}
+                                    disabled={regenerateSceneMutation.isPending}
+                                  >
+                                    <i className="fas fa-redo text-xs"></i>
+                                  </button>
                                 </div>
                               ) : (
-                                <div className="w-full aspect-square bg-red-50 flex items-center justify-center">
+                                <div className="w-full aspect-square bg-red-50 flex flex-col items-center justify-center gap-2">
                                   <i className="fas fa-times-circle text-red-400 text-xl"></i>
+                                  <button
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-700 border border-red-200 hover:bg-red-200 transition-all disabled:opacity-60"
+                                    onClick={() => regenerateSceneMutation.mutate(idx)}
+                                    disabled={regenerateSceneMutation.isPending}
+                                  >
+                                    <i className="fas fa-redo"></i>重新生成（3積分）
+                                  </button>
                                 </div>
                               )}
                               <div className="p-3 bg-white">
