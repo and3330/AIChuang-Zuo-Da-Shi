@@ -1649,7 +1649,7 @@ export default function Home() {
                       {storyRefImages.map((img, idx) => (
                         <div key={idx} className="relative group">
                           <img
-                            src={`/api/objects/view${img.url.startsWith("/") ? img.url : "/" + img.url}`}
+                            src={img.url.startsWith("/objects/") ? img.url : `/objects/${img.url.replace(/^\//, "")}`}
                             alt={`參考圖 ${idx + 1}`}
                             className="w-16 h-16 object-cover rounded-lg border border-gray-200"
                             onError={e => { (e.target as HTMLImageElement).src = "https://placehold.co/64?text=圖" }}
