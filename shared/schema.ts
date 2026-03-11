@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, real, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, real, integer, json } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -244,3 +244,9 @@ export type StoryScene = {
   bunnyUrl?: string;
   status: "pending" | "generating" | "completed" | "failed";
 };
+
+export const session = pgTable("session", {
+  sid: varchar("sid").primaryKey(),
+  sess: json("sess").notNull(),
+  expire: timestamp("expire", { precision: 6, mode: "date" }).notNull(),
+});
