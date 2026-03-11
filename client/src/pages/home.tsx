@@ -77,6 +77,16 @@ export default function Home() {
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
 
+  const getNarrativeInfo = (idx: number, total: number): { label: string; short: string; color: string; bg: string; border: string; icon: string } => {
+    const ratio = total <= 1 ? 0 : idx / (total - 1);
+    if (idx === 0) return { label: "起（開場）", short: "起", color: "text-emerald-700", bg: "bg-emerald-100", border: "border-emerald-300", icon: "🌱" };
+    if (idx === total - 1) return { label: "合（結局）", short: "合", color: "text-purple-700", bg: "bg-purple-100", border: "border-purple-300", icon: "✨" };
+    if (total === 3) return { label: "轉（高潮）", short: "轉", color: "text-orange-700", bg: "bg-orange-100", border: "border-orange-300", icon: "⚡" };
+    if (ratio < 0.4) return { label: "承（發展）", short: "承", color: "text-blue-700", bg: "bg-blue-100", border: "border-blue-300", icon: "🔗" };
+    if (ratio < 0.72) return { label: "轉（高潮）", short: "轉", color: "text-orange-700", bg: "bg-orange-100", border: "border-orange-300", icon: "⚡" };
+    return { label: "合（收尾）", short: "合", color: "text-purple-700", bg: "bg-purple-100", border: "border-purple-300", icon: "✨" };
+  };
+
   const STORY_STYLES: { label: string; value: string }[] = [
     { label: "水彩插畫", value: "Watercolor illustration style, soft colors, gentle brush strokes" },
     { label: "電影感寫實", value: "Cinematic realistic photography, dramatic lighting, high detail" },
@@ -2017,7 +2027,9 @@ export default function Home() {
                     </div>
                   </div>
                   <div className="space-y-3">
-                    {storyScenes.slice(0, storySceneCount).map((scene, idx) => (
+                    {storyScenes.slice(0, storySceneCount).map((scene, idx) => {
+                      const nInfo = getNarrativeInfo(idx, storySceneCount);
+                      return (
                       <div
                         key={idx}
                         draggable
@@ -2036,7 +2048,9 @@ export default function Home() {
                         }}
                         onDragEnd={() => setDragSourceIdx(null)}
                         className={`border rounded-xl p-4 space-y-2 transition-all cursor-grab active:cursor-grabbing ${
-                          dragSourceIdx === idx ? "opacity-50 border-emerald-400 bg-emerald-50" : "border-gray-200 hover:border-emerald-200"
+                          dragSourceIdx === idx
+                            ? `opacity-50 ${nInfo.border} ${nInfo.bg}`
+                            : `border-gray-200 hover:${nInfo.border}`
                         }`}
                       >
                         <div className="flex items-center gap-2">
@@ -2044,11 +2058,18 @@ export default function Home() {
                           <span className="w-7 h-7 bg-emerald-100 text-emerald-700 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0">
                             {idx + 1}
                           </span>
+                          <span
+                            title={nInfo.label}
+                            className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold flex-shrink-0 border ${nInfo.bg} ${nInfo.color} ${nInfo.border}`}
+                          >
+                            <span>{nInfo.icon}</span>
+                            <span>{nInfo.short}</span>
+                          </span>
                           <Input
                             value={scene.title}
                             onChange={e => updateStoryScene(idx, "title", e.target.value)}
                             className="text-sm font-medium border-none p-0 h-auto focus:ring-0 shadow-none text-gray-700"
-                            placeholder={`第 ${idx + 1} 幕`}
+                            placeholder={`第 ${idx + 1} 幕標題`}
                           />
                         </div>
                         <div className="flex gap-2">
