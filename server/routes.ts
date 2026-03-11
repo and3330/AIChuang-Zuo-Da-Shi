@@ -1564,47 +1564,36 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       if (!imgResponse.ok) throw new Error(`無法下載場景圖片: ${imgResponse.status}`);
       let imageBuffer = Buffer.from(await imgResponse.arrayBuffer());
 
-      // Pre-crop image to target aspect ratio so API output matches selection
-      const targetAspect = generation.aspectRatio || "16:9";
-      const targetRatioMap: Record<string, number> = { "16:9": 16/9, "9:16": 9/16, "1:1": 1 };
-      const targetRatio = targetRatioMap[targetAspect] ?? 16/9;
-
+      // Detect actual image ratio and keep it intact — only enforce API limits (0.40–2.50)
       const meta = await sharp(imageBuffer).metadata();
       let w = meta.width || 1;
       let h = meta.height || 1;
       const currentRatio = w / h;
 
-      if (Math.abs(currentRatio - targetRatio) > 0.02) {
-        if (currentRatio > targetRatio) {
-          // Too wide: crop width
-          const newW = Math.round(h * targetRatio);
-          const offsetX = Math.floor((w - newW) / 2);
-          console.log(`🎬 Cropping scene image for animation: ${w}x${h} → ${newW}x${h} (target ${targetAspect})`);
-          imageBuffer = await sharp(imageBuffer).extract({ left: offsetX, top: 0, width: newW, height: h }).jpeg().toBuffer();
-          w = newW;
-        } else {
-          // Too tall: crop height
-          const newH = Math.round(w / targetRatio);
-          const offsetY = Math.floor((h - newH) / 2);
-          console.log(`🎬 Cropping scene image for animation: ${w}x${h} → ${w}x${newH} (target ${targetAspect})`);
-          imageBuffer = await sharp(imageBuffer).extract({ left: 0, top: offsetY, width: w, height: newH }).jpeg().toBuffer();
-          h = newH;
-        }
-      }
-
-      // Also enforce API limits (0.40–2.50)
       const MIN_RATIO = 0.40;
       const MAX_RATIO = 2.50;
-      const finalRatio = w / h;
-      if (finalRatio > MAX_RATIO) {
+      if (currentRatio > MAX_RATIO) {
         const newW = Math.floor(h * MAX_RATIO);
         const offsetX = Math.floor((w - newW) / 2);
         imageBuffer = await sharp(imageBuffer).extract({ left: offsetX, top: 0, width: newW, height: h }).jpeg().toBuffer();
-      } else if (finalRatio < MIN_RATIO) {
+        w = newW;
+      } else if (currentRatio < MIN_RATIO) {
         const newH = Math.floor(w / MIN_RATIO);
         const offsetY = Math.floor((h - newH) / 2);
         imageBuffer = await sharp(imageBuffer).extract({ left: 0, top: offsetY, width: w, height: newH }).jpeg().toBuffer();
+        h = newH;
       }
+
+      // Auto-detect closest standard ratio from actual image dimensions
+      const detectedRatio = w / h;
+      let autoAspect: string;
+      if (detectedRatio >= 1.4) autoAspect = "16:9";
+      else if (detectedRatio <= 0.75) autoAspect = "9:16";
+      else autoAspect = "1:1";
+
+      // Update the DB record with the detected aspect ratio
+      await storage.updateVideoGeneration(videoId, { aspectRatio: autoAspect });
+      console.log(`🎬 Scene animation: image ${w}x${h} (ratio ${detectedRatio.toFixed(2)}) → auto aspect ${autoAspect}`);
 
       const imageDataUri = `data:image/jpeg;base64,${imageBuffer.toString("base64")}`;
 
@@ -1612,7 +1601,7 @@ Sitemap: ${BASE_URL}/sitemap.xml`;
       promptText += ` --duration ${generation.duration}`;
       promptText += ` --camerafixed false`;
       promptText += ` --resolution ${generation.resolution || "720p"}`;
-      if (generation.aspectRatio) promptText += ` --ratio ${generation.aspectRatio}`;
+      promptText += ` --ratio ${autoAspect}`;
 
       const requestBody = {
         model: VIDEO_MODEL,

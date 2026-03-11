@@ -2768,7 +2768,7 @@ export default function Home() {
                                       </a>
                                       <button
                                         className="w-7 h-7 bg-black/50 hover:bg-purple-600 text-white rounded-full text-xs flex items-center justify-center"
-                                        title={`生成動畫 ${animAspectRatio}（${Math.round(animDuration * (animResolution === "720p" ? 3.4 : 6.8))} 積分）`}
+                                        title={`生成動畫（${Math.round(animDuration * (animResolution === "720p" ? 3.4 : 6.8))} 積分，比例依圖片自動決定）`}
                                         onClick={e => { e.stopPropagation(); singleSceneAnimateMutation.mutate({ sceneIdx: idx }); }}
                                         disabled={singleSceneAnimateMutation.isPending}
                                       >
@@ -2850,11 +2850,11 @@ export default function Home() {
                               <div className="p-3 bg-white">
                                 <p className="text-xs font-semibold text-gray-700 mb-0.5">{scene.title || `第 ${idx + 1} 幕`}</p>
                                 <p className="text-xs text-gray-500 line-clamp-2">{scene.description}</p>
-                                {/* Show what animation size will be generated */}
+                                {/* Animation availability indicator */}
                                 {imgUrl && !animJobBySceneIdx[idx] && (
-                                  <div className="mt-1.5 flex items-center gap-1 text-[10px] text-purple-500">
+                                  <div className="mt-1.5 flex items-center gap-1 text-[10px] text-purple-400">
                                     <i className="fas fa-film"></i>
-                                    動畫比例：<span className="font-semibold">{animAspectRatio}</span>
+                                    Hover 圖片可生成動畫（比例依圖自動決定）
                                   </div>
                                 )}
                               </div>
@@ -2892,31 +2892,9 @@ export default function Home() {
                         </Button>
                       </div>
 
-                      {/* Compact animation aspect ratio selector — always visible */}
-                      <div className="mt-3 flex items-center justify-center gap-3">
-                        <span className="text-xs text-gray-500 flex items-center gap-1">
-                          <i className="fas fa-film text-purple-400"></i>動畫比例：
-                        </span>
-                        <div className="flex gap-1.5">
-                          {([
-                            { val: "16:9", icon: "⬜", label: "16:9 橫" },
-                            { val: "9:16", icon: "▭", label: "9:16 直" },
-                            { val: "1:1",  icon: "◻", label: "1:1 方" },
-                          ] as const).map(({ val, label }) => (
-                            <button
-                              key={val}
-                              onClick={() => setAnimAspectRatio(val)}
-                              className={`px-3 py-1 rounded-lg border text-xs font-medium transition-all ${
-                                animAspectRatio === val
-                                  ? "border-purple-500 bg-purple-100 text-purple-700"
-                                  : "border-gray-200 bg-white text-gray-600 hover:border-purple-300"
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        <span className="text-xs text-gray-400">（影響每幕動畫影片尺寸）</span>
+                      {/* Note: animation aspect ratio is auto-detected from each scene image */}
+                      <div className="mt-2 text-center text-xs text-gray-400">
+                        <i className="fas fa-info-circle mr-1"></i>動畫比例自動對齊各幕圖片尺寸，無需手動設定
                       </div>
 
                       {/* Animation Settings Panel */}
@@ -2958,19 +2936,10 @@ export default function Home() {
                             </div>
                           </div>
 
-                          {/* Aspect Ratio */}
-                          <div>
-                            <Label className="text-sm font-medium text-gray-700 mb-2 block">畫面比例</Label>
-                            <div className="flex gap-2">
-                              {(["16:9", "9:16", "1:1"] as const).map(a => (
-                                <button key={a} onClick={() => setAnimAspectRatio(a)}
-                                  className={`px-4 py-2 rounded-lg border-2 text-sm font-medium transition-all ${
-                                    animAspectRatio === a ? "border-purple-500 bg-purple-100 text-purple-700" : "border-gray-200 text-gray-600 hover:border-purple-200"
-                                  }`}>
-                                  {a}
-                                </button>
-                              ))}
-                            </div>
+                          {/* Aspect Ratio: auto-detected from image, no manual selection */}
+                          <div className="text-xs text-gray-500 bg-white/60 rounded-lg px-3 py-2 border border-gray-100">
+                            <i className="fas fa-info-circle mr-1 text-purple-400"></i>
+                            動畫比例自動對齊各幕圖片尺寸（16:9 橫圖→橫影片、9:16 直圖→直影片、1:1 方圖→方影片）
                           </div>
 
                           {/* Animation Prompts */}
