@@ -2101,7 +2101,7 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
 
       const storyUser = await storage.getUser(story.userId);
       const userFolder = storyUser?.username || story.userId;
-      const apiKey = process.env.ARK_TEXT_TO_IMAGE_API_KEY || process.env.ARK_API_KEY;
+      const apiKey = process.env.ARK_API_KEY;
       if (!apiKey) throw new Error("圖片生成 API Key 未設定");
 
       const scenes: StoryScene[] = JSON.parse(story.scenes);
@@ -2177,7 +2177,7 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》：${s.description}`).jo
             };
           }
 
-          const apiResp = await fetch("https://ark.ap-southeast.bytepluses.com/api/v3/images/generations", {
+          const apiResp = await fetch(ARK_API_ENDPOINT, {
             method: "POST",
             headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
             body: JSON.stringify(requestBody),
