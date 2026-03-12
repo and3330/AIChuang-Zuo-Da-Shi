@@ -2332,6 +2332,75 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[敘事角色：${getNar
     }
   });
 
+  // Video prompt enhancement - two steps
+  app.post("/api/claude/enhance-video-prompt", requireAuth, async (req, res) => {
+    try {
+      const { prompt, step, mode } = req.body as {
+        prompt: string;
+        step: "ai" | "claude";
+        mode: "text-to-video" | "image-to-video";
+      };
+      if (!prompt?.trim()) return res.status(400).json({ error: "請先填寫提示詞" });
+
+      let systemPrompt: string;
+      if (step === "ai") {
+        // Step 1: AI enrichment - enhance in Chinese, more vivid and detailed
+        systemPrompt = mode === "image-to-video"
+          ? `你是一位專業的影片動態提示詞設計師。用戶提供了一段描述圖片動態效果的中文提示詞，請幫他補充細節，讓它更生動具體。
+
+要求：
+1. 補充鏡頭運動方式（如：緩慢推進、環繞、跟拍、拉遠）
+2. 加入光影細節（如：陽光斑駁、柔和側光、黃昏暖光）
+3. 加入動態細節（如：物體緩慢移動、水波蕩漾、葉片微動）
+4. 保持中文，長度約 50-80 字
+5. 只回覆優化後的提示詞，不要其他文字`
+          : `你是一位專業的影片提示詞設計師。用戶提供了一段中文影片描述，請幫他補充細節，讓畫面更豐富生動。
+
+要求：
+1. 補充場景環境細節（光線、氣氛、天氣）
+2. 加入鏡頭運動（如：緩慢推進、旋轉升起、跟拍）
+3. 加入動態效果（人物動作、物品移動、自然元素）
+4. 保持中文，長度約 60-100 字
+5. 只回覆優化後的提示詞，不要其他文字`;
+      } else {
+        // Step 2: Claude professional English optimization for AI video generation
+        systemPrompt = mode === "image-to-video"
+          ? `You are a professional AI video prompt engineer specializing in image-to-video generation. Convert the following Chinese description into a professional English video generation prompt.
+
+Requirements:
+1. Describe the motion/animation of the image (camera movement, object movement)
+2. Include specific camera movements (slow push in, gentle pan, orbit, zoom out, etc.)
+3. Include lighting and atmosphere
+4. Add quality keywords: cinematic, smooth motion, high quality
+5. Keep it concise: 40-70 words
+6. Only return the English prompt, nothing else`
+          : `You are a professional AI video prompt engineer. Convert the following Chinese video description into a professional English prompt for AI video generation.
+
+Requirements:
+1. Describe the main subject, action, and environment clearly
+2. Include specific camera movements (slow push in, aerial shot, tracking shot, etc.)
+3. Include lighting and cinematic mood
+4. Add quality descriptors: cinematic, 4K, smooth motion, highly detailed
+5. Keep it 50-80 words
+6. Only return the English prompt, nothing else`;
+      }
+
+      const message = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 512,
+        messages: [
+          { role: "user", content: `${systemPrompt}\n\n原始提示詞：${prompt.trim()}` }
+        ],
+      });
+
+      const enhanced = message.content[0].type === "text" ? message.content[0].text.trim() : "";
+      res.json({ enhanced });
+    } catch (error: any) {
+      console.error("Claude enhance video prompt error:", error);
+      res.status(500).json({ error: "提示詞優化失敗，請稍後再試" });
+    }
+  });
+
   // Regenerate a single scene
   app.post("/api/story-generations/:storyId/regenerate-scene/:sceneIdx", requireAuth, async (req, res) => {
     try {

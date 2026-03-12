@@ -270,6 +270,50 @@ export default function Home() {
     },
   });
 
+  const enhanceVideoPromptAIMutation = useMutation({
+    mutationFn: async (mode: "text-to-video" | "image-to-video") => {
+      const response = await apiRequest("POST", "/api/claude/enhance-video-prompt", {
+        prompt: videoPrompt,
+        step: "ai",
+        mode,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "優化失敗");
+      return data;
+    },
+    onSuccess: (data: any) => {
+      if (data.enhanced) {
+        setVideoPrompt(data.enhanced);
+        toast({ title: "✨ AI 優化完成", description: "提示詞已豐富化，可再用 Claude 轉英文" });
+      }
+    },
+    onError: (error: any) => {
+      toast({ title: "AI 優化失敗", description: error?.message || "請稍後再試", variant: "destructive" });
+    },
+  });
+
+  const enhanceVideoPromptClaudeMutation = useMutation({
+    mutationFn: async (mode: "text-to-video" | "image-to-video") => {
+      const response = await apiRequest("POST", "/api/claude/enhance-video-prompt", {
+        prompt: videoPrompt,
+        step: "claude",
+        mode,
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "優化失敗");
+      return data;
+    },
+    onSuccess: (data: any) => {
+      if (data.enhanced) {
+        setVideoPrompt(data.enhanced);
+        toast({ title: "✨ Claude 優化完成", description: "已轉換為專業英文影片提示詞" });
+      }
+    },
+    onError: (error: any) => {
+      toast({ title: "Claude 優化失敗", description: error?.message || "請稍後再試", variant: "destructive" });
+    },
+  });
+
   const regenerateSceneMutation = useMutation({
     mutationFn: async (sceneIdx: number) => {
       const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/regenerate-scene/${sceneIdx}`, {});
@@ -1285,14 +1329,42 @@ export default function Home() {
                 </h2>
 
                 <div>
-                  <Label className="text-sm font-medium text-gray-700">描述影片內容</Label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <Label className="text-sm font-medium text-gray-700">描述影片內容</Label>
+                    <div className="flex gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => enhanceVideoPromptAIMutation.mutate("text-to-video")}
+                        disabled={!videoPrompt.trim() || enhanceVideoPromptAIMutation.isPending || enhanceVideoPromptClaudeMutation.isPending}
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {enhanceVideoPromptAIMutation.isPending ? (
+                          <><i className="fas fa-spinner fa-spin text-xs"></i> 優化中...</>
+                        ) : (
+                          <><i className="fas fa-magic text-xs"></i> ①AI優化</>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => enhanceVideoPromptClaudeMutation.mutate("text-to-video")}
+                        disabled={!videoPrompt.trim() || enhanceVideoPromptAIMutation.isPending || enhanceVideoPromptClaudeMutation.isPending}
+                        className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {enhanceVideoPromptClaudeMutation.isPending ? (
+                          <><i className="fas fa-spinner fa-spin text-xs"></i> 優化中...</>
+                        ) : (
+                          <><i className="fas fa-robot text-xs"></i> ②Claude優化</>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                   <Textarea 
                     placeholder="例如：一隻橘貓在陽光下的草地上追蝴蝶，鏡頭緩慢環繞"
                     value={videoPrompt}
                     onChange={(e) => setVideoPrompt(e.target.value)}
-                    className="mt-1.5 w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                    className="w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                   />
-                  <p className="text-xs text-gray-400 mt-1">詳細描述您想要的影片畫面和動態效果</p>
+                  <p className="text-xs text-gray-400 mt-1">詳細描述您想要的影片畫面和動態效果 ・先①AI優化讓描述更豐富，再②Claude優化轉為英文專業格式</p>
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -1482,16 +1554,42 @@ export default function Home() {
                     </div>
 
                     <div>
-                      <Label className="text-sm font-medium text-gray-700">描述影片動態效果</Label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <Label className="text-sm font-medium text-gray-700">描述影片動態效果</Label>
+                        <div className="flex gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => enhanceVideoPromptAIMutation.mutate("image-to-video")}
+                            disabled={!videoPrompt.trim() || enhanceVideoPromptAIMutation.isPending || enhanceVideoPromptClaudeMutation.isPending}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {enhanceVideoPromptAIMutation.isPending ? (
+                              <><i className="fas fa-spinner fa-spin text-xs"></i> 優化中...</>
+                            ) : (
+                              <><i className="fas fa-magic text-xs"></i> ①AI優化</>
+                            )}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => enhanceVideoPromptClaudeMutation.mutate("image-to-video")}
+                            disabled={!videoPrompt.trim() || enhanceVideoPromptAIMutation.isPending || enhanceVideoPromptClaudeMutation.isPending}
+                            className="flex items-center gap-1 px-2.5 py-1 text-xs rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                          >
+                            {enhanceVideoPromptClaudeMutation.isPending ? (
+                              <><i className="fas fa-spinner fa-spin text-xs"></i> 優化中...</>
+                            ) : (
+                              <><i className="fas fa-robot text-xs"></i> ②Claude優化</>
+                            )}
+                          </button>
+                        </div>
+                      </div>
                       <Textarea 
                         placeholder="例如：高速穿越障礙物，帶來沉浸式的飛行體驗"
                         value={videoPrompt}
                         onChange={(e) => setVideoPrompt(e.target.value)}
-                        className="mt-1.5 w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
+                        className="w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                       />
-                      <p className="text-xs text-gray-400 mt-1">
-                        描述您希望圖片如何變成動態影片
-                      </p>
+                      <p className="text-xs text-gray-400 mt-1">描述您希望圖片如何變成動態影片 ・先①AI優化讓描述更豐富，再②Claude優化轉為英文專業格式</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
