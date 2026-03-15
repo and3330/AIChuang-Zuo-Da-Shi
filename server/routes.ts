@@ -77,46 +77,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log("⚠️ Bunny.net storage not configured - files will not be persisted to CDN");
   }
 
+  const CANONICAL_URL = "https://cmai-marker.com";
   const BASE_URL = process.env.REPLIT_DEV_DOMAIN
     ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : process.env.REPL_SLUG
-      ? `https://${process.env.REPL_SLUG}.replit.app`
-      : "https://ai-creative-workshop.replit.app";
+    : CANONICAL_URL;
 
   app.get("/sitemap.xml", (_req, res) => {
+    const today = new Date().toISOString().split("T")[0];
     const pages = [
       { loc: "/", priority: "1.0", changefreq: "daily" },
-      { loc: "/login", priority: "0.8", changefreq: "monthly" },
       { loc: "/account", priority: "0.6", changefreq: "monthly" },
       { loc: "/transactions", priority: "0.4", changefreq: "weekly" },
-      { loc: "/privacy", priority: "0.3", changefreq: "yearly" },
-      { loc: "/terms", priority: "0.3", changefreq: "yearly" },
     ];
 
     const sitemap = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
 ${pages.map(p => `  <url>
-    <loc>${BASE_URL}${p.loc}</loc>
-    <lastmod>${new Date().toISOString().split("T")[0]}</lastmod>
+    <loc>${CANONICAL_URL}${p.loc}</loc>
+    <lastmod>${today}</lastmod>
     <changefreq>${p.changefreq}</changefreq>
     <priority>${p.priority}</priority>
+    <xhtml:link rel="alternate" hreflang="zh-TW" href="${CANONICAL_URL}${p.loc}" />
   </url>`).join("\n")}
 </urlset>`;
 
-    res.header("Content-Type", "application/xml");
+    res.header("Content-Type", "application/xml; charset=utf-8");
     res.send(sitemap);
   });
 
   app.get("/robots.txt", (_req, res) => {
     const robots = `User-agent: *
 Allow: /
-Allow: /login
 Disallow: /admin
 Disallow: /api/
 
-Sitemap: ${BASE_URL}/sitemap.xml`;
+Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
-    res.header("Content-Type", "text/plain");
+    res.header("Content-Type", "text/plain; charset=utf-8");
     res.send(robots);
   });
 

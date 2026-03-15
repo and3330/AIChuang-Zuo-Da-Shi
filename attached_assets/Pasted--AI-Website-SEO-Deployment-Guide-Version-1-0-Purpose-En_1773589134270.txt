@@ -1,0 +1,190 @@
+# AI Website SEO Deployment Guide
+Version: 1.0
+Purpose: Enable AI-generated websites (Replit / custom web apps) to be quickly indexed by Google and improve SEO visibility.
+
+---
+
+# 1. Basic SEO Meta Tags
+
+Add the following meta tags inside the <head> section of every page.
+
+<title>AI影片生成工具｜免費AI圖片與影片生成平台</title>
+
+<meta name="description" content="免費AI生成工具平台，提供AI圖片生成、AI影片生成、AI動畫生成與AI短影片製作工具。">
+
+<meta name="keywords" content="AI生成工具,AI圖片生成,AI影片生成,AI動畫生成,AI影片製作">
+
+<meta name="robots" content="index, follow">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<link rel="canonical" href="https://yourdomain.com">
+
+---
+
+# 2. Open Graph (Social Sharing)
+
+Add these tags to support Facebook / Threads / LINE sharing previews.
+
+<meta property="og:title" content="AI影片生成工具｜免費AI生成平台">
+<meta property="og:description" content="免費AI圖片與影片生成工具，一鍵生成AI動畫與短視頻。">
+<meta property="og:image" content="https://yourdomain.com/cover.jpg">
+<meta property="og:url" content="https://yourdomain.com">
+<meta property="og:type" content="website">
+
+---
+
+# 3. Robots.txt
+
+Create a file:
+
+/robots.txt
+
+Content:
+
+User-agent: *
+Allow: /
+
+Sitemap: https://yourdomain.com/sitemap.xml
+
+---
+
+# 4. Sitemap.xml
+
+Create file:
+
+/sitemap.xml
+
+Example structure:
+
+<?xml version="1.0" encoding="UTF-8"?>
+
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+
+<url>
+<loc>https://yourdomain.com</loc>
+<priority>1.0</priority>
+</url>
+
+<url>
+<loc>https://yourdomain.com/tools</loc>
+<priority>0.8</priority>
+</url>
+
+<url>
+<loc>https://yourdomain.com/blog</loc>
+<priority>0.7</priority>
+</url>
+
+</urlset>
+
+---
+
+# 5. Structured Data (Schema.org)
+
+Add JSON-LD structured data inside the <head>.
+
+<script type="application/ld+json">
+
+{
+ "@context": "https://schema.org",
+ "@type": "WebSite",
+ "name": "AI工具平台",
+ "url": "https://yourdomain.com",
+ "potentialAction": {
+ "@type": "SearchAction",
+ "target": "https://yourdomain.com/search?q={search_term_string}",
+ "query-input": "required name=search_term_string"
+ }
+}
+
+</script>
+
+---
+
+# 6. Blog SEO Structure
+
+Create a blog section:
+
+/blog
+
+Recommended article topics:
+
+- 免費AI生圖網站
+- AI影片生成工具推薦
+- AI動畫生成平台
+- AI短影片生成工具
+- AI廣告影片生成
+
+Each article should include:
+
+- 1500+ words
+- AI tool comparison
+- screenshots
+- internal links
+
+---
+
+# 7. Page Speed Optimization
+
+Enable:
+
+- lazy loading images
+- image compression
+- CDN
+- caching
+
+Recommended tools:
+
+Cloudflare CDN
+
+---
+
+# 8. Google Indexing Setup
+
+Register site on:
+
+Google Search Console
+
+Submit:
+
+https://yourdomain.com/sitemap.xml
+
+---
+
+# 9. External SEO Signals
+
+Post links on:
+
+Threads
+Medium
+Reddit
+Facebook Groups
+X (Twitter)
+
+Example content:
+
+"整理了一個免費AI生成工具網站
+可以生圖、生影片、做動畫
+
+https://yourdomain.com"
+
+---
+
+# 10. Automated SEO Growth Strategy
+
+Daily actions:
+
+Publish 1 AI article per day
+Share article on Threads
+Share article on Medium
+Submit article URL to Google Search Console
+
+Goal:
+
+100 SEO articles
+10,000 organic visitors/month
+
+---
+
+# END
