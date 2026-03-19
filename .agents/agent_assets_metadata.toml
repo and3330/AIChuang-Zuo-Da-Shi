@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "7dLtnv_XbgCblGdZSMRR6"
+uri = "file://STORY_GENERATION_SYSTEM.md"
+type = "text"
+title = "AI 故事生成系統 — 完整開發架構"
