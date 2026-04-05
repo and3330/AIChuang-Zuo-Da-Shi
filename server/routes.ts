@@ -1488,6 +1488,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const animationPrompt = (req.body.animationPrompt || "").trim();
       const perScenePromptsByActual: Record<string, string> = (typeof req.body.perScenePromptsByActual === "object" && !Array.isArray(req.body.perScenePromptsByActual)) ? req.body.perScenePromptsByActual : {};
       const perSceneResolutions: Record<string, string> = (typeof req.body.perSceneResolutions === "object" && !Array.isArray(req.body.perSceneResolutions)) ? req.body.perSceneResolutions : {};
+      const perSceneDurations: Record<string, number> = (typeof req.body.perSceneDurations === "object" && !Array.isArray(req.body.perSceneDurations)) ? req.body.perSceneDurations : {};
 
       const story = await storage.getStoryGeneration(storyId);
       if (!story) return res.status(404).json({ error: "找不到故事" });
@@ -1498,9 +1499,16 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const completedScenes = scenes.filter(s => s.status === "completed" && (s.bunnyUrl || s.imageUrl));
       if (completedScenes.length === 0) return res.status(400).json({ error: "沒有可生成動畫的場景" });
 
-      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 3.4 : 6.8;
-      const creditsPerScene = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
-      const totalCredits = creditsPerScene * completedScenes.length;
+      // Calculate per-scene credits using individual durations
+      const sceneInfos = completedScenes.map(scene => {
+        const sceneIdx = scenes.indexOf(scene);
+        const sceneResolution: "720p" | "1080p" = perSceneResolutions[String(sceneIdx)] === "720p" ? "720p" : perSceneResolutions[String(sceneIdx)] === "1080p" ? "1080p" : resolution;
+        const rawDuration = Number(perSceneDurations[String(sceneIdx)]);
+        const sceneDuration = (rawDuration >= 4 && rawDuration <= 12) ? rawDuration : duration;
+        const sceneCredits = Math.round(sceneDuration * (sceneResolution === "720p" ? 3.4 : 6.8));
+        return { scene, sceneIdx, sceneResolution, sceneDuration, sceneCredits };
+      });
+      const totalCredits = sceneInfos.reduce((sum, s) => sum + s.sceneCredits, 0);
 
       const user = await storage.getUser(userId);
       if (!user || (user.credits ?? 0) < totalCredits) {
@@ -1513,11 +1521,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const userFolder = storyUser?.username || userId;
       const jobs: { sceneIdx: number; sceneTitle: string; videoId: string }[] = [];
 
-      for (let si = 0; si < completedScenes.length; si++) {
-        const scene = completedScenes[si];
-        const sceneIdx = scenes.indexOf(scene);
+      for (const { scene, sceneIdx, sceneResolution, sceneDuration, sceneCredits } of sceneInfos) {
         const imageUrl = scene.bunnyUrl || scene.imageUrl!;
-        const sceneResolution: "720p" | "1080p" = perSceneResolutions[String(sceneIdx)] === "720p" ? "720p" : perSceneResolutions[String(sceneIdx)] === "1080p" ? "1080p" : resolution;
         const prompt = perScenePromptsByActual[String(sceneIdx)]?.trim() || animationPrompt || scene.description;
 
         const videoGen = await storage.createVideoGeneration({
@@ -1525,14 +1530,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           type: "image-to-video",
           prompt,
           originalImageUrl: imageUrl,
-          duration,
+          duration: sceneDuration,
           resolution: sceneResolution,
           aspectRatio,
           cameraFixed: false,
         });
 
         jobs.push({ sceneIdx, sceneTitle: scene.title || `第 ${sceneIdx + 1} 幕`, videoId: videoGen.id });
-        const sceneCredits = Math.round(duration * (sceneResolution === "720p" ? 3.4 : 6.8));
         processSceneAnimation(videoGen.id, imageUrl, bunnyStorage, userFolder, storyId, sceneIdx, sceneCredits).catch(console.error);
       }
 
@@ -2045,7 +2049,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       if (!validated.success) {
         return res.status(400).json({ error: "參數錯誤", details: validated.error.flatten() });
       }
-      const { title, style, scenes, referenceImageUrls, sceneSize, characterImageUrls, sceneRefImageUrls, styleImageUrls, globalSeed } = validated.data;
+      const { title, style, scenes, referenceImageUrls, sceneSize, characterImageUrls, characterBImageUrls, sceneRefImageUrls, styleImageUrls, globalSeed } = validated.data;
       const creditsNeeded = scenes.length * 3;
 
       const user = await storage.getUser(userId);
@@ -2063,6 +2067,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         referenceImageUrls: referenceImageUrls ?? [],
         sceneSize: sceneSize ?? "1:1",
         characterImageUrls: characterImageUrls ?? [],
+        characterBImageUrls: characterBImageUrls ?? [],
         sceneRefImageUrls: sceneRefImageUrls ?? [],
         styleImageUrls: styleImageUrls ?? [],
         globalSeed: globalSeed ?? undefined,
@@ -2728,7 +2733,8 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         }
       };
 
-      const characterBase64s = await loadImageList(story.characterImageUrls ?? []);
+      const characterABase64s = await loadImageList(story.characterImageUrls ?? []);
+      const characterBBase64s = await loadImageList(story.characterBImageUrls ?? []);
       const sceneRefBase64s = await loadImageList(story.sceneRefImageUrls ?? []);
       const styleBase64s = await loadImageList(story.styleImageUrls ?? []);
 
@@ -2740,14 +2746,14 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
           const scenePrompt = `${story.style}, ${scenes[i].description}`;
           let requestBody: any;
 
-          // Combine all global reference images in order: character → scene → style
-          let globalBase64s = [...characterBase64s, ...sceneRefBase64s, ...styleBase64s];
+          // Combine all global reference images in order: charA → charB → scene → style
+          let globalBase64s = [...characterABase64s, ...characterBBase64s, ...sceneRefBase64s, ...styleBase64s];
 
           // Per-scene reference image overrides only the scene ref slot
           if (scenes[i].sceneReferenceImageUrl) {
             try {
               const perSceneBase64 = await loadRefImageAsBase64(scenes[i].sceneReferenceImageUrl!);
-              globalBase64s = [...characterBase64s, perSceneBase64, ...styleBase64s];
+              globalBase64s = [...characterABase64s, ...characterBBase64s, perSceneBase64, ...styleBase64s];
             } catch (e) {
               console.error(`Failed to load scene ${i} reference image:`, e);
             }
@@ -2757,17 +2763,25 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             // Build an explicit prompt labeling what each reference image is for
             const labelParts: string[] = [];
             let imgIdx = 1;
-            if (characterBase64s.length > 0) {
-              labelParts.push(`第 ${imgIdx}${characterBase64s.length > 1 ? `-${imgIdx + characterBase64s.length - 1}` : ""} 張圖為主角外貌，保持角色一致`);
-              imgIdx += characterBase64s.length;
+            if (characterABase64s.length > 0) {
+              const end = imgIdx + characterABase64s.length - 1;
+              labelParts.push(`第 ${imgIdx}${characterABase64s.length > 1 ? `-${end}` : ""} 張圖為角色 A 外貌，保持角色一致`);
+              imgIdx += characterABase64s.length;
+            }
+            if (characterBBase64s.length > 0) {
+              const end = imgIdx + characterBBase64s.length - 1;
+              labelParts.push(`第 ${imgIdx}${characterBBase64s.length > 1 ? `-${end}` : ""} 張圖為角色 B 外貌，保持角色一致`);
+              imgIdx += characterBBase64s.length;
             }
             const sceneCount = scenes[i].sceneReferenceImageUrl ? 1 : sceneRefBase64s.length;
             if (sceneCount > 0) {
-              labelParts.push(`第 ${imgIdx}${sceneCount > 1 ? `-${imgIdx + sceneCount - 1}` : ""} 張圖為場景構圖參考`);
+              const end = imgIdx + sceneCount - 1;
+              labelParts.push(`第 ${imgIdx}${sceneCount > 1 ? `-${end}` : ""} 張圖為場景構圖參考`);
               imgIdx += sceneCount;
             }
             if (styleBase64s.length > 0) {
-              labelParts.push(`第 ${imgIdx}${styleBase64s.length > 1 ? `-${imgIdx + styleBase64s.length - 1}` : ""} 張圖為畫風風格參考`);
+              const end = imgIdx + styleBase64s.length - 1;
+              labelParts.push(`第 ${imgIdx}${styleBase64s.length > 1 ? `-${end}` : ""} 張圖為畫風風格參考`);
             }
             const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
             const fullPrompt = `${scenePrompt}${labelNote}`;

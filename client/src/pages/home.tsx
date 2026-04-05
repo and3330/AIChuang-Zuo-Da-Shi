@@ -112,6 +112,7 @@ export default function Home() {
     { title: "第八幕", description: "" },
   ]);
   const [storyCharacterImages, setStoryCharacterImages] = useState<{ url: string; path: string }[]>([]);
+  const [storyCharacterBImages, setStoryCharacterBImages] = useState<{ url: string; path: string }[]>([]);
   const [storySceneRefImages, setStorySceneRefImages] = useState<{ url: string; path: string }[]>([]);
   const [storyStyleImages, setStoryStyleImages] = useState<{ url: string; path: string }[]>([]);
   const [storySeed, setStorySeed] = useState<number | "">("");
@@ -126,6 +127,7 @@ export default function Home() {
   // keyed by actual scene index (not completed-scene index)
   const [perSceneAnimPrompts, setPerSceneAnimPrompts] = useState<Record<number, string>>({});
   const [perSceneResolution, setPerSceneResolution] = useState<Record<number, "720p" | "1080p">>({});
+  const [perSceneDuration, setPerSceneDuration] = useState<Record<number, number>>({});
   const [perSceneTailEnabled, setPerSceneTailEnabled] = useState<Record<number, boolean>>({});
   const [showStoryHistory, setShowStoryHistory] = useState(false);
   const [editingStoryTitle, setEditingStoryTitle] = useState(false);
@@ -342,6 +344,7 @@ export default function Home() {
       setCurrentStoryId(data.id);
       setStoryAnimationJobs([]);
       setPerSceneTailEnabled({});
+      setPerSceneDuration({});
       setEditingStoryTitle(false);
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations", data.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations"] });
@@ -404,8 +407,9 @@ export default function Home() {
     mutationFn: async ({ sceneIdx, resolution, prompt, tailSceneIdx }: { sceneIdx: number; resolution?: "720p" | "1080p"; prompt?: string; tailSceneIdx?: number }) => {
       const res = resolution ?? perSceneResolution[sceneIdx] ?? "720p";
       const prm = prompt ?? perSceneAnimPrompts[sceneIdx] ?? "";
+      const dur = perSceneDuration[sceneIdx] ?? animDuration;
       const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/animate-scene/${sceneIdx}`, {
-        duration: animDuration,
+        duration: dur,
         resolution: res,
         animationPrompt: prm,
         ...(tailSceneIdx !== undefined ? { tailSceneIdx } : {}),
@@ -455,6 +459,7 @@ export default function Home() {
     try {
       const saved = JSON.parse(raw) as {
         characterImagePaths?: string[];
+        characterBImagePaths?: string[];
         sceneRefImagePaths?: string[];
         styleImagePaths?: string[];
         globalSeed?: number | null;
@@ -463,6 +468,9 @@ export default function Home() {
       };
       if (saved.characterImagePaths?.length) {
         setStoryCharacterImages(saved.characterImagePaths.map(p => ({ url: p, path: p })));
+      }
+      if (saved.characterBImagePaths?.length) {
+        setStoryCharacterBImages(saved.characterBImagePaths.map(p => ({ url: p, path: p })));
       }
       if (saved.sceneRefImagePaths?.length) {
         setStorySceneRefImages(saved.sceneRefImagePaths.map(p => ({ url: p, path: p })));
@@ -613,6 +621,7 @@ export default function Home() {
         storyContent: storyContent.trim() || undefined,
         sceneSize: storySceneSize,
         characterImageUrls: storyCharacterImages.map(r => r.path),
+        characterBImageUrls: storyCharacterBImages.map(r => r.path),
         sceneRefImageUrls: storySceneRefImages.map(r => r.path),
         styleImageUrls: storyStyleImages.map(r => r.path),
         ...(storySeed !== "" ? { globalSeed: Number(storySeed) } : {}),
@@ -756,7 +765,8 @@ export default function Home() {
     }
   };
 
-  const handleCharacterImageUpload = makeStoryRefUploadHandler(setStoryCharacterImages, 2, "主角長相參考");
+  const handleCharacterImageUpload = makeStoryRefUploadHandler(setStoryCharacterImages, 2, "角色 A 長相參考");
+  const handleCharacterBImageUpload = makeStoryRefUploadHandler(setStoryCharacterBImages, 2, "角色 B 長相參考");
   const handleSceneRefImageUpload = makeStoryRefUploadHandler(setStorySceneRefImages, 2, "場景參考圖");
   const handleStyleImageUpload = makeStoryRefUploadHandler(setStoryStyleImages, 2, "畫風參考圖");
 
@@ -764,7 +774,7 @@ export default function Home() {
     setStorySceneCount(count);
     setStoryScenes(prev => {
       const arr = [...prev];
-      while (arr.length < 8) arr.push({ title: `第 ${arr.length + 1} 幕`, description: "" });
+      while (arr.length < 12) arr.push({ title: `第 ${arr.length + 1} 幕`, description: "" });
       return arr;
     });
   };
@@ -2019,8 +2029,8 @@ export default function Home() {
                   <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
                     場景數量（{storySceneCount} 幕，共 {storySceneCount * 3} 積分）
                   </Label>
-                  <div className="flex gap-2">
-                    {[2, 3, 4, 5, 6, 7, 8].map(n => (
+                  <div className="flex flex-wrap gap-2">
+                    {[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => (
                       <button
                         key={n}
                         onClick={() => updateStorySceneCount(n)}
@@ -2119,7 +2129,8 @@ export default function Home() {
                 {/* Reference Images - three categories */}
                 {(
                   [
-                    { label: "主角長相", sub: "保持每幕角色外貌一致", icon: "🧑", images: storyCharacterImages, setter: setStoryCharacterImages, handler: handleCharacterImageUpload, color: "violet" },
+                    { label: "角色 A 外貌", sub: "保持每幕角色 A 外貌一致", icon: "🧑", images: storyCharacterImages, setter: setStoryCharacterImages, handler: handleCharacterImageUpload, color: "violet" },
+                    { label: "角色 B 外貌", sub: "保持每幕角色 B 外貌一致（選填）", icon: "🧑‍🦱", images: storyCharacterBImages, setter: setStoryCharacterBImages, handler: handleCharacterBImageUpload, color: "orange" },
                     { label: "場景參考圖", sub: "構圖、場景、環境風格", icon: "🏞️", images: storySceneRefImages, setter: setStorySceneRefImages, handler: handleSceneRefImageUpload, color: "blue" },
                     { label: "畫風參考圖", sub: "整體美術風格與質感", icon: "🎨", images: storyStyleImages, setter: setStoryStyleImages, handler: handleStyleImageUpload, color: "pink" },
                   ] as const
@@ -2127,6 +2138,7 @@ export default function Home() {
                   <div key={label} className={`p-3 rounded-xl border-2 ${
                     images.length > 0
                       ? color === "violet" ? "border-violet-200 bg-violet-50/40"
+                        : color === "orange" ? "border-orange-200 bg-orange-50/40"
                         : color === "blue" ? "border-blue-200 bg-blue-50/40"
                         : "border-pink-200 bg-pink-50/40"
                       : "border-gray-100 bg-gray-50/50"
@@ -3082,16 +3094,33 @@ export default function Home() {
                                       </div>
                                     );
                                   })()}
+                                  {/* Per-scene duration selector */}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-[10px] text-gray-500 flex-shrink-0">秒數</span>
+                                    {[4, 5, 6, 8, 10, 12].map(sec => {
+                                      const active = (perSceneDuration[idx] ?? animDuration) === sec;
+                                      return (
+                                        <button key={sec}
+                                          onClick={() => setPerSceneDuration(prev => ({ ...prev, [idx]: sec }))}
+                                          className={`w-8 h-6 rounded border text-[10px] font-semibold transition-all ${active ? "border-purple-500 bg-purple-100 text-purple-700" : "border-gray-200 text-gray-500 hover:border-purple-300"}`}>
+                                          {sec}s
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                   {/* Resolution + Generate */}
                                   <div className="flex items-center gap-2">
                                     <span className="text-[10px] text-gray-500 flex-shrink-0">解析度</span>
-                                    {(["720p", "1080p"] as const).map(r => (
-                                      <button key={r}
-                                        onClick={() => setPerSceneResolution(prev => ({ ...prev, [idx]: r }))}
-                                        className={`flex-1 py-1 rounded-lg border text-[11px] font-medium transition-all ${sceneRes === r ? "border-purple-500 bg-purple-100 text-purple-700" : "border-gray-200 text-gray-500 hover:border-purple-300"}`}>
-                                        {r} <span className="text-[9px] opacity-70">({Math.round(animDuration * (r === "720p" ? 3.4 : 6.8))}積)</span>
-                                      </button>
-                                    ))}
+                                    {(["720p", "1080p"] as const).map(r => {
+                                      const sd = perSceneDuration[idx] ?? animDuration;
+                                      return (
+                                        <button key={r}
+                                          onClick={() => setPerSceneResolution(prev => ({ ...prev, [idx]: r }))}
+                                          className={`flex-1 py-1 rounded-lg border text-[11px] font-medium transition-all ${sceneRes === r ? "border-purple-500 bg-purple-100 text-purple-700" : "border-gray-200 text-gray-500 hover:border-purple-300"}`}>
+                                          {r} <span className="text-[9px] opacity-70">({Math.round(sd * (r === "720p" ? 3.4 : 6.8))}積)</span>
+                                        </button>
+                                      );
+                                    })}
                                     <button
                                       className={`flex-shrink-0 px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all flex items-center gap-1 ${
                                         (singleSceneAnimateMutation.isPending && singleSceneAnimateMutation.variables?.sceneIdx === idx)
@@ -3107,7 +3136,7 @@ export default function Home() {
                                         singleSceneAnimateMutation.mutate({ sceneIdx: idx, tailSceneIdx });
                                       }}
                                       disabled={singleSceneAnimateMutation.isPending && singleSceneAnimateMutation.variables?.sceneIdx === idx}
-                                      title={`生成 ${animDuration}秒 ${sceneRes} 動畫，需 ${sceneCost} 積分`}
+                                      title={`生成 ${perSceneDuration[idx] ?? animDuration}秒 ${sceneRes} 動畫，需 ${sceneCost} 積分`}
                                     >
                                       {(singleSceneAnimateMutation.isPending && singleSceneAnimateMutation.variables?.sceneIdx === idx) ? (
                                         <div className="w-3 h-3 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
@@ -3183,6 +3212,7 @@ export default function Home() {
                               const seedVal = storyGeneration.globalSeed ?? (storySeed !== "" ? Number(storySeed) : undefined);
                               const sequel = {
                                 characterImagePaths: (storyGeneration.characterImageUrls ?? []) as string[],
+                                characterBImagePaths: (storyGeneration.characterBImageUrls ?? []) as string[],
                                 sceneRefImagePaths: (storyGeneration.sceneRefImageUrls ?? []) as string[],
                                 styleImagePaths: (storyGeneration.styleImageUrls ?? []) as string[],
                                 globalSeed: seedVal ?? null,
@@ -3262,7 +3292,8 @@ export default function Home() {
                             const totalCost = completedScenes.reduce((sum, s) => {
                               const si = scenes.indexOf(s);
                               const res = perSceneResolution[si] ?? "720p";
-                              return sum + Math.round(animDuration * (res === "720p" ? 3.4 : 6.8));
+                              const dur = perSceneDuration[si] ?? animDuration;
+                              return sum + Math.round(dur * (res === "720p" ? 3.4 : 6.8));
                             }, 0);
                             const hasEnough = (user?.credits ?? 0) >= totalCost;
                             return (
@@ -3270,7 +3301,7 @@ export default function Home() {
                                 <div className="text-sm">
                                   <span className="text-gray-600">{completedScenes.length} 幕合計 </span>
                                   <span className="font-bold text-purple-700">{totalCost} 積分</span>
-                                  <span className="text-gray-400 text-xs ml-1">（依各幕個別解析度計算）</span>
+                                  <span className="text-gray-400 text-xs ml-1">（依各幕個別解析度與秒數計算）</span>
                                   {!hasEnough && (
                                     <span className="ml-2 text-red-500 text-xs"><i className="fas fa-exclamation-triangle mr-1"></i>積分不足（餘額 {user?.credits ?? 0}）</span>
                                   )}
@@ -3283,6 +3314,7 @@ export default function Home() {
                                     resolution: animResolution,
                                     perScenePromptsByActual: perSceneAnimPrompts,
                                     perSceneResolutions: perSceneResolution,
+                                    perSceneDurations: perSceneDuration,
                                   })}
                                 >
                                   {storyAnimateMutation.isPending ? (

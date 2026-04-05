@@ -581,6 +581,7 @@ export class DatabaseStorage implements IStorage {
       cost: 0,
       sceneSize: (data as any).sceneSize ?? "1:1",
       characterImageUrls: (data as any).characterImageUrls ?? [],
+      characterBImageUrls: (data as any).characterBImageUrls ?? [],
       sceneRefImageUrls: (data as any).sceneRefImageUrls ?? [],
       styleImageUrls: (data as any).styleImageUrls ?? [],
       globalSeed: (data as any).globalSeed ?? undefined,

@@ -121,12 +121,12 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Environment secret: TELEGRAM_BOT_TOKEN
 
 ### Story Mode (故事模式)
-- **storyGenerations** DB table: id, userId, title, style, sceneCount, referenceImageUrls (text[]), scenes (JSON string of StoryScene[]), status, creditsUsed, cost, errorMessage, createdAt, updatedAt
+- **storyGenerations** DB table: id, userId, title, style, sceneCount, referenceImageUrls (text[]), scenes (JSON string of StoryScene[]), status, creditsUsed, cost, errorMessage, sceneSize, characterImageUrls (text[]), characterBImageUrls (text[]), sceneRefImageUrls (text[]), styleImageUrls (text[]), globalSeed, createdAt, updatedAt
 - **StoryScene type**: { id, title, description, imageUrl?, bunnyUrl?, status: pending/generating/completed/failed }
 - **API**: POST /api/story-generations (requireAuth), GET /api/story-generations/:id (requireAuth)
-- **Processing**: Sequential per-scene image generation; reference images loaded as base64 for image-to-image; scenes JSON updated in real-time; Bunny CDN upload per scene (`users/{folder}/stories/{storyId}_{i}.jpg`); full refund on total failure
-- **Pricing**: 3 credits/scene (2-8 scenes, 6-24 credits total)
-- **Frontend**: "故事模式" tab (3rd tab, emerald theme) in home.tsx; input form with title, style selector (5 presets + custom), scene count buttons, reference image upload (≤4), scene description cards; real-time progress grid; storyboard result grid with lightbox
+- **Processing**: Sequential per-scene image generation; ref images loaded as base64 (charA → charB → sceneRef → style); scenes JSON updated in real-time; Bunny CDN upload per scene; full refund on total failure
+- **Pricing**: 3 credits/scene (2-12 scenes, 6-36 credits total)
+- **Frontend**: "故事模式" tab (3rd tab, emerald theme) in home.tsx; scene count 2-12; dual character upload (角色A/B, max 2 each); per-scene duration selector (4/5/6/8/10/12s) in animation panel; per-scene resolution selector; batch animate sends perSceneDurations + perSceneResolutions; sequel inherits characterB images
 
 ## Recent Changes
 - Fixed session store: switched from MemoryStore to PostgreSQL-backed sessions (connect-pg-simple, createTableIfMissing: true), preventing session loss on restart
