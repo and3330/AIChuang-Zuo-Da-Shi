@@ -2743,7 +2743,8 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
 
         try {
-          const scenePrompt = `${story.style}, ${scenes[i].description}`;
+          const dialoguePart = scenes[i].dialogue?.trim() ? `，台詞：「${scenes[i].dialogue}」` : "";
+          const scenePrompt = `${story.style}, ${scenes[i].description}${dialoguePart}`;
           let requestBody: any;
 
           // Combine all global reference images in order: charA → charB → scene → style

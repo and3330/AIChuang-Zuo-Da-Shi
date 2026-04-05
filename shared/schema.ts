@@ -208,6 +208,7 @@ export const insertStoryGenerationSchema = z.object({
   scenes: z.array(z.object({
     title: z.string(),
     description: z.string().min(1),
+    dialogue: z.string().optional(),
     sceneReferenceImageUrl: z.string().optional(),
   })).min(2).max(12),
   referenceImageUrls: z.array(z.string()).max(4).optional(),

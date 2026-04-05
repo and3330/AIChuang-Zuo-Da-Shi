@@ -101,7 +101,7 @@ export default function Home() {
   const [storyCustomStyle, setStoryCustomStyle] = useState("");
   const [storySceneCount, setStorySceneCount] = useState(4);
   const [storySceneSize, setStorySceneSize] = useState<"1:1" | "9:16" | "16:9">("1:1");
-  const [storyScenes, setStoryScenes] = useState<{ title: string; description: string; sceneReferenceImageUrl?: string }[]>([
+  const [storyScenes, setStoryScenes] = useState<{ title: string; description: string; dialogue?: string; sceneReferenceImageUrl?: string }[]>([
     { title: "第一幕", description: "主角在森林入口處發現一扇古老的神秘大門" },
     { title: "第二幕", description: "大門緩緩開啟，出現一道閃爍的金色光芒" },
     { title: "第三幕", description: "主角穿越大門，來到一片魔法花園" },
@@ -779,7 +779,7 @@ export default function Home() {
     });
   };
 
-  const updateStoryScene = (idx: number, field: "title" | "description" | "sceneReferenceImageUrl", value: string) => {
+  const updateStoryScene = (idx: number, field: "title" | "description" | "dialogue" | "sceneReferenceImageUrl", value: string) => {
     setStoryScenes(prev => {
       const arr = [...prev];
       arr[idx] = { ...arr[idx], [field]: value };
@@ -2290,13 +2290,25 @@ export default function Home() {
                           />
                         </div>
                         <div className="flex gap-2">
-                          <Textarea
-                            rows={2}
-                            value={scene.description}
-                            onChange={e => updateStoryScene(idx, "description", e.target.value)}
-                            placeholder={`描述第 ${idx + 1} 幕的場景內容（例如：主角站在山頂俯瞰整個城市，夕陽西下）`}
-                            className="resize-none text-sm border-gray-100 bg-gray-50 rounded-lg focus:ring-2 focus:ring-emerald-500 flex-1"
-                          />
+                          <div className="flex flex-col gap-1.5 flex-1">
+                            <Textarea
+                              rows={2}
+                              value={scene.description}
+                              onChange={e => updateStoryScene(idx, "description", e.target.value)}
+                              placeholder={`描述第 ${idx + 1} 幕的場景內容（例如：主角站在山頂俯瞰整個城市，夕陽西下）`}
+                              className="resize-none text-sm border-gray-100 bg-gray-50 rounded-lg focus:ring-2 focus:ring-emerald-500"
+                            />
+                            <div className="relative">
+                              <span className="absolute left-2 top-1.5 text-[10px] text-amber-500 font-semibold pointer-events-none">💬</span>
+                              <input
+                                type="text"
+                                value={scene.dialogue || ""}
+                                onChange={e => updateStoryScene(idx, "dialogue", e.target.value)}
+                                placeholder="台詞（選填）：角色說的話..."
+                                className="w-full pl-6 pr-2 py-1.5 text-xs border border-amber-100 bg-amber-50/60 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-300 placeholder:text-gray-300 text-gray-700"
+                              />
+                            </div>
+                          </div>
                           <div className="flex-shrink-0">
                             {scene.sceneReferenceImageUrl ? (
                               <div className="relative group w-16 h-16">
@@ -3053,6 +3065,12 @@ export default function Home() {
                                 </div>
                                 <p className="text-xs font-semibold text-gray-700">{scene.title || `第 ${idx + 1} 幕`}</p>
                                 <p className="text-[11px] text-gray-400 line-clamp-2 mt-0.5">{scene.description}</p>
+                                {scene.dialogue && (
+                                  <p className="text-[11px] text-amber-600 mt-1 flex items-start gap-1">
+                                    <span className="flex-shrink-0">💬</span>
+                                    <span className="line-clamp-2 italic">「{scene.dialogue}」</span>
+                                  </p>
+                                )}
                               </div>
 
                               {/* ── Animation section ── */}
