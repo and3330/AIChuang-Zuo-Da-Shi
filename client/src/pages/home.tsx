@@ -132,6 +132,8 @@ export default function Home() {
   const [editingSceneIdx, setEditingSceneIdx] = useState<number | null>(null);
   const [editingSceneDesc, setEditingSceneDesc] = useState("");
   const [editingSceneDialogue, setEditingSceneDialogue] = useState("");
+  const [editingSceneRefPath, setEditingSceneRefPath] = useState<string>("");
+  const [editingSceneRefUploading, setEditingSceneRefUploading] = useState(false);
   const [showStoryHistory, setShowStoryHistory] = useState(false);
   const [editingStoryTitle, setEditingStoryTitle] = useState(false);
   const [editingTitleValue, setEditingTitleValue] = useState("");
@@ -322,10 +324,11 @@ export default function Home() {
   });
 
   const regenerateSceneMutation = useMutation({
-    mutationFn: async ({ sceneIdx, description, dialogue }: { sceneIdx: number; description?: string; dialogue?: string }) => {
+    mutationFn: async ({ sceneIdx, description, dialogue, sceneReferenceImageUrl }: { sceneIdx: number; description?: string; dialogue?: string; sceneReferenceImageUrl?: string }) => {
       const body: Record<string, string> = {};
       if (description) body.description = description;
       if (dialogue !== undefined) body.dialogue = dialogue;
+      if (sceneReferenceImageUrl) body.sceneReferenceImageUrl = sceneReferenceImageUrl;
       const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/regenerate-scene/${sceneIdx}`, body);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "重新生成失敗");
@@ -333,6 +336,7 @@ export default function Home() {
     },
     onSuccess: (_data, { sceneIdx }) => {
       setEditingSceneIdx(null);
+      setEditingSceneRefPath("");
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations", currentStoryId] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: `第 ${sceneIdx + 1} 幕重新生成中`, description: "請稍候，生成完成後自動更新..." });
@@ -3080,6 +3084,7 @@ export default function Home() {
                                           setEditingSceneIdx(idx);
                                           setEditingSceneDesc(scene.description);
                                           setEditingSceneDialogue(scene.dialogue || "");
+                                          setEditingSceneRefPath("");
                                         }
                                       }}
                                       className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${editingSceneIdx === idx ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 text-gray-400"}`}
@@ -3109,9 +3114,36 @@ export default function Home() {
                                         className="w-full pl-6 pr-2 py-1.5 text-[11px] border border-amber-100 bg-amber-50/60 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-300 placeholder:text-gray-300"
                                       />
                                     </div>
+                                    {/* Per-scene reference image upload */}
+                                    <div className="flex items-center gap-1.5">
+                                      <label className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-lg cursor-pointer transition-colors ${editingSceneRefPath ? "border-blue-300 bg-blue-50 text-blue-600" : "border-gray-200 text-gray-400 hover:bg-gray-50"} ${editingSceneRefUploading ? "opacity-50 pointer-events-none" : ""}`}>
+                                        <input type="file" accept="image/*" className="hidden" onChange={async e => {
+                                          const file = e.target.files?.[0];
+                                          if (!file) return;
+                                          setEditingSceneRefUploading(true);
+                                          try {
+                                            const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
+                                            const { uploadURL } = await uploadRes.json();
+                                            await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+                                            const pathRes = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
+                                            const { objectPath } = await pathRes.json();
+                                            setEditingSceneRefPath(objectPath);
+                                            toast({ title: "參考圖上傳成功" });
+                                          } catch {
+                                            toast({ title: "參考圖上傳失敗", variant: "destructive" });
+                                          } finally {
+                                            setEditingSceneRefUploading(false);
+                                          }
+                                        }} />
+                                        {editingSceneRefUploading ? "上傳中..." : editingSceneRefPath ? "✓ 參考圖已替換" : "🖼 上傳此幕參考圖"}
+                                      </label>
+                                      {editingSceneRefPath && (
+                                        <button onClick={() => setEditingSceneRefPath("")} className="text-[10px] text-gray-400 hover:text-gray-600">✕</button>
+                                      )}
+                                    </div>
                                     <div className="flex gap-1.5">
                                       <button
-                                        onClick={() => setEditingSceneIdx(null)}
+                                        onClick={() => { setEditingSceneIdx(null); setEditingSceneRefPath(""); }}
                                         className="flex-1 py-1 text-[11px] border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50"
                                       >取消</button>
                                       <button
@@ -3120,9 +3152,10 @@ export default function Home() {
                                             sceneIdx: idx,
                                             description: editingSceneDesc,
                                             dialogue: editingSceneDialogue,
+                                            sceneReferenceImageUrl: editingSceneRefPath || undefined,
                                           });
                                         }}
-                                        disabled={!editingSceneDesc.trim() || regenerateSceneMutation.isPending}
+                                        disabled={!editingSceneDesc.trim() || regenerateSceneMutation.isPending || editingSceneRefUploading}
                                         className="flex-1 py-1 text-[11px] bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-semibold"
                                       >重新生成（3積分）</button>
                                     </div>

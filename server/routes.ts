@@ -2467,11 +2467,13 @@ Requirements:
 
       await storage.atomicAddCredits(userId, -3, `故事「${story.title}」第 ${sceneIdx + 1} 幕重新生成`);
 
-      // Allow overriding description and dialogue before regeneration
+      // Allow overriding description, dialogue, and scene reference image before regeneration
       const newDescription = (typeof req.body.description === "string" && req.body.description.trim()) ? req.body.description.trim() : undefined;
       const newDialogue = typeof req.body.dialogue === "string" ? req.body.dialogue.trim() : undefined;
+      const newSceneRefUrl = (typeof req.body.sceneReferenceImageUrl === "string" && req.body.sceneReferenceImageUrl.trim()) ? req.body.sceneReferenceImageUrl.trim() : undefined;
       if (newDescription) scenes[sceneIdx].description = newDescription;
       if (newDialogue !== undefined) scenes[sceneIdx].dialogue = newDialogue || undefined;
+      if (newSceneRefUrl) scenes[sceneIdx].sceneReferenceImageUrl = newSceneRefUrl;
 
       scenes[sceneIdx].status = "generating";
       scenes[sceneIdx].imageUrl = undefined;
@@ -2525,18 +2527,19 @@ Requirements:
         catch { return []; }
       };
 
-      const characterBase64s = await loadImageList(story.characterImageUrls ?? []);
+      const characterABase64s = await loadImageList(story.characterImageUrls ?? []);
+      const characterBBase64s = await loadImageList(story.characterBImageUrls ?? []);
       const sceneRefBase64sGlobal = await loadImageList(story.sceneRefImageUrls ?? []);
       const styleBase64s = await loadImageList(story.styleImageUrls ?? []);
 
       const scene = scenes[sceneIdx];
       const dialoguePart = scene.dialogue?.trim() ? `，台詞：「${scene.dialogue}」` : "";
       const scenePrompt = `${story.style}, ${scene.description}${dialoguePart}`;
-      let globalBase64s = [...characterBase64s, ...sceneRefBase64sGlobal, ...styleBase64s];
+      let globalBase64s = [...characterABase64s, ...characterBBase64s, ...sceneRefBase64sGlobal, ...styleBase64s];
       if (scene.sceneReferenceImageUrl) {
         try {
           const perSceneBase64 = await loadRefImageAsBase64(scene.sceneReferenceImageUrl);
-          globalBase64s = [...characterBase64s, perSceneBase64, ...styleBase64s];
+          globalBase64s = [...characterABase64s, ...characterBBase64s, perSceneBase64, ...styleBase64s];
         } catch { /* use global refs */ }
       }
 
