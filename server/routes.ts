@@ -1550,7 +1550,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
     userFolder: string,
     storyId: string,
     sceneIdx: number,
-    creditsPerScene: number
+    creditsPerScene: number,
+    tailImageUrl?: string
   ) {
     const startTime = Date.now();
     try {
@@ -1598,18 +1599,37 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       const imageDataUri = `data:image/jpeg;base64,${imageBuffer.toString("base64")}`;
 
+      let tailDataUri: string | undefined;
+      if (tailImageUrl) {
+        try {
+          const tailResp = await fetch(tailImageUrl);
+          if (tailResp.ok) {
+            const tailBuffer = Buffer.from(await tailResp.arrayBuffer());
+            tailDataUri = `data:image/jpeg;base64,${tailBuffer.toString("base64")}`;
+            console.log(`🎬 Scene ${sceneIdx}: tail_image provided for video transition`);
+          }
+        } catch (e) {
+          console.error(`Failed to download tail image for scene ${sceneIdx}:`, e);
+        }
+      }
+
       let promptText = generation.prompt || "";
       promptText += ` --duration ${generation.duration}`;
       promptText += ` --camerafixed false`;
       promptText += ` --resolution ${generation.resolution || "720p"}`;
       promptText += ` --ratio ${autoAspect}`;
 
+      const contentItems: any[] = [
+        { type: "text", text: promptText },
+        { type: "image_url", image_url: { url: imageDataUri } },
+      ];
+      if (tailDataUri) {
+        contentItems.push({ type: "image_url", image_url: { url: tailDataUri } });
+      }
+
       const requestBody = {
         model: VIDEO_MODEL,
-        content: [
-          { type: "text", text: promptText },
-          { type: "image_url", image_url: { url: imageDataUri } },
-        ],
+        content: contentItems,
       };
 
       const createResponse = await fetch(VIDEO_API_ENDPOINT, {
@@ -2018,7 +2038,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       if (!validated.success) {
         return res.status(400).json({ error: "參數錯誤", details: validated.error.flatten() });
       }
-      const { title, style, scenes, referenceImageUrls, sceneSize, characterImageUrls, sceneRefImageUrls, styleImageUrls } = validated.data;
+      const { title, style, scenes, referenceImageUrls, sceneSize, characterImageUrls, sceneRefImageUrls, styleImageUrls, globalSeed } = validated.data;
       const creditsNeeded = scenes.length * 3;
 
       const user = await storage.getUser(userId);
@@ -2038,6 +2058,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         characterImageUrls: characterImageUrls ?? [],
         sceneRefImageUrls: sceneRefImageUrls ?? [],
         styleImageUrls: styleImageUrls ?? [],
+        globalSeed: globalSeed ?? undefined,
         creditsUsed: creditsNeeded,
       });
 
@@ -2099,6 +2120,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
       const aspectRatio = ["16:9", "9:16", "1:1"].includes(req.body.aspectRatio) ? req.body.aspectRatio : "16:9";
       const animationPrompt = (req.body.animationPrompt || "").trim();
+      const tailImageUrl = typeof req.body.tailImageUrl === "string" ? req.body.tailImageUrl.trim() : undefined;
 
       const story = await storage.getStoryGeneration(storyId);
       if (!story) return res.status(404).json({ error: "找不到故事" });
@@ -2138,7 +2160,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         cameraFixed: false,
       });
 
-      processSceneAnimation(videoGen.id, imageUrl, bunnyStorage, userFolder, storyId, sceneIdx, credits).catch(console.error);
+      processSceneAnimation(videoGen.id, imageUrl, bunnyStorage, userFolder, storyId, sceneIdx, credits, tailImageUrl || undefined).catch(console.error);
 
       res.json({
         sceneIdx,
@@ -2738,6 +2760,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
               response_format: "url",
               size: imageSize,
               watermark: true,
+              ...(story.globalSeed ? { seed: story.globalSeed } : {}),
             };
           } else {
             requestBody = {
@@ -2746,6 +2769,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
               response_format: "url",
               size: imageSize,
               watermark: true,
+              ...(story.globalSeed ? { seed: story.globalSeed } : {}),
             };
           }
 

@@ -114,6 +114,7 @@ export default function Home() {
   const [storyCharacterImages, setStoryCharacterImages] = useState<{ url: string; path: string }[]>([]);
   const [storySceneRefImages, setStorySceneRefImages] = useState<{ url: string; path: string }[]>([]);
   const [storyStyleImages, setStoryStyleImages] = useState<{ url: string; path: string }[]>([]);
+  const [storySeed, setStorySeed] = useState<number | "">("");
   const [currentStoryId, setCurrentStoryId] = useState<string>("");
   const [storyLightboxIdx, setStoryLightboxIdx] = useState<number | null>(null);
   const [storyAnimationJobs, setStoryAnimationJobs] = useState<{sceneIdx: number; sceneTitle: string; videoId: string}[]>([]);
@@ -125,6 +126,7 @@ export default function Home() {
   // keyed by actual scene index (not completed-scene index)
   const [perSceneAnimPrompts, setPerSceneAnimPrompts] = useState<Record<number, string>>({});
   const [perSceneResolution, setPerSceneResolution] = useState<Record<number, "720p" | "1080p">>({});
+  const [perSceneTailEnabled, setPerSceneTailEnabled] = useState<Record<number, boolean>>({});
   const [showStoryHistory, setShowStoryHistory] = useState(false);
   const [editingStoryTitle, setEditingStoryTitle] = useState(false);
   const [editingTitleValue, setEditingTitleValue] = useState("");
@@ -398,13 +400,14 @@ export default function Home() {
   });
 
   const singleSceneAnimateMutation = useMutation({
-    mutationFn: async ({ sceneIdx, resolution, prompt }: { sceneIdx: number; resolution?: "720p" | "1080p"; prompt?: string }) => {
+    mutationFn: async ({ sceneIdx, resolution, prompt, tailImageUrl }: { sceneIdx: number; resolution?: "720p" | "1080p"; prompt?: string; tailImageUrl?: string }) => {
       const res = resolution ?? perSceneResolution[sceneIdx] ?? "720p";
       const prm = prompt ?? perSceneAnimPrompts[sceneIdx] ?? "";
       const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/animate-scene/${sceneIdx}`, {
         duration: animDuration,
         resolution: res,
         animationPrompt: prm,
+        ...(tailImageUrl ? { tailImageUrl } : {}),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "動畫生成失敗");
@@ -579,6 +582,7 @@ export default function Home() {
         characterImageUrls: storyCharacterImages.map(r => r.path),
         sceneRefImageUrls: storySceneRefImages.map(r => r.path),
         styleImageUrls: storyStyleImages.map(r => r.path),
+        ...(storySeed !== "" ? { globalSeed: Number(storySeed) } : {}),
       });
       return;
     }
@@ -2028,6 +2032,57 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* Global Seed */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-1.5 flex items-center gap-1">
+                    角色種子（選填）
+                    <InfoTooltip text="鎖定同一個種子數字，讓所有幕的角色外觀更加一致。可手動輸入或隨機產生，建議記下來供下集使用。" />
+                  </Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      placeholder="1000 – 9999999（空白 = 隨機）"
+                      value={storySeed}
+                      min={1}
+                      max={9999999}
+                      onChange={e => {
+                        const v = e.target.value;
+                        if (v === "") setStorySeed("");
+                        else {
+                          const n = parseInt(v);
+                          if (!isNaN(n) && n >= 1 && n <= 9999999) setStorySeed(n);
+                        }
+                      }}
+                      className="flex-1 rounded-xl border-gray-200 focus:ring-2 focus:ring-emerald-500 text-sm"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setStorySeed(Math.floor(Math.random() * 9000000) + 1000)}
+                      className="px-3 py-2 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-all whitespace-nowrap"
+                    >
+                      🎲 隨機
+                    </button>
+                    {storySeed !== "" && (
+                      <button
+                        type="button"
+                        onClick={() => { navigator.clipboard.writeText(String(storySeed)); toast({ title: "已複製種子", description: `種子 ${storySeed} 已複製到剪貼簿` }); }}
+                        className="px-3 py-2 rounded-xl border-2 border-gray-200 bg-gray-50 text-gray-600 text-xs font-medium hover:bg-gray-100 transition-all whitespace-nowrap"
+                      >
+                        📋 複製
+                      </button>
+                    )}
+                    {storySeed !== "" && (
+                      <button
+                        type="button"
+                        onClick={() => setStorySeed("")}
+                        className="px-2 py-2 rounded-xl border-2 border-gray-200 text-gray-400 text-xs hover:bg-gray-50 transition-all"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {/* Reference Images - three categories */}
                 {(
                   [
@@ -2869,6 +2924,21 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* Seed display */}
+                {(storyGeneration as any).globalSeed && (
+                  <div className="flex items-center gap-2 px-1 py-0.5">
+                    <span className="text-xs text-gray-500">🎲 角色種子：</span>
+                    <span className="text-xs font-mono font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">{(storyGeneration as any).globalSeed}</span>
+                    <button
+                      className="text-xs text-gray-400 hover:text-emerald-600 transition-colors"
+                      title="複製種子"
+                      onClick={() => { navigator.clipboard.writeText(String((storyGeneration as any).globalSeed)); toast({ title: "已複製種子", description: `種子 ${(storyGeneration as any).globalSeed} 已複製` }); }}
+                    >
+                      <i className="fas fa-copy"></i>
+                    </button>
+                  </div>
+                )}
+
                 {(() => {
                   const scenes: StoryScene[] = JSON.parse(storyGeneration.scenes || "[]");
                   return (
@@ -2957,6 +3027,27 @@ export default function Home() {
                                       className="w-full text-[11px] border border-gray-200 rounded-lg p-2 resize-none focus:outline-none focus:ring-1 focus:ring-purple-400 placeholder:text-gray-300"
                                     />
                                   </div>
+                                  {/* Tail image toggle */}
+                                  {(() => {
+                                    const tailEnabled = !!perSceneTailEnabled[idx];
+                                    const nextScene = scenes[idx + 1] ?? scenes[0];
+                                    const isLast = idx === scenes.length - 1;
+                                    const nextHasImg = nextScene && (nextScene.bunnyUrl || nextScene.imageUrl) && nextScene.status === "completed";
+                                    if (!nextHasImg) return null;
+                                    return (
+                                      <div className="flex items-center gap-2 py-1 px-2 rounded-lg bg-indigo-50 border border-indigo-100">
+                                        <button
+                                          type="button"
+                                          onClick={() => setPerSceneTailEnabled(prev => ({ ...prev, [idx]: !prev[idx] }))}
+                                          className={`w-8 h-4 rounded-full transition-colors flex-shrink-0 relative ${tailEnabled ? "bg-indigo-500" : "bg-gray-300"}`}
+                                        >
+                                          <span className={`absolute top-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform ${tailEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+                                        </button>
+                                        <span className="text-[10px] text-indigo-700 font-medium">{isLast ? "循環回第一幕" : "銜接下一幕"}</span>
+                                        <span className="text-[9px] text-indigo-400 font-normal">（結尾幀過渡）</span>
+                                      </div>
+                                    );
+                                  })()}
                                   {/* Resolution + Generate */}
                                   <div className="flex items-center gap-2">
                                     <span className="text-[10px] text-gray-500 flex-shrink-0">解析度</span>
@@ -2975,7 +3066,12 @@ export default function Home() {
                                           ? "bg-gray-100 text-gray-600 hover:bg-purple-100 hover:text-purple-700 border border-gray-200"
                                           : "bg-purple-600 text-white hover:bg-purple-700"
                                       }`}
-                                      onClick={() => singleSceneAnimateMutation.mutate({ sceneIdx: idx })}
+                                      onClick={() => {
+                                        const tailEnabled = !!perSceneTailEnabled[idx];
+                                        const nextScene = scenes[(idx + 1) % scenes.length];
+                                        const tailImageUrl = tailEnabled && nextScene ? (nextScene.bunnyUrl || nextScene.imageUrl || undefined) : undefined;
+                                        singleSceneAnimateMutation.mutate({ sceneIdx: idx, tailImageUrl });
+                                      }}
                                       disabled={singleSceneAnimateMutation.isPending && singleSceneAnimateMutation.variables?.sceneIdx === idx}
                                       title={`生成 ${animDuration}秒 ${sceneRes} 動畫，需 ${sceneCost} 積分`}
                                     >
@@ -3045,6 +3141,30 @@ export default function Home() {
                           <i className="fas fa-video mr-2"></i>
                           {storyAnimationJobs.length > 0 ? "重新生成動畫" : "批量生成動畫"}
                         </Button>
+                        {storyGeneration.status === "completed" && (
+                          <Button
+                            variant="outline"
+                            className="border-emerald-400 text-emerald-700 hover:bg-emerald-50 rounded-lg"
+                            onClick={() => {
+                              const payload = {
+                                characterImageUrls: storyCharacterImages,
+                                sceneRefImageUrls: storySceneRefImages,
+                                styleImageUrls: storyStyleImages,
+                                globalSeed: storySeed !== "" ? storySeed : ((storyGeneration as any).globalSeed ?? ""),
+                                sceneSize: storySceneSize,
+                                style: storyStyle,
+                                customStyle: storyCustomStyle,
+                              };
+                              try { localStorage.setItem("story_sequel_prefill", JSON.stringify(payload)); } catch {}
+                              setCurrentStoryId("");
+                              setStoryTitle("（第二集）" + storyGeneration.title.replace(/^（第\d+集）/, ""));
+                              setStorySeed(payload.globalSeed !== "" ? Number(payload.globalSeed) : "");
+                              toast({ title: "✨ 已預填設定", description: "種子與參考圖已繼承，請填入新集數的場景描述" });
+                            }}
+                          >
+                            <i className="fas fa-book-open mr-2"></i>建立第二集
+                          </Button>
+                        )}
                         <Button variant="secondary" className="bg-gray-100 hover:bg-gray-200 rounded-lg" onClick={() => setCurrentStoryId("")}>
                           <i className="fas fa-redo mr-2"></i>重新生成故事
                         </Button>

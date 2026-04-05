@@ -92,6 +92,7 @@ export const storyGenerations = pgTable("story_generations", {
   characterImageUrls: text("character_image_urls").array(),
   sceneRefImageUrls: text("scene_ref_image_urls").array(),
   styleImageUrls: text("style_image_urls").array(),
+  globalSeed: integer("global_seed"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -214,6 +215,7 @@ export const insertStoryGenerationSchema = z.object({
   characterImageUrls: z.array(z.string()).max(3).optional(),
   sceneRefImageUrls: z.array(z.string()).max(3).optional(),
   styleImageUrls: z.array(z.string()).max(3).optional(),
+  globalSeed: z.number().int().min(1).max(9999999).optional(),
 });
 
 export const sendVerificationCodeSchema = z.object({

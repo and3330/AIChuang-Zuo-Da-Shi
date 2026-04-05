@@ -583,6 +583,7 @@ export class DatabaseStorage implements IStorage {
       characterImageUrls: (data as any).characterImageUrls ?? [],
       sceneRefImageUrls: (data as any).sceneRefImageUrls ?? [],
       styleImageUrls: (data as any).styleImageUrls ?? [],
+      globalSeed: (data as any).globalSeed ?? undefined,
     }).returning();
     return row;
   }
