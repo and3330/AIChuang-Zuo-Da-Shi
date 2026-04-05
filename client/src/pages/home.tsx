@@ -136,6 +136,8 @@ export default function Home() {
   const [editingSceneRefUploading, setEditingSceneRefUploading] = useState(false);
   const [editingUseCharA, setEditingUseCharA] = useState(true);
   const [editingUseCharB, setEditingUseCharB] = useState(true);
+  const [editingNewSeed, setEditingNewSeed] = useState(false);
+  const [replacingSceneIdx, setReplacingSceneIdx] = useState<number | null>(null);
   const [showStoryHistory, setShowStoryHistory] = useState(false);
   const [editingStoryTitle, setEditingStoryTitle] = useState(false);
   const [editingTitleValue, setEditingTitleValue] = useState("");
@@ -326,13 +328,14 @@ export default function Home() {
   });
 
   const regenerateSceneMutation = useMutation({
-    mutationFn: async ({ sceneIdx, description, dialogue, sceneReferenceImageUrl, useCharA, useCharB }: { sceneIdx: number; description?: string; dialogue?: string; sceneReferenceImageUrl?: string; useCharA?: boolean; useCharB?: boolean }) => {
+    mutationFn: async ({ sceneIdx, description, dialogue, sceneReferenceImageUrl, useCharA, useCharB, newSeed }: { sceneIdx: number; description?: string; dialogue?: string; sceneReferenceImageUrl?: string; useCharA?: boolean; useCharB?: boolean; newSeed?: boolean }) => {
       const body: Record<string, unknown> = {};
       if (description) body.description = description;
       if (dialogue !== undefined) body.dialogue = dialogue;
       if (sceneReferenceImageUrl) body.sceneReferenceImageUrl = sceneReferenceImageUrl;
       if (useCharA === false) body.useCharA = false;
       if (useCharB === false) body.useCharB = false;
+      if (newSeed) body.newSeed = true;
       const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/regenerate-scene/${sceneIdx}`, body);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "重新生成失敗");
@@ -343,12 +346,29 @@ export default function Home() {
       setEditingSceneRefPath("");
       setEditingUseCharA(true);
       setEditingUseCharB(true);
+      setEditingNewSeed(false);
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations", currentStoryId] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: `第 ${sceneIdx + 1} 幕重新生成中`, description: "請稍候，生成完成後自動更新..." });
     },
     onError: (error: any) => {
       toast({ title: "重新生成失敗", description: error?.message, variant: "destructive" });
+    },
+  });
+
+  const replaceSceneImageMutation = useMutation({
+    mutationFn: async ({ sceneIdx, objectPath }: { sceneIdx: number; objectPath: string }) => {
+      const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/replace-scene-image/${sceneIdx}`, { objectPath });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "替換圖片失敗");
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/story-generations", currentStoryId] });
+      toast({ title: "圖片替換成功" });
+    },
+    onError: (error: any) => {
+      toast({ title: "替換圖片失敗", description: error?.message, variant: "destructive" });
     },
   });
 
@@ -3057,6 +3077,32 @@ export default function Home() {
                                       className="w-7 h-7 bg-black/50 hover:bg-emerald-600 text-white rounded-full text-xs flex items-center justify-center" title="下載圖片">
                                       <i className="fas fa-download text-xs"></i>
                                     </a>
+                                    <label
+                                      title="上傳圖片替換此幕（免費）"
+                                      onClick={e => e.stopPropagation()}
+                                      className={`w-7 h-7 bg-black/50 hover:bg-blue-600 text-white rounded-full text-xs flex items-center justify-center cursor-pointer ${replacingSceneIdx === idx ? "animate-pulse bg-blue-600" : ""}`}>
+                                      <input type="file" accept="image/*" className="hidden" disabled={replacingSceneIdx !== null} onChange={async e => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        setReplacingSceneIdx(idx);
+                                        try {
+                                          const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
+                                          const { uploadURL } = await uploadRes.json();
+                                          await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
+                                          const pathRes = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
+                                          const { objectPath } = await pathRes.json();
+                                          await replaceSceneImageMutation.mutateAsync({ sceneIdx: idx, objectPath });
+                                        } catch {
+                                          toast({ title: "替換圖片失敗", variant: "destructive" });
+                                        } finally {
+                                          setReplacingSceneIdx(null);
+                                          e.target.value = "";
+                                        }
+                                      }} />
+                                      {replacingSceneIdx === idx
+                                        ? <i className="fas fa-spinner fa-spin text-xs"></i>
+                                        : <i className="fas fa-image text-xs"></i>}
+                                    </label>
                                     <button className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-full text-xs flex items-center justify-center"
                                       title="重新生成此幕（3 積分）"
                                       onClick={e => { e.stopPropagation(); regenerateSceneMutation.mutate({ sceneIdx: idx }); }}
@@ -3093,6 +3139,7 @@ export default function Home() {
                                           setEditingSceneRefPath("");
                                           setEditingUseCharA(true);
                                           setEditingUseCharB(true);
+                                          setEditingNewSeed(false);
                                         }
                                       }}
                                       className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${editingSceneIdx === idx ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 text-gray-400"}`}
@@ -3177,9 +3224,19 @@ export default function Home() {
                                         <button onClick={() => setEditingSceneRefPath("")} className="text-[10px] text-gray-400 hover:text-gray-600">✕</button>
                                       )}
                                     </div>
+                                    {/* New seed toggle */}
+                                    <label className="flex items-center gap-1.5 cursor-pointer px-1">
+                                      <input
+                                        type="checkbox"
+                                        checked={editingNewSeed}
+                                        onChange={e => setEditingNewSeed(e.target.checked)}
+                                        className="w-3 h-3 accent-purple-600"
+                                      />
+                                      <span className="text-[10px] text-purple-700 font-medium">🎲 換個種子（生成不同結果）</span>
+                                    </label>
                                     <div className="flex gap-1.5">
                                       <button
-                                        onClick={() => { setEditingSceneIdx(null); setEditingSceneRefPath(""); setEditingUseCharA(true); setEditingUseCharB(true); }}
+                                        onClick={() => { setEditingSceneIdx(null); setEditingSceneRefPath(""); setEditingUseCharA(true); setEditingUseCharB(true); setEditingNewSeed(false); }}
                                         className="flex-1 py-1 text-[11px] border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50"
                                       >取消</button>
                                       <button
@@ -3191,6 +3248,7 @@ export default function Home() {
                                             sceneReferenceImageUrl: editingSceneRefPath || undefined,
                                             useCharA: editingUseCharA,
                                             useCharB: editingUseCharB,
+                                            newSeed: editingNewSeed,
                                           });
                                         }}
                                         disabled={!editingSceneDesc.trim() || regenerateSceneMutation.isPending || editingSceneRefUploading}

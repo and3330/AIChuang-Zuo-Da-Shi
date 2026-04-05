@@ -2477,6 +2477,7 @@ Requirements:
 
       const useCharA = req.body.useCharA !== false;
       const useCharB = req.body.useCharB !== false;
+      const newSeed = req.body.newSeed === true;
 
       scenes[sceneIdx].status = "generating";
       scenes[sceneIdx].imageUrl = undefined;
@@ -2485,10 +2486,63 @@ Requirements:
 
       res.json({ ok: true });
 
-      regenerateStoryScene(storyId, sceneIdx, objectStorageService, bunnyStorage, useCharA, useCharB).catch(console.error);
+      regenerateStoryScene(storyId, sceneIdx, objectStorageService, bunnyStorage, useCharA, useCharB, newSeed).catch(console.error);
     } catch (error: any) {
       console.error("Error triggering scene regeneration:", error);
       res.status(500).json({ error: error.message || "重新生成失敗" });
+    }
+  });
+
+  // Replace scene image with a user-uploaded file (no credit cost)
+  app.post("/api/story-generations/:storyId/replace-scene-image/:sceneIdx", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const { storyId, sceneIdx: sceneIdxStr } = req.params;
+      const sceneIdx = parseInt(sceneIdxStr, 10);
+      const { objectPath } = req.body;
+      if (!objectPath) return res.status(400).json({ error: "缺少 objectPath" });
+
+      const story = await storage.getStoryGeneration(storyId);
+      if (!story) return res.status(404).json({ error: "找不到故事" });
+      if (story.userId !== userId) return res.status(403).json({ error: "無存取權限" });
+
+      const scenes: StoryScene[] = JSON.parse(story.scenes || "[]");
+      if (isNaN(sceneIdx) || sceneIdx < 0 || sceneIdx >= scenes.length) {
+        return res.status(400).json({ error: "場景索引無效" });
+      }
+
+      // Load the uploaded image from object storage
+      const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+      const chunks: Buffer[] = [];
+      const stream = objectFile.createReadStream();
+      for await (const chunk of stream) chunks.push(Buffer.from(chunk));
+      const imgBuffer = Buffer.concat(chunks);
+
+      const storyUser = await storage.getUser(story.userId);
+      const userFolder = storyUser?.username || story.userId;
+
+      let bunnyUrl: string | undefined;
+      if (bunnyStorage.isConfigured()) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const remotePath = `users/${userFolder}/stories/${storyId}_${sceneIdx}.jpg`;
+            bunnyUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
+            break;
+          } catch (e) {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
+          }
+        }
+      }
+
+      scenes[sceneIdx].imageUrl = objectPath;
+      scenes[sceneIdx].bunnyUrl = bunnyUrl;
+      scenes[sceneIdx].status = "completed";
+      await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
+
+      res.json({ ok: true, bunnyUrl });
+    } catch (error: any) {
+      console.error("Error replacing scene image:", error);
+      res.status(500).json({ error: error.message || "替換圖片失敗" });
     }
   });
 
@@ -2498,7 +2552,8 @@ Requirements:
     objectStorageService: ObjectStorageService,
     bunnyStorage: BunnyStorageService,
     useCharA: boolean = true,
-    useCharB: boolean = true
+    useCharB: boolean = true,
+    newSeed: boolean = false
   ) {
     try {
       const story = await storage.getStoryGeneration(storyId);
@@ -2548,6 +2603,10 @@ Requirements:
         } catch { /* use global refs */ }
       }
 
+      const seedValue = newSeed
+        ? Math.floor(Math.random() * 999000) + 1000
+        : (story.globalSeed ?? undefined);
+
       let requestBody: any;
       if (globalBase64s.length > 0) {
         requestBody = {
@@ -2557,6 +2616,7 @@ Requirements:
           response_format: "url",
           size: imageSize,
           watermark: true,
+          ...(seedValue ? { seed: seedValue } : {}),
         };
       } else {
         requestBody = {
@@ -2565,6 +2625,7 @@ Requirements:
           response_format: "url",
           size: imageSize,
           watermark: true,
+          ...(seedValue ? { seed: seedValue } : {}),
         };
       }
 
