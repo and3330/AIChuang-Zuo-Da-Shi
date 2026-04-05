@@ -1622,7 +1622,11 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       promptText += ` --resolution ${generation.resolution || "720p"}`;
       promptText += ` --ratio ${autoAspect}`;
 
-      const contentItems: any[] = [
+      type VideoContentItem =
+        | { type: "text"; text: string }
+        | { type: "image_url"; image_url: { url: string } };
+
+      const contentItems: VideoContentItem[] = [
         { type: "text", text: promptText },
         { type: "image_url", image_url: { url: imageDataUri } },
       ];
