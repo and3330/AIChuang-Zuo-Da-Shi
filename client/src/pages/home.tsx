@@ -332,6 +332,7 @@ export default function Home() {
       return data;
     },
     onSuccess: (_data, { sceneIdx }) => {
+      setEditingSceneIdx(null);
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations", currentStoryId] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: `第 ${sceneIdx + 1} 幕重新生成中`, description: "請稍候，生成完成後自動更新..." });
@@ -3120,7 +3121,6 @@ export default function Home() {
                                             description: editingSceneDesc,
                                             dialogue: editingSceneDialogue,
                                           });
-                                          setEditingSceneIdx(null);
                                         }}
                                         disabled={!editingSceneDesc.trim() || regenerateSceneMutation.isPending}
                                         className="flex-1 py-1 text-[11px] bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-semibold"
