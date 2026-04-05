@@ -1601,23 +1601,15 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       let tailDataUri: string | undefined;
       if (tailImageUrl) {
+        // tailImageUrl is server-resolved from the story's own DB record (not user input), so it's trusted
         try {
-          // SSRF protection: only allow trusted CDN/storage hosts
-          const bunnyHost = process.env.BUNNY_CDN_HOST || "";
-          let parsedTail: URL;
-          try { parsedTail = new URL(tailImageUrl); } catch { throw new Error("Invalid tail image URL"); }
-          const allowedHosts = [bunnyHost].filter(Boolean).map(h => h.replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase());
-          const tailHost = parsedTail.hostname.toLowerCase();
-          const isAllowed = allowedHosts.some(h => tailHost === h || tailHost.endsWith("." + h)) || tailHost.endsWith(".b-cdn.net");
-          if (!isAllowed) {
-            console.warn(`Blocked tail image fetch from untrusted host: ${tailHost}`);
+          const tailResp = await fetch(tailImageUrl);
+          if (tailResp.ok) {
+            const tailBuffer = Buffer.from(await tailResp.arrayBuffer());
+            tailDataUri = `data:image/jpeg;base64,${tailBuffer.toString("base64")}`;
+            console.log(`🎬 Scene ${sceneIdx}: tail_image included for video transition`);
           } else {
-            const tailResp = await fetch(tailImageUrl);
-            if (tailResp.ok) {
-              const tailBuffer = Buffer.from(await tailResp.arrayBuffer());
-              tailDataUri = `data:image/jpeg;base64,${tailBuffer.toString("base64")}`;
-              console.log(`🎬 Scene ${sceneIdx}: tail_image provided for video transition`);
-            }
+            console.warn(`Tail image fetch returned ${tailResp.status} for scene ${sceneIdx}`);
           }
         } catch (e) {
           console.error(`Failed to download tail image for scene ${sceneIdx}:`, e);
@@ -2131,7 +2123,9 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
       const aspectRatio = ["16:9", "9:16", "1:1"].includes(req.body.aspectRatio) ? req.body.aspectRatio : "16:9";
       const animationPrompt = (req.body.animationPrompt || "").trim();
-      const tailImageUrl = typeof req.body.tailImageUrl === "string" ? req.body.tailImageUrl.trim() : undefined;
+      // tailSceneIdx: server resolves the tail image URL from story data to prevent SSRF
+      const rawTailIdx = req.body.tailSceneIdx;
+      const tailSceneIdx = (rawTailIdx !== undefined && rawTailIdx !== null && !isNaN(Number(rawTailIdx))) ? Number(rawTailIdx) : undefined;
 
       const story = await storage.getStoryGeneration(storyId);
       if (!story) return res.status(404).json({ error: "找不到故事" });
@@ -2144,6 +2138,15 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const scene = scenes[sceneIdx];
       if (scene.status !== "completed" || !(scene.bunnyUrl || scene.imageUrl)) {
         return res.status(400).json({ error: "此幕圖片尚未生成完成" });
+      }
+
+      // Resolve tail image URL from story's own scenes (no client-supplied URL)
+      let tailImageUrl: string | undefined;
+      if (tailSceneIdx !== undefined && tailSceneIdx >= 0 && tailSceneIdx < scenes.length) {
+        const tailScene = scenes[tailSceneIdx];
+        if (tailScene?.status === "completed" && (tailScene.bunnyUrl || tailScene.imageUrl)) {
+          tailImageUrl = tailScene.bunnyUrl || tailScene.imageUrl || undefined;
+        }
       }
 
       const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 3.4 : 6.8;

@@ -400,14 +400,14 @@ export default function Home() {
   });
 
   const singleSceneAnimateMutation = useMutation({
-    mutationFn: async ({ sceneIdx, resolution, prompt, tailImageUrl }: { sceneIdx: number; resolution?: "720p" | "1080p"; prompt?: string; tailImageUrl?: string }) => {
+    mutationFn: async ({ sceneIdx, resolution, prompt, tailSceneIdx }: { sceneIdx: number; resolution?: "720p" | "1080p"; prompt?: string; tailSceneIdx?: number }) => {
       const res = resolution ?? perSceneResolution[sceneIdx] ?? "720p";
       const prm = prompt ?? perSceneAnimPrompts[sceneIdx] ?? "";
       const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/animate-scene/${sceneIdx}`, {
         duration: animDuration,
         resolution: res,
         animationPrompt: prm,
-        ...(tailImageUrl ? { tailImageUrl } : {}),
+        ...(tailSceneIdx !== undefined ? { tailSceneIdx } : {}),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "動畫生成失敗");
@@ -3100,9 +3100,9 @@ export default function Home() {
                                       }`}
                                       onClick={() => {
                                         const tailEnabled = !!perSceneTailEnabled[idx];
-                                        const nextScene = scenes[(idx + 1) % scenes.length];
-                                        const tailImageUrl = tailEnabled && nextScene ? (nextScene.bunnyUrl || nextScene.imageUrl || undefined) : undefined;
-                                        singleSceneAnimateMutation.mutate({ sceneIdx: idx, tailImageUrl });
+                                        const nextSceneIdx = (idx + 1) % scenes.length;
+                                        const tailSceneIdx = tailEnabled ? nextSceneIdx : undefined;
+                                        singleSceneAnimateMutation.mutate({ sceneIdx: idx, tailSceneIdx });
                                       }}
                                       disabled={singleSceneAnimateMutation.isPending && singleSceneAnimateMutation.variables?.sceneIdx === idx}
                                       title={`生成 ${animDuration}秒 ${sceneRes} 動畫，需 ${sceneCost} 積分`}
