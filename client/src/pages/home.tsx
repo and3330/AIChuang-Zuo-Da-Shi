@@ -129,6 +129,9 @@ export default function Home() {
   const [perSceneResolution, setPerSceneResolution] = useState<Record<number, "720p" | "1080p">>({});
   const [perSceneDuration, setPerSceneDuration] = useState<Record<number, number>>({});
   const [perSceneTailEnabled, setPerSceneTailEnabled] = useState<Record<number, boolean>>({});
+  const [editingSceneIdx, setEditingSceneIdx] = useState<number | null>(null);
+  const [editingSceneDesc, setEditingSceneDesc] = useState("");
+  const [editingSceneDialogue, setEditingSceneDialogue] = useState("");
   const [showStoryHistory, setShowStoryHistory] = useState(false);
   const [editingStoryTitle, setEditingStoryTitle] = useState(false);
   const [editingTitleValue, setEditingTitleValue] = useState("");
@@ -319,13 +322,16 @@ export default function Home() {
   });
 
   const regenerateSceneMutation = useMutation({
-    mutationFn: async (sceneIdx: number) => {
-      const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/regenerate-scene/${sceneIdx}`, {});
+    mutationFn: async ({ sceneIdx, description, dialogue }: { sceneIdx: number; description?: string; dialogue?: string }) => {
+      const body: Record<string, string> = {};
+      if (description) body.description = description;
+      if (dialogue !== undefined) body.dialogue = dialogue;
+      const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/regenerate-scene/${sceneIdx}`, body);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "重新生成失敗");
       return data;
     },
-    onSuccess: (_data, sceneIdx) => {
+    onSuccess: (_data, { sceneIdx }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations", currentStoryId] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: `第 ${sceneIdx + 1} 幕重新生成中`, description: "請稍候，生成完成後自動更新..." });
@@ -3042,7 +3048,7 @@ export default function Home() {
                                     </a>
                                     <button className="w-7 h-7 bg-black/50 hover:bg-black/70 text-white rounded-full text-xs flex items-center justify-center"
                                       title="重新生成此幕（3 積分）"
-                                      onClick={e => { e.stopPropagation(); regenerateSceneMutation.mutate(idx); }}
+                                      onClick={e => { e.stopPropagation(); regenerateSceneMutation.mutate({ sceneIdx: idx }); }}
                                       disabled={regenerateSceneMutation.isPending}>
                                       <i className="fas fa-redo text-xs"></i>
                                     </button>
@@ -3052,24 +3058,85 @@ export default function Home() {
                                 <div className="w-full aspect-square bg-red-50 flex flex-col items-center justify-center gap-2">
                                   <i className="fas fa-times-circle text-red-400 text-xl"></i>
                                   <button className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-red-100 text-red-700 border border-red-200 hover:bg-red-200 transition-all disabled:opacity-60"
-                                    onClick={() => regenerateSceneMutation.mutate(idx)} disabled={regenerateSceneMutation.isPending}>
+                                    onClick={() => regenerateSceneMutation.mutate({ sceneIdx: idx })} disabled={regenerateSceneMutation.isPending}>
                                     <i className="fas fa-redo"></i>重新生成（3積分）
                                   </button>
                                 </div>
                               )}
 
                               {/* ── Card body: title + description ── */}
-                              <div className="px-3 pt-2.5 pb-1 bg-white">
+                              <div className="px-3 pt-2.5 pb-2 bg-white">
                                 <div className="flex items-center gap-1.5 mb-0.5">
                                   <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${nInfo.bg} ${nInfo.color} ${nInfo.border}`}>{nInfo.icon} {nInfo.label}</span>
+                                  <span className="flex-1" />
+                                  {scene.status === "completed" && (
+                                    <button
+                                      title="編輯描述後重新生成"
+                                      onClick={() => {
+                                        if (editingSceneIdx === idx) {
+                                          setEditingSceneIdx(null);
+                                        } else {
+                                          setEditingSceneIdx(idx);
+                                          setEditingSceneDesc(scene.description);
+                                          setEditingSceneDialogue(scene.dialogue || "");
+                                        }
+                                      }}
+                                      className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${editingSceneIdx === idx ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 text-gray-400"}`}
+                                    >
+                                      <i className="fas fa-pencil-alt text-[9px]"></i>
+                                    </button>
+                                  )}
                                 </div>
                                 <p className="text-xs font-semibold text-gray-700">{scene.title || `第 ${idx + 1} 幕`}</p>
-                                <p className="text-[11px] text-gray-400 line-clamp-2 mt-0.5">{scene.description}</p>
-                                {scene.dialogue && (
-                                  <p className="text-[11px] text-amber-600 mt-1 flex items-start gap-1">
-                                    <span className="flex-shrink-0">💬</span>
-                                    <span className="line-clamp-2 italic">「{scene.dialogue}」</span>
-                                  </p>
+
+                                {editingSceneIdx === idx ? (
+                                  <div className="mt-1.5 space-y-1.5">
+                                    <textarea
+                                      rows={3}
+                                      value={editingSceneDesc}
+                                      onChange={e => setEditingSceneDesc(e.target.value)}
+                                      className="w-full text-[11px] border border-emerald-200 bg-emerald-50/40 rounded-lg p-2 resize-none focus:outline-none focus:ring-1 focus:ring-emerald-400"
+                                      placeholder="修改場景描述..."
+                                    />
+                                    <div className="relative">
+                                      <span className="absolute left-2 top-1.5 text-[10px] text-amber-500 pointer-events-none">💬</span>
+                                      <input
+                                        type="text"
+                                        value={editingSceneDialogue}
+                                        onChange={e => setEditingSceneDialogue(e.target.value)}
+                                        placeholder="台詞（選填）..."
+                                        className="w-full pl-6 pr-2 py-1.5 text-[11px] border border-amber-100 bg-amber-50/60 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-300 placeholder:text-gray-300"
+                                      />
+                                    </div>
+                                    <div className="flex gap-1.5">
+                                      <button
+                                        onClick={() => setEditingSceneIdx(null)}
+                                        className="flex-1 py-1 text-[11px] border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50"
+                                      >取消</button>
+                                      <button
+                                        onClick={() => {
+                                          regenerateSceneMutation.mutate({
+                                            sceneIdx: idx,
+                                            description: editingSceneDesc,
+                                            dialogue: editingSceneDialogue,
+                                          });
+                                          setEditingSceneIdx(null);
+                                        }}
+                                        disabled={!editingSceneDesc.trim() || regenerateSceneMutation.isPending}
+                                        className="flex-1 py-1 text-[11px] bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50 font-semibold"
+                                      >重新生成（3積分）</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <>
+                                    <p className="text-[11px] text-gray-400 line-clamp-2 mt-0.5">{scene.description}</p>
+                                    {scene.dialogue && (
+                                      <p className="text-[11px] text-amber-600 mt-1 flex items-start gap-1">
+                                        <span className="flex-shrink-0">💬</span>
+                                        <span className="line-clamp-2 italic">「{scene.dialogue}」</span>
+                                      </p>
+                                    )}
+                                  </>
                                 )}
                               </div>
 

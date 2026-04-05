@@ -2467,6 +2467,12 @@ Requirements:
 
       await storage.atomicAddCredits(userId, -3, `故事「${story.title}」第 ${sceneIdx + 1} 幕重新生成`);
 
+      // Allow overriding description and dialogue before regeneration
+      const newDescription = (typeof req.body.description === "string" && req.body.description.trim()) ? req.body.description.trim() : undefined;
+      const newDialogue = typeof req.body.dialogue === "string" ? req.body.dialogue.trim() : undefined;
+      if (newDescription) scenes[sceneIdx].description = newDescription;
+      if (newDialogue !== undefined) scenes[sceneIdx].dialogue = newDialogue || undefined;
+
       scenes[sceneIdx].status = "generating";
       scenes[sceneIdx].imageUrl = undefined;
       scenes[sceneIdx].bunnyUrl = undefined;
@@ -2524,7 +2530,8 @@ Requirements:
       const styleBase64s = await loadImageList(story.styleImageUrls ?? []);
 
       const scene = scenes[sceneIdx];
-      const scenePrompt = `${story.style}, ${scene.description}`;
+      const dialoguePart = scene.dialogue?.trim() ? `，台詞：「${scene.dialogue}」` : "";
+      const scenePrompt = `${story.style}, ${scene.description}${dialoguePart}`;
       let globalBase64s = [...characterBase64s, ...sceneRefBase64sGlobal, ...styleBase64s];
       if (scene.sceneReferenceImageUrl) {
         try {
