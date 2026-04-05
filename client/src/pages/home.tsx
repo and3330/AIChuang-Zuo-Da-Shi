@@ -445,6 +445,38 @@ export default function Home() {
 
   const animJobBySceneIdx = Object.fromEntries(storyAnimationJobs.map((job, i) => [job.sceneIdx, { job, queryIdx: i }]));
 
+  // Rehydrate sequel prefill from localStorage when entering story input form
+  useEffect(() => {
+    if (mode !== "story" || currentStoryId !== "") return;
+    let raw: string | null = null;
+    try { raw = localStorage.getItem("story_sequel_prefill"); } catch {}
+    if (!raw) return;
+    try {
+      const saved = JSON.parse(raw) as {
+        characterImagePaths?: string[];
+        sceneRefImagePaths?: string[];
+        styleImagePaths?: string[];
+        globalSeed?: number | null;
+        sceneSize?: "1:1" | "9:16" | "16:9";
+        style?: string;
+      };
+      if (saved.characterImagePaths?.length) {
+        setStoryCharacterImages(saved.characterImagePaths.map(p => ({ url: p, path: p })));
+      }
+      if (saved.sceneRefImagePaths?.length) {
+        setStorySceneRefImages(saved.sceneRefImagePaths.map(p => ({ url: p, path: p })));
+      }
+      if (saved.styleImagePaths?.length) {
+        setStoryStyleImages(saved.styleImagePaths.map(p => ({ url: p, path: p })));
+      }
+      if (saved.globalSeed) setStorySeed(saved.globalSeed);
+      if (saved.sceneSize) setStorySceneSize(saved.sceneSize);
+      // Clear after reading so next new story doesn't inherit
+      try { localStorage.removeItem("story_sequel_prefill"); } catch {}
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, currentStoryId]);
+
   const animationVideoQueries = useQueries({
     queries: storyAnimationJobs.map(job => ({
       queryKey: ["/api/video-generations", job.videoId],
@@ -2925,14 +2957,14 @@ export default function Home() {
                 </div>
 
                 {/* Seed display */}
-                {(storyGeneration as any).globalSeed && (
+                {storyGeneration.globalSeed && (
                   <div className="flex items-center gap-2 px-1 py-0.5">
                     <span className="text-xs text-gray-500">🎲 角色種子：</span>
-                    <span className="text-xs font-mono font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">{(storyGeneration as any).globalSeed}</span>
+                    <span className="text-xs font-mono font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">{storyGeneration.globalSeed}</span>
                     <button
                       className="text-xs text-gray-400 hover:text-emerald-600 transition-colors"
                       title="複製種子"
-                      onClick={() => { navigator.clipboard.writeText(String((storyGeneration as any).globalSeed)); toast({ title: "已複製種子", description: `種子 ${(storyGeneration as any).globalSeed} 已複製` }); }}
+                      onClick={() => { navigator.clipboard.writeText(String(storyGeneration.globalSeed)); toast({ title: "已複製種子", description: `種子 ${storyGeneration.globalSeed} 已複製` }); }}
                     >
                       <i className="fas fa-copy"></i>
                     </button>
@@ -3146,20 +3178,21 @@ export default function Home() {
                             variant="outline"
                             className="border-emerald-400 text-emerald-700 hover:bg-emerald-50 rounded-lg"
                             onClick={() => {
-                              const payload = {
-                                characterImageUrls: storyCharacterImages,
-                                sceneRefImageUrls: storySceneRefImages,
-                                styleImageUrls: storyStyleImages,
-                                globalSeed: storySeed !== "" ? storySeed : ((storyGeneration as any).globalSeed ?? ""),
-                                sceneSize: storySceneSize,
-                                style: storyStyle,
-                                customStyle: storyCustomStyle,
+                              const seedVal = storyGeneration.globalSeed ?? (storySeed !== "" ? Number(storySeed) : undefined);
+                              const sequel = {
+                                characterImagePaths: (storyGeneration.characterImageUrls ?? []) as string[],
+                                sceneRefImagePaths: (storyGeneration.sceneRefImageUrls ?? []) as string[],
+                                styleImagePaths: (storyGeneration.styleImageUrls ?? []) as string[],
+                                globalSeed: seedVal ?? null,
+                                sceneSize: storyGeneration.sceneSize ?? "1:1",
+                                style: storyGeneration.style,
                               };
-                              try { localStorage.setItem("story_sequel_prefill", JSON.stringify(payload)); } catch {}
+                              try { localStorage.setItem("story_sequel_prefill", JSON.stringify(sequel)); } catch {}
+                              const baseTitle = storyGeneration.title.replace(/^（第\d+集）/, "");
                               setCurrentStoryId("");
-                              setStoryTitle("（第二集）" + storyGeneration.title.replace(/^（第\d+集）/, ""));
-                              setStorySeed(payload.globalSeed !== "" ? Number(payload.globalSeed) : "");
-                              toast({ title: "✨ 已預填設定", description: "種子與參考圖已繼承，請填入新集數的場景描述" });
+                              setStoryTitle(`（第二集）${baseTitle}`);
+                              setStorySeed(seedVal ?? "");
+                              toast({ title: "✨ 已預填設定", description: "種子與角色參考圖已繼承，請填入新集數的場景描述" });
                             }}
                           >
                             <i className="fas fa-book-open mr-2"></i>建立第二集

@@ -1602,11 +1602,22 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       let tailDataUri: string | undefined;
       if (tailImageUrl) {
         try {
-          const tailResp = await fetch(tailImageUrl);
-          if (tailResp.ok) {
-            const tailBuffer = Buffer.from(await tailResp.arrayBuffer());
-            tailDataUri = `data:image/jpeg;base64,${tailBuffer.toString("base64")}`;
-            console.log(`🎬 Scene ${sceneIdx}: tail_image provided for video transition`);
+          // SSRF protection: only allow trusted CDN/storage hosts
+          const bunnyHost = process.env.BUNNY_CDN_HOST || "";
+          let parsedTail: URL;
+          try { parsedTail = new URL(tailImageUrl); } catch { throw new Error("Invalid tail image URL"); }
+          const allowedHosts = [bunnyHost].filter(Boolean).map(h => h.replace(/^https?:\/\//, "").replace(/\/.*$/, "").toLowerCase());
+          const tailHost = parsedTail.hostname.toLowerCase();
+          const isAllowed = allowedHosts.some(h => tailHost === h || tailHost.endsWith("." + h)) || tailHost.endsWith(".b-cdn.net");
+          if (!isAllowed) {
+            console.warn(`Blocked tail image fetch from untrusted host: ${tailHost}`);
+          } else {
+            const tailResp = await fetch(tailImageUrl);
+            if (tailResp.ok) {
+              const tailBuffer = Buffer.from(await tailResp.arrayBuffer());
+              tailDataUri = `data:image/jpeg;base64,${tailBuffer.toString("base64")}`;
+              console.log(`🎬 Scene ${sceneIdx}: tail_image provided for video transition`);
+            }
           }
         } catch (e) {
           console.error(`Failed to download tail image for scene ${sceneIdx}:`, e);
