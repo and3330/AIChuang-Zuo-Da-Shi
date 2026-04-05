@@ -2612,8 +2612,8 @@ Requirements:
         storyContent?: string;
       };
 
-      if (!title || !sceneCount || sceneCount < 2 || sceneCount > 8) {
-        return res.status(400).json({ error: "請提供標題與幕數（2-8 幕）" });
+      if (!title || !sceneCount || sceneCount < 2 || sceneCount > 12) {
+        return res.status(400).json({ error: "請提供標題與幕數（2-12 幕）" });
       }
 
       const styleGuide: Record<string, string> = {
