@@ -2996,7 +2996,8 @@ export default function Home() {
                           const isFailed = scene.status === "failed";
                           const nInfo = getNarrativeInfo(idx, scenes.length);
                           const sceneRes = perSceneResolution[idx] ?? "720p";
-                          const sceneCost = Math.round(animDuration * (sceneRes === "720p" ? 3.4 : 6.8));
+                          const sceneDur = perSceneDuration[idx] ?? animDuration;
+                          const sceneCost = Math.round(sceneDur * (sceneRes === "720p" ? 3.4 : 6.8));
                           const animEntry = animJobBySceneIdx[idx];
                           const vidData = animEntry ? animationVideoQueries[animEntry.queryIdx]?.data as VideoGeneration | undefined : undefined;
                           const videoUrl = vidData?.bunnyVideoUrl || vidData?.generatedVideoUrl;
