@@ -254,6 +254,7 @@ export type StoryScene = {
   id: string;
   title: string;
   description: string;
+  dialogue?: string;
   sceneReferenceImageUrl?: string;
   imageUrl?: string;
   bunnyUrl?: string;
