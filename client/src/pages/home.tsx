@@ -2073,23 +2073,23 @@ export default function Home() {
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
-                      placeholder="1000 – 9999999（空白 = 隨機）"
+                      placeholder="1000 – 999999（空白 = 隨機）"
                       value={storySeed}
-                      min={1}
-                      max={9999999}
+                      min={1000}
+                      max={999999}
                       onChange={e => {
                         const v = e.target.value;
                         if (v === "") setStorySeed("");
                         else {
                           const n = parseInt(v);
-                          if (!isNaN(n) && n >= 1 && n <= 9999999) setStorySeed(n);
+                          if (!isNaN(n) && n >= 1000 && n <= 999999) setStorySeed(n);
                         }
                       }}
                       className="flex-1 rounded-xl border-gray-200 focus:ring-2 focus:ring-emerald-500 text-sm"
                     />
                     <button
                       type="button"
-                      onClick={() => setStorySeed(Math.floor(Math.random() * 9000000) + 1000)}
+                      onClick={() => setStorySeed(Math.floor(Math.random() * 999000) + 1000)}
                       className="px-3 py-2 rounded-xl border-2 border-emerald-200 bg-emerald-50 text-emerald-700 text-xs font-medium hover:bg-emerald-100 transition-all whitespace-nowrap"
                     >
                       🎲 隨機

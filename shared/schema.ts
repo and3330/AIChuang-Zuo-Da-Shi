@@ -215,7 +215,7 @@ export const insertStoryGenerationSchema = z.object({
   characterImageUrls: z.array(z.string()).max(3).optional(),
   sceneRefImageUrls: z.array(z.string()).max(3).optional(),
   styleImageUrls: z.array(z.string()).max(3).optional(),
-  globalSeed: z.number().int().min(1).max(9999999).optional(),
+  globalSeed: z.number().int().min(1000).max(999999).optional(),
 });
 
 export const sendVerificationCodeSchema = z.object({
