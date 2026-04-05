@@ -2534,12 +2534,14 @@ Requirements:
         }
       }
 
+      // Append cache-busting param so browser/CDN fetches the new image instead of the old cached one
+      const versionedBunnyUrl = bunnyUrl ? `${bunnyUrl}?v=${Date.now()}` : bunnyUrl;
       scenes[sceneIdx].imageUrl = objectPath;
-      scenes[sceneIdx].bunnyUrl = bunnyUrl;
+      scenes[sceneIdx].bunnyUrl = versionedBunnyUrl;
       scenes[sceneIdx].status = "completed";
       await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
 
-      res.json({ ok: true, bunnyUrl });
+      res.json({ ok: true, bunnyUrl: versionedBunnyUrl });
     } catch (error: any) {
       console.error("Error replacing scene image:", error);
       res.status(500).json({ error: error.message || "替換圖片失敗" });
