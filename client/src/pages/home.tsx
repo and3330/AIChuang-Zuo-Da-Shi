@@ -134,6 +134,8 @@ export default function Home() {
   const [editingSceneDialogue, setEditingSceneDialogue] = useState("");
   const [editingSceneRefPath, setEditingSceneRefPath] = useState<string>("");
   const [editingSceneRefUploading, setEditingSceneRefUploading] = useState(false);
+  const [editingUseCharA, setEditingUseCharA] = useState(true);
+  const [editingUseCharB, setEditingUseCharB] = useState(true);
   const [showStoryHistory, setShowStoryHistory] = useState(false);
   const [editingStoryTitle, setEditingStoryTitle] = useState(false);
   const [editingTitleValue, setEditingTitleValue] = useState("");
@@ -324,11 +326,13 @@ export default function Home() {
   });
 
   const regenerateSceneMutation = useMutation({
-    mutationFn: async ({ sceneIdx, description, dialogue, sceneReferenceImageUrl }: { sceneIdx: number; description?: string; dialogue?: string; sceneReferenceImageUrl?: string }) => {
-      const body: Record<string, string> = {};
+    mutationFn: async ({ sceneIdx, description, dialogue, sceneReferenceImageUrl, useCharA, useCharB }: { sceneIdx: number; description?: string; dialogue?: string; sceneReferenceImageUrl?: string; useCharA?: boolean; useCharB?: boolean }) => {
+      const body: Record<string, unknown> = {};
       if (description) body.description = description;
       if (dialogue !== undefined) body.dialogue = dialogue;
       if (sceneReferenceImageUrl) body.sceneReferenceImageUrl = sceneReferenceImageUrl;
+      if (useCharA === false) body.useCharA = false;
+      if (useCharB === false) body.useCharB = false;
       const response = await apiRequest("POST", `/api/story-generations/${currentStoryId}/regenerate-scene/${sceneIdx}`, body);
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "重新生成失敗");
@@ -337,6 +341,8 @@ export default function Home() {
     onSuccess: (_data, { sceneIdx }) => {
       setEditingSceneIdx(null);
       setEditingSceneRefPath("");
+      setEditingUseCharA(true);
+      setEditingUseCharB(true);
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations", currentStoryId] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: `第 ${sceneIdx + 1} 幕重新生成中`, description: "請稍候，生成完成後自動更新..." });
@@ -3085,6 +3091,8 @@ export default function Home() {
                                           setEditingSceneDesc(scene.description);
                                           setEditingSceneDialogue(scene.dialogue || "");
                                           setEditingSceneRefPath("");
+                                          setEditingUseCharA(true);
+                                          setEditingUseCharB(true);
                                         }
                                       }}
                                       className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${editingSceneIdx === idx ? "bg-emerald-100 text-emerald-600" : "hover:bg-gray-100 text-gray-400"}`}
@@ -3114,6 +3122,34 @@ export default function Home() {
                                         className="w-full pl-6 pr-2 py-1.5 text-[11px] border border-amber-100 bg-amber-50/60 rounded-lg focus:outline-none focus:ring-1 focus:ring-amber-300 placeholder:text-gray-300"
                                       />
                                     </div>
+                                    {/* Character reference toggles */}
+                                    {((storyGeneration?.characterImageUrls?.length ?? 0) > 0 || (storyGeneration?.characterBImageUrls?.length ?? 0) > 0) && (
+                                      <div className="flex items-center gap-2 px-2 py-1.5 bg-gray-50 rounded-lg border border-gray-100">
+                                        <span className="text-[10px] text-gray-400 flex-shrink-0">角色參考：</span>
+                                        {(storyGeneration?.characterImageUrls?.length ?? 0) > 0 && (
+                                          <label className="flex items-center gap-1 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={editingUseCharA}
+                                              onChange={e => setEditingUseCharA(e.target.checked)}
+                                              className="w-3 h-3 accent-emerald-600"
+                                            />
+                                            <span className="text-[10px] text-gray-600 font-medium">角色A</span>
+                                          </label>
+                                        )}
+                                        {(storyGeneration?.characterBImageUrls?.length ?? 0) > 0 && (
+                                          <label className="flex items-center gap-1 cursor-pointer">
+                                            <input
+                                              type="checkbox"
+                                              checked={editingUseCharB}
+                                              onChange={e => setEditingUseCharB(e.target.checked)}
+                                              className="w-3 h-3 accent-orange-500"
+                                            />
+                                            <span className="text-[10px] text-gray-600 font-medium">角色B</span>
+                                          </label>
+                                        )}
+                                      </div>
+                                    )}
                                     {/* Per-scene reference image upload */}
                                     <div className="flex items-center gap-1.5">
                                       <label className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-lg cursor-pointer transition-colors ${editingSceneRefPath ? "border-blue-300 bg-blue-50 text-blue-600" : "border-gray-200 text-gray-400 hover:bg-gray-50"} ${editingSceneRefUploading ? "opacity-50 pointer-events-none" : ""}`}>
@@ -3143,7 +3179,7 @@ export default function Home() {
                                     </div>
                                     <div className="flex gap-1.5">
                                       <button
-                                        onClick={() => { setEditingSceneIdx(null); setEditingSceneRefPath(""); }}
+                                        onClick={() => { setEditingSceneIdx(null); setEditingSceneRefPath(""); setEditingUseCharA(true); setEditingUseCharB(true); }}
                                         className="flex-1 py-1 text-[11px] border border-gray-200 text-gray-500 rounded-lg hover:bg-gray-50"
                                       >取消</button>
                                       <button
@@ -3153,6 +3189,8 @@ export default function Home() {
                                             description: editingSceneDesc,
                                             dialogue: editingSceneDialogue,
                                             sceneReferenceImageUrl: editingSceneRefPath || undefined,
+                                            useCharA: editingUseCharA,
+                                            useCharB: editingUseCharB,
                                           });
                                         }}
                                         disabled={!editingSceneDesc.trim() || regenerateSceneMutation.isPending || editingSceneRefUploading}

@@ -2475,6 +2475,9 @@ Requirements:
       if (newDialogue !== undefined) scenes[sceneIdx].dialogue = newDialogue || undefined;
       if (newSceneRefUrl) scenes[sceneIdx].sceneReferenceImageUrl = newSceneRefUrl;
 
+      const useCharA = req.body.useCharA !== false;
+      const useCharB = req.body.useCharB !== false;
+
       scenes[sceneIdx].status = "generating";
       scenes[sceneIdx].imageUrl = undefined;
       scenes[sceneIdx].bunnyUrl = undefined;
@@ -2482,7 +2485,7 @@ Requirements:
 
       res.json({ ok: true });
 
-      regenerateStoryScene(storyId, sceneIdx, objectStorageService, bunnyStorage).catch(console.error);
+      regenerateStoryScene(storyId, sceneIdx, objectStorageService, bunnyStorage, useCharA, useCharB).catch(console.error);
     } catch (error: any) {
       console.error("Error triggering scene regeneration:", error);
       res.status(500).json({ error: error.message || "重新生成失敗" });
@@ -2493,7 +2496,9 @@ Requirements:
     storyId: string,
     sceneIdx: number,
     objectStorageService: ObjectStorageService,
-    bunnyStorage: BunnyStorageService
+    bunnyStorage: BunnyStorageService,
+    useCharA: boolean = true,
+    useCharB: boolean = true
   ) {
     try {
       const story = await storage.getStoryGeneration(storyId);
@@ -2527,8 +2532,8 @@ Requirements:
         catch { return []; }
       };
 
-      const characterABase64s = await loadImageList(story.characterImageUrls ?? []);
-      const characterBBase64s = await loadImageList(story.characterBImageUrls ?? []);
+      const characterABase64s = useCharA ? await loadImageList(story.characterImageUrls ?? []) : [];
+      const characterBBase64s = useCharB ? await loadImageList(story.characterBImageUrls ?? []) : [];
       const sceneRefBase64sGlobal = await loadImageList(story.sceneRefImageUrls ?? []);
       const styleBase64s = await loadImageList(story.styleImageUrls ?? []);
 
