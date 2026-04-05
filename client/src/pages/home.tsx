@@ -341,6 +341,7 @@ export default function Home() {
     onSuccess: (data: any) => {
       setCurrentStoryId(data.id);
       setStoryAnimationJobs([]);
+      setPerSceneTailEnabled({});
       setEditingStoryTitle(false);
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations", data.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/story-generations"] });
@@ -2940,7 +2941,7 @@ export default function Home() {
                       variant="outline"
                       size="sm"
                       className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg text-xs"
-                      onClick={() => { setShowStoryHistory(true); setCurrentStoryId(""); }}
+                      onClick={() => { setShowStoryHistory(true); setCurrentStoryId(""); setPerSceneTailEnabled({}); }}
                     >
                       <i className="fas fa-history mr-1.5"></i>歷史
                     </Button>
@@ -2949,6 +2950,7 @@ export default function Home() {
                     className="border-emerald-300 text-emerald-700 hover:bg-emerald-50 rounded-lg text-sm"
                     onClick={() => {
                       setCurrentStoryId("");
+                      setPerSceneTailEnabled({});
                     }}
                   >
                     <i className="fas fa-plus mr-2"></i>新故事
@@ -3198,7 +3200,7 @@ export default function Home() {
                             <i className="fas fa-book-open mr-2"></i>建立第二集
                           </Button>
                         )}
-                        <Button variant="secondary" className="bg-gray-100 hover:bg-gray-200 rounded-lg" onClick={() => setCurrentStoryId("")}>
+                        <Button variant="secondary" className="bg-gray-100 hover:bg-gray-200 rounded-lg" onClick={() => { setCurrentStoryId(""); setPerSceneTailEnabled({}); }}>
                           <i className="fas fa-redo mr-2"></i>重新生成故事
                         </Button>
                       </div>
