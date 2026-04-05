@@ -86,6 +86,37 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || '5000', 10);
+
+  // On startup: reset any scenes/stories stuck in "generating" due to server restart
+  storage.getAllStoryGenerations().then(async (stories) => {
+    let fixedCount = 0;
+    for (const story of stories) {
+      try {
+        // Reset whole-story stuck state
+        if (story.status === "generating" || story.status === "pending") {
+          await storage.updateStoryGeneration(story.id, { status: "failed" });
+          fixedCount++;
+          continue;
+        }
+        // Reset individual stuck scenes within completed stories
+        if (!story.scenes) continue;
+        const scenes = JSON.parse(story.scenes);
+        let changed = false;
+        for (const scene of scenes) {
+          if (scene.status === "generating") {
+            scene.status = "failed";
+            changed = true;
+          }
+        }
+        if (changed) {
+          await storage.updateStoryGeneration(story.id, { scenes: JSON.stringify(scenes) });
+          fixedCount++;
+        }
+      } catch { /* skip malformed rows */ }
+    }
+    if (fixedCount > 0) log(`♻️  Reset ${fixedCount} stuck story generation(s) on startup`);
+  }).catch(err => console.error("Error recovering stuck story generations:", err));
+
   storage.fixStripeTransactionTypes().then(fixed => {
     if (fixed > 0) {
       log(`Fixed ${fixed} Stripe transaction(s) from 'refund' to 'topup'`);
