@@ -1467,7 +1467,7 @@ function EpisodeView({
               <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">解析度</label>
               <div className="grid grid-cols-2 gap-3">
                 {(["720p", "1080p"] as const).map(r => {
-                  const cost = r === "1080p" ? Math.ceil(animDuration * 6.8) : Math.ceil(animDuration * 3.4);
+                  const cost = r === "1080p" ? Math.ceil(animDuration * 15) : Math.ceil(animDuration * 8);
                   return (
                     <button key={r} onClick={() => setAnimResolution(r)}
                       className={`p-3 rounded-xl border-2 text-sm transition-all ${animResolution === r ? "border-[#6366f1] bg-[#6366f1]/10 text-[#4f46e5]" : "border-[#e2e8f0] text-[#64748b] hover:border-[#6366f1]/40"}`}>
@@ -1481,7 +1481,7 @@ function EpisodeView({
 
             <div className="bg-[#f8fafc] rounded-lg p-3 text-sm text-[#64748b]">
               消耗 <span className="font-bold text-[#4f46e5]">
-                {animResolution === "1080p" ? Math.ceil(animDuration * 6.8) : Math.ceil(animDuration * 3.4)} 積分
+                {animResolution === "1080p" ? Math.ceil(animDuration * 15) : Math.ceil(animDuration * 8)} 積分
               </span>
               （現有 {user?.credits ?? 0} 積分）
             </div>
@@ -1491,7 +1491,7 @@ function EpisodeView({
                 sceneIdx: animateDialog.sceneIdx, duration: animDuration,
                 resolution: animResolution, useOmniMode: animUseOmni,
               })}
-              disabled={animateSceneMutation.isPending || (user?.credits ?? 0) < (animResolution === "1080p" ? Math.ceil(animDuration * 6.8) : Math.ceil(animDuration * 3.4))}
+              disabled={animateSceneMutation.isPending || (user?.credits ?? 0) < (animResolution === "1080p" ? Math.ceil(animDuration * 15) : Math.ceil(animDuration * 8))}
               className="w-full justify-center"
               style={{ background: "#7c3aed" }}
             >

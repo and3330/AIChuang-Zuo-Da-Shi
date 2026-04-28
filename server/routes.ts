@@ -1189,7 +1189,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       const duration = Math.max(4, Math.min(12, req.body.duration || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
-      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 3.4 : 6.8;
+      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 8 : 15;
       const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
 
       if ((user.credits || 0) < creditsNeeded) {
@@ -1449,14 +1449,14 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         else if (vidAspect === '9:16') { vidW = 1080; vidH = 1920; }
         else { vidW = 1080; vidH = 1080; }
       }
-      const tokenConsumption = (vidW * vidH * 24 * duration) / 1024;
-      const videoCostUsd = (tokenConsumption / 1_000_000) * 2.4;
+      const costPerSec = vidRes === "720p" ? 5.5 : 11;
+      const videoCostTwd = duration * costPerSec;
       await storage.updateVideoGeneration(generationId, {
         status: "completed",
         generatedVideoUrl: videoUrl,
         bunnyVideoUrl,
         processingTime,
-        cost: parseFloat(videoCostUsd.toFixed(4))
+        cost: parseFloat(videoCostTwd.toFixed(4))
       });
 
     } catch (error) {
@@ -1503,7 +1503,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         const sceneResolution: "720p" | "1080p" = perSceneResolutions[String(sceneIdx)] === "720p" ? "720p" : perSceneResolutions[String(sceneIdx)] === "1080p" ? "1080p" : resolution;
         const rawDuration = Number(perSceneDurations[String(sceneIdx)]);
         const sceneDuration = (rawDuration >= 4 && rawDuration <= 12) ? rawDuration : duration;
-        const sceneCredits = Math.round(sceneDuration * (sceneResolution === "720p" ? 3.4 : 6.8));
+        const sceneCredits = Math.round(sceneDuration * (sceneResolution === "720p" ? 8 : 15));
         return { scene, sceneIdx, sceneResolution, sceneDuration, sceneCredits };
       });
       const totalCredits = sceneInfos.reduce((sum, s) => sum + s.sceneCredits, 0);
@@ -1718,15 +1718,15 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         else if (vidAspect === "9:16") { vidW = 1080; vidH = 1920; }
         else { vidW = 1080; vidH = 1080; }
       }
-      const tokenConsumption = (vidW * vidH * 24 * duration) / 1024;
-      const videoCostUsd = (tokenConsumption / 1_000_000) * 2.4;
+      const costPerSec = vidRes === "720p" ? 5.5 : 11;
+      const videoCostTwd = duration * costPerSec;
 
       await storage.updateVideoGeneration(videoId, {
         status: "completed",
         generatedVideoUrl: videoUrl,
         bunnyVideoUrl,
         processingTime,
-        cost: parseFloat(videoCostUsd.toFixed(4)),
+        cost: parseFloat(videoCostTwd.toFixed(4)),
       });
 
       console.log(`✅ Story scene ${sceneIdx} animation completed!`);
@@ -1905,7 +1905,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           type: r.type,
           prompt: r.prompt,
           status: r.status,
-          creditsUsed: r.creditsUsed || Math.round((r.duration || 5) * 6.8),
+          creditsUsed: r.creditsUsed || Math.round((r.duration || 5) * 15),
           duration: r.duration,
           createdAt: r.createdAt,
           thumbnailUrl: r.bunnyVideoUrl || null,
@@ -2156,7 +2156,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         }
       }
 
-      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 3.4 : 6.8;
+      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 8 : 15;
       const credits = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
       const user = await storage.getUser(userId);
       if (!user || (user.credits ?? 0) < credits) {
@@ -3346,8 +3346,8 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
       const { duration = 5, resolution = "720p", prompt, useOmniMode = false } = req.body;
       const creditCost = resolution === "1080p"
-        ? Math.ceil(duration * 6.8)
-        : Math.ceil(duration * 3.4);
+        ? Math.ceil(duration * 15)
+        : Math.ceil(duration * 8);
 
       const user = await storage.getUser(req.session.userId!);
       if (!user || (user.credits ?? 0) < creditCost) {

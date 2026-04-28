@@ -300,7 +300,7 @@ export class DatabaseStorage implements IStorage {
     if (!updated) return false;
 
     if (updated.userId) {
-      const creditsPerSec = updated.resolution === "720p" ? 3.4 : 6.8;
+      const creditsPerSec = updated.resolution === "720p" ? 8 : 15;
       const refundAmount = updated.creditsUsed || Math.round((updated.duration || 5) * creditsPerSec);
       await this.atomicAddCredits(updated.userId, refundAmount, `影片生成失敗退還 ${refundAmount} 積分`);
     }
@@ -325,19 +325,8 @@ export class DatabaseStorage implements IStorage {
     const videoCost = completedUserVideos.reduce((sum, gen) => {
       const dur = gen.duration || 5;
       const r = gen.resolution || '1080p';
-      const ar = gen.aspectRatio || '16:9';
-      let w: number, h: number;
-      if (r === '720p') {
-        if (ar === '16:9') { w = 1280; h = 720; }
-        else if (ar === '9:16') { w = 720; h = 1280; }
-        else { w = 720; h = 720; }
-      } else {
-        if (ar === '16:9') { w = 1920; h = 1080; }
-        else if (ar === '9:16') { w = 1080; h = 1920; }
-        else { w = 1080; h = 1080; }
-      }
-      const tokens = (w * h * 24 * dur) / 1024;
-      return sum + (tokens / 1_000_000) * 2.4;
+      const costPerSec = r === '720p' ? 5.5 : 11;
+      return sum + dur * costPerSec;
     }, 0);
     const imageCredits = completedUserImages.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
     const videoCredits = completedUserVideos.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);
@@ -348,7 +337,7 @@ export class DatabaseStorage implements IStorage {
     const duration = insertGeneration.duration ?? 5;
     const resolution = insertGeneration.resolution ?? "1080p";
     const aspectRatio = insertGeneration.aspectRatio ?? "16:9";
-    const creditsPerSecond = resolution === "720p" ? 3.4 : 6.8;
+    const creditsPerSecond = resolution === "720p" ? 8 : 15;
 
     const fps = 24;
     let width: number, height: number;
@@ -361,8 +350,8 @@ export class DatabaseStorage implements IStorage {
       else if (aspectRatio === "9:16") { width = 1080; height = 1920; }
       else { width = 1080; height = 1080; }
     }
-    const tokenConsumption = (width * height * fps * duration) / 1024;
-    const videoCost = (tokenConsumption / 1_000_000) * 2.4;
+    const costPerSec = resolution === "720p" ? 5.5 : 11;
+    const videoCost = duration * costPerSec;
 
     const [row] = await db.insert(videoGenerations).values({
       userId: insertGeneration.userId,
@@ -437,19 +426,8 @@ export class DatabaseStorage implements IStorage {
     const videoCost = completedVideos.reduce((sum, gen) => {
       const dur = gen.duration || 5;
       const r = gen.resolution || '1080p';
-      const ar = gen.aspectRatio || '16:9';
-      let w: number, h: number;
-      if (r === '720p') {
-        if (ar === '16:9') { w = 1280; h = 720; }
-        else if (ar === '9:16') { w = 720; h = 1280; }
-        else { w = 720; h = 720; }
-      } else {
-        if (ar === '16:9') { w = 1920; h = 1080; }
-        else if (ar === '9:16') { w = 1080; h = 1920; }
-        else { w = 1080; h = 1080; }
-      }
-      const tokens = (w * h * 24 * dur) / 1024;
-      return sum + (tokens / 1_000_000) * 2.4;
+      const costPerSec = r === '720p' ? 5.5 : 11;
+      return sum + dur * costPerSec;
     }, 0);
 
     const imageCreditsUsed = completedImages.reduce((sum, gen) => sum + (gen.creditsUsed || 0), 0);

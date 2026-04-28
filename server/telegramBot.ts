@@ -197,8 +197,8 @@ export function startTelegramBot() {
       `💰 積分餘額：${freshUser?.credits || 0}\n\n` +
       `📊 計費標準：\n` +
       `• 圖片：3 積分/張\n` +
-      `• 影片 720P：3.4 積分/秒\n` +
-      `• 影片 1080P：6.8 積分/秒\n\n` +
+      `• 影片 720P：8 積分/秒\n` +
+      `• 影片 1080P：15 積分/秒\n\n` +
       `需要儲值？請到網站：https://cmai-marker.com/account`
     );
   });
@@ -333,7 +333,7 @@ export function startTelegramBot() {
     const freshUser = await storage.getUser(user.id);
     const credits = freshUser?.credits || 0;
     const duration = 5;
-    const creditsPerSecond = 3.4;
+    const creditsPerSecond = 8;
     const cost = Math.round(duration * creditsPerSecond);
 
     if (credits < cost) {
@@ -435,13 +435,12 @@ export function startTelegramBot() {
         }
       }
 
-      const tokenConsumption = (1280 * 720 * 24 * duration) / 1024;
-      const videoCostUsd = (tokenConsumption / 1_000_000) * 2.4;
+      const videoCostTwd = duration * 5.5;
       await storage.updateVideoGeneration(generation.id, {
         status: "completed",
         generatedVideoUrl: videoUrl,
         bunnyVideoUrl: finalVideoUrl !== videoUrl ? finalVideoUrl : undefined,
-        cost: parseFloat(videoCostUsd.toFixed(4)),
+        cost: parseFloat(videoCostTwd.toFixed(4)),
       });
 
       await bot.deleteMessage(chatId, statusMsg.message_id);
@@ -517,7 +516,7 @@ export function startTelegramBot() {
       `直接傳送圖片 + 描述文字 — 圖片編輯\n\n` +
       `🎬 影片生成：\n` +
       `/video <描述> — 文字生影片\n` +
-      `（預設 5 秒 720P，17 積分）\n\n` +
+      `（預設 5 秒 720P，40 積分）\n\n` +
       `💰 帳號相關：\n` +
       `/balance — 查詢積分餘額\n` +
       `/history — 最近生成記錄\n\n` +

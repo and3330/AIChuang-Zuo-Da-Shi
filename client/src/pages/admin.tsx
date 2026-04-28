@@ -458,6 +458,7 @@ export default function AdminPage() {
                     <div className="flex justify-between"><span className="text-gray-600">失敗</span><span className="font-medium text-red-500">{stats.failedImages} 次</span></div>
                     <div className="flex justify-between"><span className="text-gray-600">消耗積分</span><span className="font-medium">{stats.imageCreditsUsed} 積分</span></div>
                     <div className="flex justify-between border-t pt-1 mt-1"><span className="text-gray-600">API 成本</span><span className="font-bold text-green-700">${stats.imageCost.toFixed(2)} USD</span></div>
+                    <div className="text-[10px] text-gray-400 text-right">圖片成本以 USD 計算</div>
                   </div>
                 </div>
                 <div className="bg-indigo-50 rounded-lg p-4">
@@ -466,7 +467,8 @@ export default function AdminPage() {
                     <div className="flex justify-between"><span className="text-gray-600">成功</span><span className="font-medium">{stats.completedVideos} 部</span></div>
                     <div className="flex justify-between"><span className="text-gray-600">失敗</span><span className="font-medium text-red-500">{stats.failedVideos} 次</span></div>
                     <div className="flex justify-between"><span className="text-gray-600">消耗積分</span><span className="font-medium">{stats.videoCreditsUsed} 積分</span></div>
-                    <div className="flex justify-between border-t pt-1 mt-1"><span className="text-gray-600">API 成本</span><span className="font-bold text-green-700">${stats.videoCost.toFixed(2)} USD</span></div>
+                    <div className="flex justify-between border-t pt-1 mt-1"><span className="text-gray-600">API 成本</span><span className="font-bold text-green-700">NT${stats.videoCost.toFixed(2)}</span></div>
+                    <div className="text-[10px] text-gray-400 text-right">影片成本：720P 5.5/秒、1080P 11/秒（TWD）</div>
                   </div>
                 </div>
               </div>
@@ -1130,7 +1132,7 @@ export default function AdminPage() {
                                 typeLabel: `影片 ${g.duration}秒`,
                                 prompt: g.prompt,
                                 status: g.status,
-                                credits: g.creditsUsed || Math.round((g.duration || 5) * 6.8),
+                                credits: g.creditsUsed || Math.round((g.duration || 5) * 15),
                                 mediaType: "video" as const,
                                 thumbnailUrl: g.bunnyVideoUrl || null,
                               })),

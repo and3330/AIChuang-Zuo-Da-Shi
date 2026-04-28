@@ -10,12 +10,13 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ## Pricing Model
 - Image generation: 3 credits per image
-- Video generation: Resolution-based pricing (4-12 seconds)
-  - 720P: 3.4 credits/second (standard quality)
-  - 1080P: 6.8 credits/second (high quality)
-  - Example: 5 sec 720P = 17 credits, 5 sec 1080P = 34 credits
+- Video generation (SeedDance 2.0, applies to all video features incl. Drama Studio): Resolution-based pricing (4-12 seconds)
+  - 720P: 8 credits/second (charge); cost basis 5.5 TWD/second
+  - 1080P: 15 credits/second (charge); cost basis 11 TWD/second
+  - Example: 5 sec 720P = 40 credits (cost 27.5 TWD); 5 sec 1080P = 75 credits (cost 55 TWD)
 - New user registration bonus: 10 credits
 - 1 credit = 1 TWD (New Taiwan Dollar)
+- `videoGenerations.cost` is now stored in TWD (was previously USD via token-based formula)
 
 ## API Configuration
 - Image generation: Seedream 5.0 model (endpoint: ep-20251223142939-njrkd)
@@ -145,7 +146,7 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
   - API format: top-level `ratio`, `duration`, `watermark: false`, `generate_audio` fields
   - Supports reference_image, reference_video, reference_audio content types
   - Omni mode auto-loads characterAUrls[0] + characterBUrls[0] + scene.sceneRefImageUrl as reference images
-- **Pricing**: 3 credits/scene image; video same as standard (720P 3.4/sec, 1080P 6.8/sec)
+- **Pricing**: 3 credits/scene image; video same as standard (720P 8/sec, 1080P 15/sec)
 - **Frontend**: Visual node editor — project list, episode list, episode editor with ComicFlow dark theme
   - Episode editor: SVG node flow canvas + right inspector panel + dual view (node flow / grid)
 - **Navigation**: "🎬 漫劇工作室" link in home.tsx 3rd tab + NavigationHeader
@@ -167,16 +168,18 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Fixed chat system: changed req.user!.id to req.session.userId! for all chat endpoints
 - Integrated Bunny.net CDN storage: all generated images/videos auto-uploaded to per-user folders, API returns CDN URLs
 - Added email verification for registration using Resend (6-digit code, 10min expiry, prevents duplicate email registration)
+- Updated SeedDance 2.0 pricing: 720P 8 積分/秒 (cost 5.5 TWD/sec), 1080P 15 積分/秒 (cost 11 TWD/sec); applies to all video features including Drama Studio; cost field switched from token-based USD to per-second TWD
 - Changed video pricing to proportional per-second model: 6.8 credits/sec (API cost × 5), duration slider 2-12 seconds
 - Added text-to-video generation (no image required)
 - Added admin dashboard with user management, credit adjustment, transaction/generation history
 - Added member registration/login system with bcrypt password hashing
-- Implemented credit system with pricing: 3/image, 6.8/sec video
+- Implemented credit system with pricing: 3/image, 8~15/sec video
 - Added credit top-up functionality with preset amounts
 - Created transaction history page
 - Updated home page with NavigationHeader, credit balance display, cost indicators
 - Added insufficient credits blocking with warning messages
-- Redesigned Drama Studio to ComicFlow dark theme visual node editor: SVG scene node flow, right inspector panel, dual view modes (node flow / grid), status bar; fixed border-3 and SelectItem empty value bugs
+- Migrated Drama Studio to light theme: replaced all dark backgrounds (#0a0a14/#0d0d1a/#111122) with white/slate-50 panels, dark slate text on light bg, lighter borders/grids, lighter modal overlay; SVG scene cards now white with soft slate shadow
+- Redesigned Drama Studio to ComicFlow visual node editor: SVG scene node flow, right inspector panel, dual view modes (node flow / grid), status bar; fixed border-3 and SelectItem empty value bugs
 - Added 3 script-authoring helpers to Drama Studio (informed by SeedDance 2.0 + 短劇 + 提示詞 reference docs):
   1. **AI 智慧腳本助手** (POST /api/drama/ai-generate-script via Claude haiku-4-5): one-line pitch → full episode script with title/description/dialogue/camera/character toggles. Robust JSON parsing (multi-strategy + whitelist validation). Smart merge preserves existing scene IDs and generated images/videos; warns user before discarding trailing scenes with media.
   2. **提示詞素材庫** (PromptSnippetsPanel): 5 collapsible categories (光線/鏡頭/情緒/場景/風格) with 40 click-to-insert snippets, embedded inside scene inspector below description textarea.

@@ -854,7 +854,7 @@ export default function Home() {
   const WATERMARK_REMOVAL_COST = 5;
   const getCreditsNeeded = () => {
     if (mode === "story") return storySceneCount * 3;
-    if (mode === "image-to-video" || mode === "text-to-video") return Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8));
+    if (mode === "image-to-video" || mode === "text-to-video") return Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15));
     const perImageCost = watermark ? 3 : 3 + WATERMARK_REMOVAL_COST;
     if (mode === "text-to-image") return isSequentialMode ? perImageCost * sequentialCount : perImageCost;
     if (isBatchMode) return perImageCost * batchPrompts.filter(p => p.trim()).length;
@@ -1060,7 +1060,7 @@ export default function Home() {
                         <h3 className={`font-semibold text-sm ${mode === "text-to-video" ? "text-purple-700" : "text-gray-700"}`}>文字生影片<InfoTooltip text="輸入文字描述，AI 直接生成一段影片。可選擇影片長度（4-12秒）和解析度（720P/1080P）" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">用文字描述創建影片</p>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
-                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">3.4~6.8積分/秒</span>
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">8~15積分/秒</span>
                         </div>
                       </div>
                     </div>
@@ -1083,7 +1083,7 @@ export default function Home() {
                         <h3 className={`font-semibold text-sm ${mode === "image-to-video" ? "text-purple-700" : "text-gray-700"}`}>圖片生影片<InfoTooltip text="上傳一張圖片，AI 會讓它「動起來」變成影片。可選擇比例（16:9/9:16/1:1）、長度和解析度" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">將靜態圖片轉為影片</p>
                         <div className="flex gap-1 mt-1.5 flex-wrap">
-                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">3.4~6.8積分/秒</span>
+                          <span className="text-xs font-medium bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">8~15積分/秒</span>
                         </div>
                       </div>
                     </div>
@@ -1465,7 +1465,7 @@ export default function Home() {
                         <span className="text-sm text-gray-500">12秒</span>
                       </div>
                       <div className="text-center text-sm font-medium text-purple-600 bg-purple-50 rounded-lg py-1.5">
-                        {Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8))} 積分（{videoDuration}秒 × {videoResolution === "720p" ? "3.4" : "6.8"}積分/秒）
+                        {Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15))} 積分（{videoDuration}秒 × {videoResolution === "720p" ? "8" : "15"}積分/秒）
                       </div>
                     </div>
                   </div>
@@ -1510,7 +1510,7 @@ export default function Home() {
                       }`}
                     >
                       <div className="font-semibold text-sm">720P</div>
-                      <div className="text-xs mt-0.5 text-green-600 font-medium">3.4 積分/秒</div>
+                      <div className="text-xs mt-0.5 text-green-600 font-medium">8 積分/秒</div>
                     </button>
                     <button
                       onClick={() => setVideoResolution("1080p")}
@@ -1521,7 +1521,7 @@ export default function Home() {
                       }`}
                     >
                       <div className="font-semibold text-sm">1080P</div>
-                      <div className="text-xs mt-0.5 text-orange-600 font-medium">6.8 積分/秒</div>
+                      <div className="text-xs mt-0.5 text-orange-600 font-medium">15 積分/秒</div>
                     </button>
                   </div>
                 </div>
@@ -1570,7 +1570,7 @@ export default function Home() {
 
                 <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                   <i className="fas fa-info-circle"></i>
-                  影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8))} 積分
+                  影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15))} 積分
                 </div>
 
                 <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
@@ -1581,12 +1581,12 @@ export default function Home() {
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div className="bg-white rounded-lg p-2.5 border border-gray-100">
                       <div className="font-semibold text-gray-700">720P 標準畫質</div>
-                      <div className="text-green-600 font-bold text-base mt-1">3.4 積分/秒</div>
+                      <div className="text-green-600 font-bold text-base mt-1">8 積分/秒</div>
                       <div className="text-gray-400 mt-0.5">適合一般用途、社群分享</div>
                     </div>
                     <div className="bg-white rounded-lg p-2.5 border border-gray-100">
                       <div className="font-semibold text-gray-700">1080P 高畫質</div>
-                      <div className="text-orange-600 font-bold text-base mt-1">6.8 積分/秒</div>
+                      <div className="text-orange-600 font-bold text-base mt-1">15 積分/秒</div>
                       <div className="text-gray-400 mt-0.5">適合專業製作、高品質需求</div>
                     </div>
                   </div>
@@ -1690,7 +1690,7 @@ export default function Home() {
                             <span className="text-sm text-gray-500">12秒</span>
                           </div>
                           <div className="text-center text-sm font-medium text-purple-600 bg-purple-50 rounded-lg py-1.5">
-                            {Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8))} 積分（{videoDuration}秒 × {videoResolution === "720p" ? "3.4" : "6.8"}積分/秒）
+                            {Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15))} 積分（{videoDuration}秒 × {videoResolution === "720p" ? "8" : "15"}積分/秒）
                           </div>
                         </div>
                       </div>
@@ -1735,7 +1735,7 @@ export default function Home() {
                           }`}
                         >
                           <div className="font-semibold text-sm">720P</div>
-                          <div className="text-xs mt-0.5 text-green-600 font-medium">3.4 積分/秒</div>
+                          <div className="text-xs mt-0.5 text-green-600 font-medium">8 積分/秒</div>
                         </button>
                         <button
                           onClick={() => setVideoResolution("1080p")}
@@ -1746,7 +1746,7 @@ export default function Home() {
                           }`}
                         >
                           <div className="font-semibold text-sm">1080P</div>
-                          <div className="text-xs mt-0.5 text-orange-600 font-medium">6.8 積分/秒</div>
+                          <div className="text-xs mt-0.5 text-orange-600 font-medium">15 積分/秒</div>
                         </button>
                       </div>
                     </div>
@@ -1795,7 +1795,7 @@ export default function Home() {
 
                     <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                       <i className="fas fa-info-circle"></i>
-                      影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * (videoResolution === "720p" ? 3.4 : 6.8))} 積分
+                      影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15))} 積分
                     </div>
 
                     <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
@@ -1806,12 +1806,12 @@ export default function Home() {
                       <div className="grid grid-cols-2 gap-3 text-xs">
                         <div className="bg-white rounded-lg p-2.5 border border-gray-100">
                           <div className="font-semibold text-gray-700">720P 標準畫質</div>
-                          <div className="text-green-600 font-bold text-base mt-1">3.4 積分/秒</div>
+                          <div className="text-green-600 font-bold text-base mt-1">8 積分/秒</div>
                           <div className="text-gray-400 mt-0.5">適合一般用途、社群分享</div>
                         </div>
                         <div className="bg-white rounded-lg p-2.5 border border-gray-100">
                           <div className="font-semibold text-gray-700">1080P 高畫質</div>
-                          <div className="text-orange-600 font-bold text-base mt-1">6.8 積分/秒</div>
+                          <div className="text-orange-600 font-bold text-base mt-1">15 積分/秒</div>
                           <div className="text-gray-400 mt-0.5">適合專業製作、高品質需求</div>
                         </div>
                       </div>
@@ -2531,7 +2531,7 @@ export default function Home() {
                 </div>
                 <div className="flex items-center justify-between p-3 bg-purple-50 rounded-lg text-sm text-purple-700">
                   <span><i className="fas fa-clock mr-1"></i>影片長度：{videoGeneration.duration || 5} 秒</span>
-                  <span className="font-semibold">費用：{videoGeneration.creditsUsed || Math.round((videoGeneration.duration || 5) * 6.8)} 積分（{videoGeneration.resolution === "720p" ? "720P" : "1080P"}）</span>
+                  <span className="font-semibold">費用：{videoGeneration.creditsUsed || Math.round((videoGeneration.duration || 5) * 15)} 積分（{videoGeneration.resolution === "720p" ? "720P" : "1080P"}）</span>
                 </div>
                 <div className="flex justify-center gap-3">
                   <Button className="bg-purple-600 hover:bg-purple-700 text-white rounded-lg" onClick={() => {
@@ -3041,7 +3041,7 @@ export default function Home() {
                           const nInfo = getNarrativeInfo(idx, scenes.length);
                           const sceneRes = perSceneResolution[idx] ?? "720p";
                           const sceneDur = perSceneDuration[idx] ?? animDuration;
-                          const sceneCost = Math.round(sceneDur * (sceneRes === "720p" ? 3.4 : 6.8));
+                          const sceneCost = Math.round(sceneDur * (sceneRes === "720p" ? 8 : 15));
                           const animEntry = animJobBySceneIdx[idx];
                           const vidData = animEntry ? animationVideoQueries[animEntry.queryIdx]?.data as VideoGeneration | undefined : undefined;
                           const videoUrl = vidData?.bunnyVideoUrl || vidData?.generatedVideoUrl;
@@ -3327,7 +3327,7 @@ export default function Home() {
                                         <button key={r}
                                           onClick={() => setPerSceneResolution(prev => ({ ...prev, [idx]: r }))}
                                           className={`flex-1 py-1 rounded-lg border text-[11px] font-medium transition-all ${sceneRes === r ? "border-purple-500 bg-purple-100 text-purple-700" : "border-gray-200 text-gray-500 hover:border-purple-300"}`}>
-                                          {r} <span className="text-[9px] opacity-70">({Math.round(sd * (r === "720p" ? 3.4 : 6.8))}積)</span>
+                                          {r} <span className="text-[9px] opacity-70">({Math.round(sd * (r === "720p" ? 8 : 15))}積)</span>
                                         </button>
                                       );
                                     })}
@@ -3503,7 +3503,7 @@ export default function Home() {
                               const si = scenes.indexOf(s);
                               const res = perSceneResolution[si] ?? "720p";
                               const dur = perSceneDuration[si] ?? animDuration;
-                              return sum + Math.round(dur * (res === "720p" ? 3.4 : 6.8));
+                              return sum + Math.round(dur * (res === "720p" ? 8 : 15));
                             }, 0);
                             const hasEnough = (user?.credits ?? 0) >= totalCost;
                             return (

@@ -202,7 +202,7 @@ export default function LandingPage() {
                 <div className="pt-4 border-t border-white/10">
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <i className="fas fa-coins text-yellow-400"></i>
-                    <span>3.4~6.8 積分/秒（720P/1080P，4-12秒）</span>
+                    <span>8~15 積分/秒（720P/1080P，4-12秒）</span>
                   </div>
                 </div>
               </CardContent>
@@ -322,8 +322,8 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-gray-900 text-lg">3.4~6.8 積分/秒</p>
-                    <p className="text-xs text-gray-400">720P：3.4/秒 · 1080P：6.8/秒</p>
+                    <p className="font-bold text-gray-900 text-lg">8~15 積分/秒</p>
+                    <p className="text-xs text-gray-400">720P：8/秒 · 1080P：15/秒</p>
                   </div>
                 </div>
               </div>
