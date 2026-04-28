@@ -182,12 +182,17 @@ function getSceneImageUrl(s: DramaScene) { return s.bunnyUrl || s.imageUrl || nu
 function getSceneVideoUrl(s: DramaScene) { return s.videoBunnyUrl || s.videoUrl || null; }
 
 async function uploadToObjectStorage(file: File): Promise<string> {
-  const fd = new FormData();
-  fd.append("file", file);
-  const res = await fetch("/api/upload", { method: "POST", body: fd });
-  if (!res.ok) throw new Error("上傳失敗");
-  const d = await res.json();
-  return d.objectPath as string;
+  const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
+  const { uploadURL } = await uploadRes.json();
+  const putRes = await fetch(uploadURL, {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": file.type },
+  });
+  if (!putRes.ok) throw new Error("上傳失敗");
+  const pathRes = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
+  const { objectPath } = await pathRes.json();
+  return objectPath as string;
 }
 
 // ─── Shared styles ─────────────────────────────────────────────────────────────
