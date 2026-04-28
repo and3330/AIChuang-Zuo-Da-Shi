@@ -1,25 +1,27 @@
 /**
  * SeedDance 2.0 Multi-Image Reference Video Client
  *
- * Supports:
- * 1. Single image mode (current standard image-to-video)
- * 2. Multi-image reference mode (全能模式): up to 9 reference images, @圖片1 @圖片2 syntax
+ * API endpoint: ep-20260428161232-4znch (全能模式)
+ * API format:
+ *   POST /api/v3/contents/generations/tasks
+ *   Body: { model, content[], ratio, duration, generate_audio, watermark }
  *
- * NOTE: The multi-image endpoint is a placeholder — user will supply the actual
- * volcengine_omni / SeedDance 2.0 omni endpoint when ready.
+ * content items:
+ *   { type: "text", text }
+ *   { type: "image_url", image_url: { url }, role: "reference_image" }
+ *   { type: "video_url", video_url: { url }, role: "reference_video" }
+ *   { type: "audio_url", audio_url: { url }, role: "reference_audio" }
  */
 
 import sharp from "sharp";
 
-// ─── Endpoint configuration ───────────────────────────────────────────────────
-// Standard single-image endpoint (already in production)
+// ─── Endpoints ────────────────────────────────────────────────────────────────
+
 export const SEEDDANCE_STANDARD_ENDPOINT =
   process.env.ARK_VIDEO_MODEL || "ep-20250813120833-g4mpb";
 
-// Multi-image "全能模式" endpoint — USER WILL PROVIDE THIS
-// Set ARK_VIDEO_OMNI_MODEL env var once the endpoint is confirmed
 export const SEEDDANCE_OMNI_ENDPOINT =
-  process.env.ARK_VIDEO_OMNI_MODEL || SEEDDANCE_STANDARD_ENDPOINT;
+  process.env.ARK_VIDEO_OMNI_MODEL || "ep-20260428161232-4znch";
 
 export const VIDEO_API_BASE =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
@@ -27,28 +29,35 @@ export const VIDEO_API_BASE =
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface SeedDanceImageRef {
-  /** base64 data URI or CDN URL */
   url: string;
-  /** role for multi-image mode. always "reference_image" for extra refs */
-  role?: "reference_image" | "main_image";
+}
+
+export interface SeedDanceVideoRef {
+  url: string;
+}
+
+export interface SeedDanceAudioRef {
+  url: string;
 }
 
 export interface SeedDanceVideoRequest {
-  /** text prompt (can contain @圖片1 @圖片2 … for multi-image mode) */
+  /** Text prompt describing the video */
   prompt: string;
-  /** main scene image (required for standard mode; included as first ref in omni mode) */
+  /** Primary scene image (used in both standard and omni mode) */
   mainImage?: SeedDanceImageRef;
-  /** additional reference images for omni mode (charA, charB, style…) */
+  /** Extra reference images for omni mode (charA, charB, style…) */
   referenceImages?: SeedDanceImageRef[];
-  /** video duration 4–15 seconds */
+  /** Optional reference video for omni mode */
+  referenceVideo?: SeedDanceVideoRef;
+  /** Optional reference audio for omni mode */
+  referenceAudio?: SeedDanceAudioRef;
+  /** Video duration in seconds (4–15) */
   duration?: number;
-  /** aspect ratio */
+  /** Aspect ratio — passed as top-level field */
   aspectRatio?: "16:9" | "9:16" | "1:1";
-  /** resolution */
-  resolution?: "720p" | "1080p";
-  /** keep camera fixed */
-  cameraFixed?: boolean;
-  /** use omni (multi-image) mode instead of standard single-image mode */
+  /** Whether to generate AI audio. Default true for omni, false for standard */
+  generateAudio?: boolean;
+  /** Use omni multi-image endpoint */
   useOmniMode?: boolean;
 }
 
@@ -60,10 +69,6 @@ export interface SeedDanceVideoResult {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-/**
- * Auto-crop image buffer to an aspect ratio within the allowed [0.40, 2.50] range
- * that SeedDance expects.
- */
 async function normalizeImageBuffer(input: Buffer): Promise<Buffer> {
   const MIN_RATIO = 0.4;
   const MAX_RATIO = 2.5;
@@ -85,9 +90,6 @@ async function normalizeImageBuffer(input: Buffer): Promise<Buffer> {
   return input;
 }
 
-/**
- * Fetch a URL and convert to normalised base64 data URI.
- */
 export async function urlToBase64(url: string): Promise<string> {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Failed to fetch image ${url}: ${res.status}`);
@@ -96,9 +98,6 @@ export async function urlToBase64(url: string): Promise<string> {
   return `data:image/jpeg;base64,${normalised.toString("base64")}`;
 }
 
-/**
- * Convert a raw Buffer to normalised base64 data URI.
- */
 export async function bufferToBase64(buf: Buffer): Promise<string> {
   const normalised = await normalizeImageBuffer(buf);
   return `data:image/jpeg;base64,${normalised.toString("base64")}`;
@@ -106,25 +105,22 @@ export async function bufferToBase64(buf: Buffer): Promise<string> {
 
 // ─── Core client ─────────────────────────────────────────────────────────────
 
-/**
- * Submit a SeedDance video generation task and poll until it completes.
- * Returns the video URL.
- */
 export async function generateSeedDanceVideo(
   req: SeedDanceVideoRequest
 ): Promise<SeedDanceVideoResult> {
   const apiKey = process.env.ARK_API_KEY;
   if (!apiKey) throw new Error("ARK_API_KEY environment variable is not set");
 
-  const model = req.useOmniMode ? SEEDDANCE_OMNI_ENDPOINT : SEEDDANCE_STANDARD_ENDPOINT;
+  const isOmni = req.useOmniMode ?? false;
+  const model = isOmni ? SEEDDANCE_OMNI_ENDPOINT : SEEDDANCE_STANDARD_ENDPOINT;
 
-  // ── Build content array ───────────────────────────────────────────────────
+  // ── Build content array ────────────────────────────────────────────────────
   const contentItems: any[] = [];
 
-  if (req.useOmniMode) {
-    // Omni / multi-image mode:
-    // Images go first (mainImage as first ref, then additional refs), then prompt text.
-    // Prompt can reference images as @圖片1, @圖片2 … matching insertion order.
+  if (isOmni) {
+    // Omni mode: text prompt first, then all reference images, optional video/audio refs
+    contentItems.push({ type: "text", text: req.prompt });
+
     if (req.mainImage) {
       contentItems.push({
         type: "image_url",
@@ -132,6 +128,7 @@ export async function generateSeedDanceVideo(
         role: "reference_image",
       });
     }
+
     for (const ref of req.referenceImages ?? []) {
       contentItems.push({
         type: "image_url",
@@ -139,21 +136,25 @@ export async function generateSeedDanceVideo(
         role: "reference_image",
       });
     }
-    // Build prompt with flags
-    let promptText = req.prompt;
-    if (req.duration) promptText += ` --duration ${req.duration}`;
-    if (req.cameraFixed !== undefined) promptText += ` --camerafixed ${req.cameraFixed}`;
-    if (req.resolution) promptText += ` --resolution ${req.resolution}`;
-    if (req.aspectRatio) promptText += ` --ratio ${req.aspectRatio}`;
-    contentItems.push({ type: "text", text: promptText });
+
+    if (req.referenceVideo) {
+      contentItems.push({
+        type: "video_url",
+        video_url: { url: req.referenceVideo.url },
+        role: "reference_video",
+      });
+    }
+
+    if (req.referenceAudio) {
+      contentItems.push({
+        type: "audio_url",
+        audio_url: { url: req.referenceAudio.url },
+        role: "reference_audio",
+      });
+    }
   } else {
-    // Standard mode: text first, then optional main image
-    let promptText = req.prompt;
-    if (req.duration) promptText += ` --duration ${req.duration}`;
-    if (req.cameraFixed !== undefined) promptText += ` --camerafixed ${req.cameraFixed}`;
-    if (req.resolution) promptText += ` --resolution ${req.resolution}`;
-    if (req.aspectRatio) promptText += ` --ratio ${req.aspectRatio}`;
-    contentItems.push({ type: "text", text: promptText });
+    // Standard mode: text first, then main image (no extra refs)
+    contentItems.push({ type: "text", text: req.prompt });
 
     if (req.mainImage) {
       contentItems.push({
@@ -163,15 +164,31 @@ export async function generateSeedDanceVideo(
     }
   }
 
-  // ── Create task ───────────────────────────────────────────────────────────
+  // ── Build request body ─────────────────────────────────────────────────────
+  const body: any = {
+    model,
+    content: contentItems,
+    watermark: false,
+  };
+
+  // ratio, duration, generate_audio are top-level fields (new API format)
+  if (req.aspectRatio) body.ratio = req.aspectRatio;
+  if (req.duration) body.duration = req.duration;
+  if (isOmni) {
+    body.generate_audio = req.generateAudio ?? true;
+  }
+
+  // ── Submit task ────────────────────────────────────────────────────────────
   const startTime = Date.now();
+  console.log(`[SeedDance] Submitting task | model=${model} | omni=${isOmni} | ratio=${req.aspectRatio} | duration=${req.duration}s`);
+
   const createRes = await fetch(VIDEO_API_BASE, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model, content: contentItems }),
+    body: JSON.stringify(body),
   });
 
   if (!createRes.ok) {
@@ -181,12 +198,12 @@ export async function generateSeedDanceVideo(
 
   const createResult = await createRes.json();
   const taskId: string = createResult.id;
-  if (!taskId) throw new Error("SeedDance: no task ID returned");
+  if (!taskId) throw new Error(`SeedDance: no task ID returned. Response: ${JSON.stringify(createResult)}`);
 
-  console.log(`[SeedDance] Task created: ${taskId} | model=${model} | omni=${!!req.useOmniMode}`);
+  console.log(`[SeedDance] Task created: ${taskId}`);
 
-  // ── Poll for result ───────────────────────────────────────────────────────
-  const MAX_ATTEMPTS = 180;
+  // ── Poll for result ────────────────────────────────────────────────────────
+  const MAX_ATTEMPTS = 180; // 15 minutes max (5s intervals)
   let videoUrl: string | null = null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -208,6 +225,7 @@ export async function generateSeedDanceVideo(
     console.log(`[SeedDance] Poll ${attempt}: status=${poll.status}`);
 
     if (poll.status === "succeeded") {
+      // Extract video URL from response
       if (poll.content?.video_url && typeof poll.content.video_url === "string") {
         videoUrl = poll.content.video_url.replace(/&amp;/g, "&");
       } else if (Array.isArray(poll.content)) {
@@ -217,14 +235,16 @@ export async function generateSeedDanceVideo(
             break;
           }
         }
+      } else if (poll.content?.video?.url) {
+        videoUrl = poll.content.video.url.replace(/&amp;/g, "&");
       }
       break;
     } else if (poll.status === "failed") {
-      throw new Error(poll.error?.message || "SeedDance: task failed");
+      throw new Error(poll.error?.message || `SeedDance: task ${taskId} failed`);
     }
   }
 
-  if (!videoUrl) throw new Error("SeedDance: timed out or no video URL returned");
+  if (!videoUrl) throw new Error("SeedDance: timed out waiting for video");
 
   return {
     taskId,

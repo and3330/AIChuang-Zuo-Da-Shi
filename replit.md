@@ -19,7 +19,8 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ## API Configuration
 - Image generation: Seedream 5.0 model (endpoint: ep-20251223142939-njrkd)
-- Video generation: SeedDance 2.0 model (endpoint: ep-20250813120833-g4mpb)
+- Video generation standard: SeedDance 2.0 model (endpoint: ep-20250813120833-g4mpb)
+- Video generation omni (全能模式): ep-20260428161232-4znch (ARK_VIDEO_OMNI_MODEL env var)
 - Environment secrets: ARK_API_KEY, ARK_TEXT_TO_IMAGE_API_KEY
 
 ## System Architecture
@@ -63,7 +64,8 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - **account.tsx**: User profile, credit top-up, pricing info (exports NavigationHeader)
 - **transactions.tsx**: Transaction history with type badges
 - **admin.tsx**: Admin dashboard - user management, credit adjustment, stats overview, generation logs, customer chat
-- **Routing**: wouter (/, /account, /transactions, /admin)
+- **drama.tsx**: Drama Studio page (漫劇工作室)
+- **Routing**: wouter (/, /account, /transactions, /admin, /drama)
 - **State**: TanStack Query v5 for server state
 - **UI**: shadcn/ui + Tailwind CSS
 
@@ -81,8 +83,10 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - server/storage.ts - IStorage interface and DatabaseStorage implementation
 - server/routes.ts - All API routes
 - server/index.ts - Express server setup with session config
+- server/seedDanceV2.ts - SeedDance 2.0 multi-image video client
 - client/src/App.tsx - Auth flow, useUser hook, routing
 - client/src/pages/home.tsx - Main generation interface
+- client/src/pages/drama.tsx - Drama Studio (漫劇工作室)
 - client/src/pages/account.tsx - Account management, NavigationHeader component
 - client/src/pages/transactions.tsx - Transaction history
 - client/src/pages/admin.tsx - Admin dashboard
@@ -120,16 +124,20 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Users table has telegramChatId field for account linking
 - Environment secret: TELEGRAM_BOT_TOKEN
 
-### Drama Studio 漫劇工作室 (NEW - replaces Story Mode)
+### Drama Studio 漫劇工作室
 - **Route**: /drama (separate page from home.tsx)
 - **DB Tables**:
-  - `dramaProjects`: id, userId, title, genre, characterAName/Url, characterBName/Url, styleImageUrls (text[]), sceneSize, episodeCount, status, createdAt, updatedAt
+  - `dramaProjects`: id, userId, title, genre, characterAName, characterAUrls (text[]), characterBName, characterBUrls (text[]), styleImageUrls (text[]), sceneSize, episodeCount, status, createdAt, updatedAt
   - `dramaEpisodes`: id, projectId, userId, episodeNumber, title, scenes (JSON string), globalSeed, status, creditsUsed, errorMessage, createdAt, updatedAt
 - **DramaScene type**: { id, sceneNumber, title, description, dialogue, cameraMovement, useCharA, useCharB, sceneRefImageUrl, imageUrl, bunnyUrl, imageStatus, videoUrl, videoBunnyUrl, videoStatus, videoDuration, videoResolution }
 - **API Routes**: Full CRUD for projects + episodes, batch generate images, regenerate single scene, replace scene image, animate scene
-- **Backend files**: server/seedDanceV2.ts (SeedDance 2.0 multi-image client), processDramaEpisode() + regenerateDramaScene() + animateDramaScene() in routes.ts
+- **Backend files**: server/seedDanceV2.ts (SeedDance 2.0 client), processDramaEpisode() + regenerateDramaScene() + animateDramaScene() in routes.ts
+- **SeedDance 2.0 全能模式**: endpoint ep-20260428161232-4znch (ARK_VIDEO_OMNI_MODEL)
+  - API format: top-level `ratio`, `duration`, `watermark: false`, `generate_audio` fields
+  - Supports reference_image, reference_video, reference_audio content types
+  - Omni mode auto-loads characterAUrls[0] + characterBUrls[0] + scene.sceneRefImageUrl as reference images
 - **Pricing**: 3 credits/scene image; video same as standard (720P 3.4/sec, 1080P 6.8/sec)
-- **Frontend**: client/src/pages/drama.tsx — 3-panel: project list sidebar, episode list, episode editor (3-step: ①設定 ②分鏡 ③生成)
+- **Frontend**: 3-panel layout — project list sidebar, episode list, episode editor (3-step: ①設定 ②分鏡 ③生成)
 - **Navigation**: "🎬 漫劇工作室" link in home.tsx 3rd tab + NavigationHeader
 
 ### Story Mode (故事模式) — Legacy
@@ -137,6 +145,7 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - UI removed from home.tsx tabs (replaced by drama studio link)
 
 ## Recent Changes
+- Configured SeedDance 2.0 全能模式: endpoint ep-20260428161232-4znch set as ARK_VIDEO_OMNI_MODEL; updated seedDanceV2.ts to use new API format (top-level ratio/duration/watermark); added character reference image support in animateDramaScene
 - Added Drama Studio 漫劇工作室: new /drama page replacing故事模式 tab; dramaProjects + dramaEpisodes DB tables; SeedDance 2.0 multi-image client (seedDanceV2.ts); full CRUD API; 3-step episode editor workflow
 - Fixed session store: switched from MemoryStore to PostgreSQL-backed sessions (connect-pg-simple, createTableIfMissing: true), preventing session loss on restart
 - Fixed session cookie: added httpOnly, sameSite: "lax", secure: production-only settings
@@ -147,8 +156,6 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Fixed admin dashboard cost calculation: dynamic recalculation using correct API pricing formulas
 - Fixed chat system: changed req.user!.id to req.session.userId! for all chat endpoints
 - Integrated Bunny.net CDN storage: all generated images/videos auto-uploaded to per-user folders, API returns CDN URLs
-- Removed video multi-image reference (API doesn't support yet, will re-add when SeedDance 2.0 API fully launches)
-- Fixed image-to-image sequential generation display bug: now shows all generated images in grid (was only showing 1)
 - Added email verification for registration using Resend (6-digit code, 10min expiry, prevents duplicate email registration)
 - Changed video pricing to proportional per-second model: 6.8 credits/sec (API cost × 5), duration slider 2-12 seconds
 - Added text-to-video generation (no image required)

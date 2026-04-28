@@ -3587,15 +3587,35 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         "9:16": "9:16", "16:9": "16:9", "1:1": "1:1",
       };
       const aspectRatio = aspectRatioMap[project.sceneSize ?? "9:16"] || "9:16";
+      const isOmni = opts.useOmniMode ?? false;
+
+      // Build reference images for omni mode: character A → character B → scene ref
+      const referenceImages: { url: string }[] = [];
+      if (isOmni) {
+        const charAUrl = (project.characterAUrls ?? [])[0];
+        if (charAUrl) {
+          try { referenceImages.push({ url: await urlToBase64(charAUrl) }); }
+          catch (e) { console.warn("[Drama] Failed to load charA image:", e); }
+        }
+        const charBUrl = (project.characterBUrls ?? [])[0];
+        if (charBUrl) {
+          try { referenceImages.push({ url: await urlToBase64(charBUrl) }); }
+          catch (e) { console.warn("[Drama] Failed to load charB image:", e); }
+        }
+        if (scene.sceneRefImageUrl) {
+          try { referenceImages.push({ url: await urlToBase64(scene.sceneRefImageUrl) }); }
+          catch (e) { console.warn("[Drama] Failed to load scene ref image:", e); }
+        }
+        console.log(`[Drama] Omni mode: ${referenceImages.length} extra reference images`);
+      }
 
       const result = await generateSeedDanceVideo({
         prompt: videoPrompt,
         mainImage: { url: mainImageBase64 },
+        referenceImages: isOmni ? referenceImages : undefined,
         duration: opts.duration,
         aspectRatio,
-        resolution: opts.resolution as "720p" | "1080p",
-        cameraFixed: false,
-        useOmniMode: opts.useOmniMode ?? false,
+        useOmniMode: isOmni,
       });
 
       let videoBunnyUrl: string | undefined;

@@ -49,6 +49,7 @@ defaultBucketID = "replit-objstore-dc18d145-1463-4301-b961-549c5a8950ef"
 
 [userenv.shared]
 ADMIN_EMAILS = "andy@cms-edu.com"
+ARK_VIDEO_OMNI_MODEL = "ep-20260428161232-4znch"
 
 [userenv.production]
 GOOGLE_REDIRECT_URI = "https://cmai-marker.com/api/auth/google/callback"

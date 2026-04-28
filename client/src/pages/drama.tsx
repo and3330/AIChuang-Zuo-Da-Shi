@@ -980,6 +980,24 @@ function EpisodeView({
                   className="w-full accent-purple-500" />
                 <div className="flex justify-between text-xs text-gray-400 mt-1"><span>4秒</span><span>12秒</span></div>
               </div>
+              <div
+                onClick={() => setAnimUseOmni(!animUseOmni)}
+                className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${animUseOmni ? "border-emerald-500 bg-emerald-50" : "border-gray-200 hover:border-emerald-200"}`}
+              >
+                <div>
+                  <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                    🌟 SeedDance 2.0 全能模式
+                    <span className={`text-xs px-1.5 py-0.5 rounded-full ${animUseOmni ? "bg-emerald-200 text-emerald-800" : "bg-gray-100 text-gray-500"}`}>
+                      {animUseOmni ? "啟用" : "關閉"}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 mt-0.5">使用多圖參考，自動帶入角色A/B保持一致性</p>
+                </div>
+                <div className={`w-10 h-6 rounded-full transition-all relative flex-shrink-0 ${animUseOmni ? "bg-emerald-500" : "bg-gray-300"}`}>
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${animUseOmni ? "left-5" : "left-1"}`} />
+                </div>
+              </div>
+
               <div>
                 <label className="text-sm font-medium text-gray-700 mb-2 block">解析度</label>
                 <div className="grid grid-cols-2 gap-3">
