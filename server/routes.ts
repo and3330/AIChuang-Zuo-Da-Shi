@@ -3078,6 +3078,130 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     }
   });
 
+  // ─── AI Script Generator (Claude) ─────────────────────────────────────────
+  app.post("/api/drama/ai-generate-script", requireAuth, async (req, res) => {
+    try {
+      const { pitch, sceneCount, genre, characterAName, characterBName } = req.body as {
+        pitch: string;
+        sceneCount: number;
+        genre?: string;
+        characterAName?: string;
+        characterBName?: string;
+      };
+
+      if (!pitch || !pitch.trim()) {
+        return res.status(400).json({ error: "請提供劇情概念" });
+      }
+      const count = Math.max(2, Math.min(12, Number(sceneCount) || 6));
+
+      const charA = characterAName?.trim() || "角色A";
+      const charB = characterBName?.trim() || "角色B";
+      const genreText = genre?.trim() || "短劇";
+
+      const prompt = `你是 SeedDance 2.0 與 Seedream 5.0 的資深短劇分鏡編劇，熟悉抖音/TikTok 直式短劇（漫劇）的爆款敘事節奏與 BytePlus ARK 圖生影片的提示詞最佳實踐。
+
+請依下列概念，產出一集完整 ${count} 幕的短劇分鏡腳本：
+
+【劇情概念】${pitch.trim()}
+【類型】${genreText}
+【角色 A 名稱】${charA}
+【角色 B 名稱】${charB}
+【總幕數】${count}
+
+撰寫規則：
+1. 嚴格遵守「起承轉合」節奏：第 1 幕建立鉤子（hook，前 3 秒抓住觀眾）；中段加深衝突；最後 1-2 幕高潮反轉並收尾
+2. 每幕的 description 用繁體中文，60-120 字，須包含：
+   - 場景地點（具體：高級辦公室、雨夜街角、咖啡廳窗邊…）
+   - 角色動作與表情（不寫角色名，寫「他/她」或具體稱謂）
+   - 光線與氛圍（黃金時刻、霓虹冷光、燭光、逆光剪影…）
+   - 構圖（特寫、過肩、低角度、俯視…）
+3. dialogue 寫一句最具戲劇張力的台詞（10-30 字），可以為空字串
+4. cameraMovement 從以下選一個：none / push_in / pull_out / pan_left / pan_right / tilt_up / tilt_down / orbit / zoom_in / zoom_out / static
+5. title 用 4-8 字精煉幕名（如：電梯初遇、雨中告白、真相揭穿）
+6. 同一集中的場景需有畫面變化（不同地點、不同光線、不同情緒）
+7. useCharA 與 useCharB：依劇情判斷該幕是否需要該角色出現（boolean）
+
+請只回傳 JSON，不要任何其他說明文字：
+{
+  "scenes": [
+    {
+      "title": "幕名稱",
+      "description": "場景描述...",
+      "dialogue": "一句台詞或空字串",
+      "cameraMovement": "push_in",
+      "useCharA": true,
+      "useCharB": true
+    }
+  ]
+}`;
+
+      const message = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 4096,
+        messages: [{ role: "user", content: prompt }],
+      });
+
+      // Combine all text blocks (model may return multiple text segments)
+      const allText = message.content
+        .filter((b: any) => b.type === "text")
+        .map((b: any) => b.text)
+        .join("\n");
+
+      // Try multiple extraction strategies
+      const tryParse = (s: string): any | null => { try { return JSON.parse(s); } catch { return null; } };
+      const fencedMatch = allText.match(/```(?:json)?\s*([\s\S]*?)```/);
+      const candidates: string[] = [];
+      if (fencedMatch?.[1]) candidates.push(fencedMatch[1].trim());
+      // Greedy match for largest JSON object containing "scenes"
+      const greedyMatch = allText.match(/\{[\s\S]*"scenes"[\s\S]*\}/);
+      if (greedyMatch) candidates.push(greedyMatch[0]);
+      const firstMatch = allText.match(/\{[\s\S]*\}/);
+      if (firstMatch) candidates.push(firstMatch[0]);
+
+      let parsed: any = null;
+      for (const c of candidates) {
+        parsed = tryParse(c);
+        if (parsed && Array.isArray(parsed.scenes)) break;
+      }
+      if (!parsed || !Array.isArray(parsed.scenes)) {
+        console.error("AI script JSON parse failed. Raw response:", allText.slice(0, 500));
+        return res.status(500).json({ error: "AI 回應格式錯誤，請再試一次" });
+      }
+
+      // Whitelist validation
+      const validCameras = new Set([
+        "push_in", "pull_out", "pan_left", "pan_right", "tilt_up", "tilt_down",
+        "orbit", "zoom_in", "zoom_out", "static",
+        // Tolerate frontend-style camera values too
+        "slow push in, gentle light", "slow zoom out, fade out",
+        "pan left, smooth", "pan right, smooth", "tilt up, reveal", "tilt down, settle",
+        "orbit around subject", "static, fixed camera", "handheld, slight shake", "drone aerial shot",
+      ]);
+
+      const scenes = (parsed.scenes as any[]).slice(0, count).map((s: any, i: number) => {
+        const title = String(s?.title ?? "").trim().slice(0, 30) || `第 ${i + 1} 幕`;
+        const description = String(s?.description ?? "").trim().slice(0, 500);
+        const dialogue = String(s?.dialogue ?? "").trim().slice(0, 100);
+        const cmRaw = String(s?.cameraMovement ?? "").trim();
+        const cameraMovement = cmRaw === "none" || !validCameras.has(cmRaw) ? "" : cmRaw;
+        return {
+          title, description, dialogue, cameraMovement,
+          useCharA: s?.useCharA !== false,
+          useCharB: s?.useCharB !== false,
+        };
+      });
+
+      if (scenes.length === 0) {
+        return res.status(500).json({ error: "AI 沒有產出有效幕，請更具體描述劇情" });
+      }
+
+      res.json({ scenes });
+    } catch (e: any) {
+      console.error("AI script generation error:", e);
+      res.status(500).json({ error: e.message || "AI 生成失敗" });
+    }
+  });
+
   // ─── Episode Image Generation ─────────────────────────────────────────────
 
   app.post("/api/drama/episodes/:episodeId/generate-images", requireAuth, async (req, res) => {

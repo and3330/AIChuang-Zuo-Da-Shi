@@ -35,6 +35,149 @@ const SIZE_LABELS: Record<string, string> = {
   "1:1": "正方形 1:1",
 };
 
+// ─── Prompt Snippets Library (依 SeedDance 2.0 提示詞指南分類) ─────────────
+type SnippetCategory = {
+  key: string; emoji: string; label: string; color: string;
+  snippets: { label: string; text: string }[];
+};
+
+const PROMPT_SNIPPETS: SnippetCategory[] = [
+  {
+    key: "lighting", emoji: "💡", label: "光線氛圍", color: "#facc15",
+    snippets: [
+      { label: "黃金時刻", text: "黃金時刻溫暖斜陽光，金橘色調，柔和側光" },
+      { label: "霓虹冷光", text: "賽博龐克霓虹冷光，藍紫光斑反射在臉上" },
+      { label: "燭光", text: "暖黃燭光搖曳，臉部柔光，背景陰影" },
+      { label: "逆光剪影", text: "逆光剪影，背景過曝光暈，輪廓清晰" },
+      { label: "雨夜街燈", text: "雨夜路燈反光在濕潤路面，冷暖對比" },
+      { label: "晨光透窗", text: "晨光透過窗簾灑入，塵埃飄浮，柔焦" },
+      { label: "戲劇打光", text: "高反差電影打光，明暗強對比，硬光" },
+      { label: "辦公冷光", text: "辦公室白冷日光燈，理性科技感氛圍" },
+    ],
+  },
+  {
+    key: "camera", emoji: "🎬", label: "鏡頭運鏡", color: "#6366f1",
+    snippets: [
+      { label: "緩慢推進", text: "鏡頭緩慢推進，聚焦人物表情" },
+      { label: "拉遠揭示", text: "鏡頭緩慢拉遠，揭示更廣場景" },
+      { label: "特寫", text: "面部特寫，強調眼神情緒" },
+      { label: "過肩鏡頭", text: "過肩鏡頭，呈現對話張力" },
+      { label: "低角度", text: "低角度仰拍，營造氣場與壓迫感" },
+      { label: "俯視", text: "俯視鏡頭，強調孤獨感或全景" },
+      { label: "環繞", text: "鏡頭環繞主角，動感呈現" },
+      { label: "手持晃動", text: "手持晃動鏡頭，紀實感與緊張感" },
+    ],
+  },
+  {
+    key: "emotion", emoji: "😢", label: "情緒表現", color: "#f472b6",
+    snippets: [
+      { label: "憂鬱", text: "她眼眶泛紅，眼神空洞，低頭不語" },
+      { label: "震驚", text: "他瞳孔微縮，呼吸停頓，難以置信" },
+      { label: "曖昧", text: "兩人四目相接，呼吸交織，臉頰微紅" },
+      { label: "憤怒", text: "他緊握雙拳，咬牙切齒，目光如刀" },
+      { label: "甜蜜", text: "她嘴角上揚，眼神含笑，髮絲輕揚" },
+      { label: "緊張對峙", text: "兩人對峙，空氣凝結，眼神對視不退" },
+      { label: "決絕", text: "她決絕轉身，背影堅定，再不回頭" },
+      { label: "崩潰", text: "他蹲跪在地，雙手掩面，肩膀顫抖" },
+    ],
+  },
+  {
+    key: "scene", emoji: "🏠", label: "場景類型", color: "#22c55e",
+    snippets: [
+      { label: "高級辦公室", text: "現代化高級辦公室，落地窗俯瞰城市天際線" },
+      { label: "雨天街角", text: "雨夜霓虹街角，路面積水反射街燈" },
+      { label: "咖啡廳窗邊", text: "復古咖啡廳窗邊角落，木質吧台暖光" },
+      { label: "豪華車內", text: "黑色豪車後座，皮革座椅冷光照明" },
+      { label: "醫院走廊", text: "白色醫院長廊，冷光日光燈，空曠寂靜" },
+      { label: "海邊碼頭", text: "黃昏海邊碼頭，海風吹起髮絲，海浪拍岸" },
+      { label: "華麗宴會", text: "華麗宴會大廳，水晶吊燈，香檳塔" },
+      { label: "校園走廊", text: "陽光灑落的校園走廊，櫻花飄落，學生身影" },
+    ],
+  },
+  {
+    key: "style", emoji: "🎨", label: "畫面風格", color: "#a855f7",
+    snippets: [
+      { label: "電影感", text: "電影感寬銀幕構圖，戲劇性光影分級" },
+      { label: "韓劇氛圍", text: "韓劇浪漫氛圍，柔焦淡彩，唯美光暈" },
+      { label: "日漫風", text: "日系動漫風格，鮮明線條，鮮豔色彩" },
+      { label: "寫實插畫", text: "寫實插畫風格，細膩筆觸，光影豐富" },
+      { label: "復古港片", text: "復古港片美學，膠片顆粒感，霓虹色調" },
+      { label: "高級時尚", text: "高級時尚雜誌風格，精緻構圖，極簡奢華" },
+      { label: "黑白默劇", text: "黑白攝影，高反差，戲劇性陰影" },
+      { label: "魔幻神秘", text: "魔幻奇幻氛圍，魔法光粒，神秘色彩" },
+    ],
+  },
+];
+
+// ─── Drama Templates (預製短劇範本) ───────────────────────────────────────
+type DramaTemplate = {
+  key: string; emoji: string; title: string; genre: string; description: string;
+  scenes: Array<{ title: string; description: string; dialogue?: string; cameraMovement?: string }>;
+};
+
+const DRAMA_TEMPLATES: DramaTemplate[] = [
+  {
+    key: "ceo_love", emoji: "💼", title: "霸總愛情", genre: "愛情",
+    description: "霸道總裁愛上小助理的經典套路",
+    scenes: [
+      { title: "電梯初遇", description: "現代化高級辦公室電梯內，西裝筆挺的男主角低頭看手機，女主角抱著一疊文件慌張衝進電梯，兩人撞個正著文件散落一地。冷光打在兩人臉上，氣氛凝結。", dialogue: "對不起！我不是故意的…", cameraMovement: "slow push in, gentle light" },
+      { title: "辦公室對峙", description: "落地窗俯瞰城市夜景的辦公室，男主角坐在大班椅上，神色冷冽地看著站在桌前低頭的女主角。黃金時刻陽光穿過百葉窗，光影斑駁灑在兩人之間。", dialogue: "妳知道這份合約的重要性嗎？", cameraMovement: "orbit around subject" },
+      { title: "雨夜接送", description: "傾盆大雨的街頭，女主角獨自撐著破傘等公車，男主角的黑色豪車緩緩停下，車窗降下露出他擔憂的臉。霓虹燈光反射在濕潤路面。", dialogue: "上車，別淋濕了。", cameraMovement: "tilt up, reveal" },
+      { title: "餐廳告白", description: "高級法式餐廳包廂，燭光搖曳，男主角從口袋拿出小盒子，眼神溫柔卻緊張地看著女主角。背景虛化，焦點在兩人交握的手。", dialogue: "我認真的，妳願意嗎？", cameraMovement: "slow push in, gentle light" },
+      { title: "誤會分手", description: "男主角辦公室外走廊，女主角看到男主角和另一名美麗女子親密交談，瞬間心碎轉身奔跑。冷色調走廊燈光，背影孤獨。", dialogue: "原來我什麼都不是…", cameraMovement: "pan left, smooth" },
+      { title: "機場挽回", description: "機場登機口，女主角含淚拖行李準備離開，男主角衝破人群氣喘吁吁地抓住她的手，背景旅客模糊化。", dialogue: "別走！妳就是我的全部！", cameraMovement: "slow zoom out, fade out" },
+    ],
+  },
+  {
+    key: "campus", emoji: "🌸", title: "校園青春", genre: "愛情",
+    description: "陽光下的純愛校園戀曲",
+    scenes: [
+      { title: "教室相遇", description: "陽光透過窗戶灑入教室，櫻花瓣飄落，新轉學生女主角站在講台前自我介紹，男主角在窗邊位置抬頭驚訝地看著她。", dialogue: "大家好，請多多指教。", cameraMovement: "slow push in, gentle light" },
+      { title: "圖書館巧遇", description: "安靜的圖書館書架間，兩人同時伸手拿同一本書指尖相觸。陽光從高窗斜射，灰塵在光柱中飄浮。", dialogue: "啊！對不起…", cameraMovement: "static, fixed camera" },
+      { title: "操場奔跑", description: "黃昏操場跑道，男主角追上前面慢跑的女主角，並肩奔跑歡笑。夕陽金光灑在兩人身上，背景模糊。", dialogue: "妳跑得真快！", cameraMovement: "pan right, smooth" },
+      { title: "雨中共傘", description: "突如其來的午後雷陣雨，校園走廊外，男主角將傘傾向女主角，自己肩膀濕透。她臉頰泛紅低頭。", dialogue: "妳會感冒的…", cameraMovement: "slow zoom out, fade out" },
+      { title: "天台告白", description: "黃昏校園天台，男主角站在風中，女主角驚訝地走上來。橘紅色夕陽染滿天空，髮絲飛揚。", dialogue: "我喜歡妳，從第一眼開始。", cameraMovement: "orbit around subject" },
+      { title: "畢業典禮", description: "畢業典禮後的櫻花樹下，兩人穿著畢業服相擁而笑，櫻花瓣紛飛。柔焦溫暖光影，唯美如夢。", dialogue: "謝謝你，陪我度過最美的青春。", cameraMovement: "slow zoom out, fade out" },
+    ],
+  },
+  {
+    key: "revenge", emoji: "🔪", title: "復仇懸疑", genre: "懸疑",
+    description: "蛻變歸來的復仇之路",
+    scenes: [
+      { title: "悲慘往事", description: "陰暗潮濕地下室，年輕女主角蜷縮在角落啜泣，臉上有淚痕和傷痕。冷藍色月光從鐵窗縫隙灑入，氣氛陰鬱壓抑。", dialogue: "我絕不會放過你們…", cameraMovement: "slow push in, gentle light" },
+      { title: "華麗歸來", description: "三年後高級飯店大廳，蛻變後的女主角穿著黑色禮服緩緩走下樓梯，紅唇冷艷，眼神犀利。水晶吊燈閃爍，眾人側目。", dialogue: "好久不見，各位。", cameraMovement: "tilt up, reveal" },
+      { title: "首次交鋒", description: "高級餐廳包廂，女主角優雅地舉起紅酒杯，對面坐著當年的仇人，臉色驟變。燭光晃動，氣氛凝結。", dialogue: "你應該還記得我吧？", cameraMovement: "static, fixed camera" },
+      { title: "佈局陷阱", description: "深夜辦公室，女主角站在落地窗前看著城市夜景，手中握著關鍵證據U盤。冷光城市燈火映照，剪影神秘。", dialogue: "棋局已經開始了。", cameraMovement: "pan left, smooth" },
+      { title: "真相揭露", description: "豪華記者會現場，女主角站在台上將證據投影在大螢幕上，台下記者譁然騷動。鎂光燈閃爍。", dialogue: "這就是真相，無可辯駁。", cameraMovement: "slow zoom out, fade out" },
+      { title: "復仇結局", description: "雨夜頂樓天台，仇人跪地哀求，女主角冷冷俯視。背景閃電交加，雨水滂沱，氣氛壓迫。", dialogue: "晚了，這就是你的代價。", cameraMovement: "orbit around subject" },
+    ],
+  },
+  {
+    key: "isekai", emoji: "🌌", title: "穿越奇幻", genre: "奇幻",
+    description: "穿越異世界的奇幻冒險",
+    scenes: [
+      { title: "意外穿越", description: "現代都市夜晚街頭，女主角過馬路時被閃電擊中，身體發出金光被吸入時空漩渦。背景城市光線扭曲變形。", dialogue: "這…這是怎麼回事？", cameraMovement: "orbit around subject" },
+      { title: "異世界醒來", description: "古樸森林空地，女主角穿著現代服裝醒來，周圍是高聳古樹和奇幻光點。陽光透過樹葉灑下斑駁光影，神秘氛圍。", dialogue: "我在哪裡…", cameraMovement: "tilt up, reveal" },
+      { title: "邂逅王子", description: "森林小溪邊，神秘銀髮男子騎白馬出現，目光驚訝地看著倒在地上的女主角。藍紫色魔法光點圍繞。", dialogue: "妳是什麼人？", cameraMovement: "slow push in, gentle light" },
+      { title: "魔法覺醒", description: "古老石塔頂端，女主角伸手間爆發出耀眼金色光芒，魔法符文圍繞她旋轉。背景天空閃電轟鳴。", dialogue: "原來這就是我的力量！", cameraMovement: "slow zoom out, fade out" },
+      { title: "決戰魔王", description: "崩塌的城堡廢墟戰場，女主角和男主角並肩持劍對峙巨大魔王陰影。火焰魔法光環四射。", dialogue: "為了這個世界！", cameraMovement: "orbit around subject" },
+      { title: "回到現實", description: "現代都市公園長椅，女主角醒來陽光燦爛，恍若一場夢。低頭發現手中握著異世界的銀色項鍊。", dialogue: "原來…不是夢…", cameraMovement: "slow zoom out, fade out" },
+    ],
+  },
+  {
+    key: "office", emoji: "🏢", title: "職場逆襲", genre: "其他",
+    description: "小職員的職場逆襲記",
+    scenes: [
+      { title: "被嘲諷", description: "現代辦公室茶水間，女主角端著咖啡被同事們嘲笑奚落，她低頭強忍淚水。冷白色日光燈，背景虛化。", dialogue: "她連這種小事都做不好。", cameraMovement: "static, fixed camera" },
+      { title: "深夜加班", description: "空無一人的辦公室深夜，女主角獨自在電腦前認真工作，桌面只有一盞檯燈和一杯冷掉的咖啡。", dialogue: "我一定要證明自己。", cameraMovement: "slow push in, gentle light" },
+      { title: "提案展示", description: "高級會議室，女主角自信地站在投影幕前展示提案，老闆和高管們專注聆聽。落地窗外城市天際線。", dialogue: "這是我準備的方案。", cameraMovement: "orbit around subject" },
+      { title: "拿下大案", description: "辦公室角落，女主角接到電話露出震驚又激動的表情，手中緊握合約。陽光從窗外灑入背影輝煌。", dialogue: "真的嗎？我們拿下了！", cameraMovement: "slow zoom out, fade out" },
+      { title: "晉升宣布", description: "公司大會議室，老闆在台上宣布女主角晉升，全場鼓掌，先前嘲諷她的同事們臉色尷尬。", dialogue: "恭喜妳，新任部門總監。", cameraMovement: "tilt up, reveal" },
+      { title: "夜景敬酒", description: "高樓頂層酒吧落地窗前，女主角獨自舉起香檳杯，俯瞰整座城市燈火。霓虹倒映在杯中，氣場全開。", dialogue: "這只是開始。", cameraMovement: "pan left, smooth" },
+    ],
+  },
+];
+
 function getSceneImageUrl(s: DramaScene) { return s.bunnyUrl || s.imageUrl || null; }
 function getSceneVideoUrl(s: DramaScene) { return s.videoBunnyUrl || s.videoUrl || null; }
 
@@ -312,6 +455,7 @@ function ProjectView({
   const [pCharAUrls, setPCharAUrls] = useState<string[]>([]);
   const [pCharBUrls, setPCharBUrls] = useState<string[]>([]);
   const [pStyleUrls, setPStyleUrls] = useState<string[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
 
   const { data: project, isLoading: loadingProject } = useQuery<DramaProject>({
     queryKey: ["/api/drama/projects", projectId],
@@ -366,13 +510,26 @@ function ProjectView({
   });
 
   const handleCreateEpisode = () => {
-    const scenes: DramaScene[] = Array.from({ length: newEpSceneCount }, (_, i) => ({
-      id: nid(), sceneNumber: i + 1, title: `第 ${i + 1} 幕`,
-      description: "", dialogue: "", cameraMovement: "",
-      useCharA: true, useCharB: true, imageStatus: "pending",
-    }));
+    const tpl = selectedTemplate ? DRAMA_TEMPLATES.find(t => t.key === selectedTemplate) : null;
+    let scenes: DramaScene[];
+
+    if (tpl) {
+      scenes = tpl.scenes.map((s, i) => ({
+        id: nid(), sceneNumber: i + 1,
+        title: s.title, description: s.description,
+        dialogue: s.dialogue || "", cameraMovement: s.cameraMovement || "",
+        useCharA: true, useCharB: true, imageStatus: "pending",
+      }));
+    } else {
+      scenes = Array.from({ length: newEpSceneCount }, (_, i) => ({
+        id: nid(), sceneNumber: i + 1, title: `第 ${i + 1} 幕`,
+        description: "", dialogue: "", cameraMovement: "",
+        useCharA: true, useCharB: true, imageStatus: "pending",
+      }));
+    }
+
     createEpisodeMutation.mutate({
-      title: newEpTitle || `第 ${episodes.length + 1} 集`,
+      title: newEpTitle || tpl?.title || `第 ${episodes.length + 1} 集`,
       scenes, episodeNumber: episodes.length + 1,
     });
   };
@@ -506,24 +663,62 @@ function ProjectView({
       </Modal>
 
       {/* New Episode Modal */}
-      <Modal open={showNewEpisode} onClose={() => setShowNewEpisode(false)} title="新增集數">
+      <Modal open={showNewEpisode} onClose={() => { setShowNewEpisode(false); setSelectedTemplate(null); }} title="新增集數">
         <div className="space-y-4">
           <div>
             <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">集數標題</label>
             <DarkInput value={newEpTitle} onChange={setNewEpTitle} placeholder={`第 ${episodes.length + 1} 集`} />
           </div>
+
+          {/* Template picker */}
           <div>
-            <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">
-              場景數量：<span className="text-[#a78bfa] font-bold">{newEpSceneCount} 幕</span>
-              <span className="text-[#444] ml-2">（{newEpSceneCount * 3} 積分）</span>
+            <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block flex items-center justify-between">
+              <span>📚 從範本開始（選填）</span>
+              {selectedTemplate && (
+                <button onClick={() => setSelectedTemplate(null)} className="text-[10px] text-[#a78bfa] hover:text-[#6366f1] normal-case tracking-normal">清除</button>
+              )}
             </label>
-            <input type="range" min={2} max={12} value={newEpSceneCount}
-              onChange={e => setNewEpSceneCount(Number(e.target.value))}
-              className="w-full accent-[#6366f1]" />
-            <div className="flex justify-between text-xs text-[#444] mt-1"><span>2 幕</span><span>12 幕</span></div>
+            <div className="grid grid-cols-2 gap-2">
+              {DRAMA_TEMPLATES.map(t => {
+                const active = selectedTemplate === t.key;
+                return (
+                  <button key={t.key} onClick={() => setSelectedTemplate(t.key)}
+                    className={`p-2.5 rounded-xl border text-left transition-all ${active ? "border-[#6366f1] bg-[#6366f1]/10" : "border-[#1a1a2e] bg-[#0a0a14] hover:border-[#6366f1]/40"}`}>
+                    <div className="flex items-center gap-1.5 mb-0.5">
+                      <span className="text-base">{t.emoji}</span>
+                      <span className={`text-xs font-semibold ${active ? "text-[#a78bfa]" : "text-[#aaa]"}`}>{t.title}</span>
+                    </div>
+                    <p className="text-[10px] text-[#555] leading-snug line-clamp-2">{t.description}</p>
+                    <p className="text-[10px] text-[#444] mt-1">共 {t.scenes.length} 幕 · {t.scenes.length * 3} 積分</p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
+
+          {/* Scene count slider (disabled when template selected) */}
+          {!selectedTemplate && (
+            <div>
+              <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">
+                場景數量：<span className="text-[#a78bfa] font-bold">{newEpSceneCount} 幕</span>
+                <span className="text-[#444] ml-2">（{newEpSceneCount * 3} 積分）</span>
+              </label>
+              <input type="range" min={2} max={12} value={newEpSceneCount}
+                onChange={e => setNewEpSceneCount(Number(e.target.value))}
+                className="w-full accent-[#6366f1]" />
+              <div className="flex justify-between text-xs text-[#444] mt-1"><span>2 幕</span><span>12 幕</span></div>
+              <p className="text-[10px] text-[#555] mt-2">💡 建立後可在編輯器中用「🤖 AI 寫腳本」一鍵生成所有幕的內容</p>
+            </div>
+          )}
+
+          {selectedTemplate && (
+            <div className="bg-[#6366f1]/5 border border-[#6366f1]/20 rounded-lg p-2.5 text-[11px] text-[#a78bfa]">
+              ✨ 將以「{DRAMA_TEMPLATES.find(t => t.key === selectedTemplate)?.title}」範本建立完整腳本，建立後可隨時微調
+            </div>
+          )}
+
           <DarkButton onClick={handleCreateEpisode} disabled={createEpisodeMutation.isPending} className="w-full justify-center">
-            {createEpisodeMutation.isPending ? "建立中..." : "建立集數並開始編輯"}
+            {createEpisodeMutation.isPending ? "建立中..." : selectedTemplate ? "✨ 套用範本並建立" : "建立空白集數"}
           </DarkButton>
         </div>
       </Modal>
@@ -671,6 +866,137 @@ function SceneFlowCanvas({
   );
 }
 
+// ─── AI Script Generation Dialog ──────────────────────────────────────────────
+function AIScriptDialog({
+  open, onClose, onApply, defaultSceneCount, genre, characterAName, characterBName,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onApply: (scenes: Array<{ title: string; description: string; dialogue: string; cameraMovement: string; useCharA: boolean; useCharB: boolean }>) => void;
+  defaultSceneCount: number;
+  genre?: string;
+  characterAName?: string;
+  characterBName?: string;
+}) {
+  const { toast } = useToast();
+  const [pitch, setPitch] = useState("");
+  const [count, setCount] = useState(defaultSceneCount);
+
+  useEffect(() => { if (open) { setCount(defaultSceneCount); } }, [open, defaultSceneCount]);
+
+  const aiMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/drama/ai-generate-script", {
+      pitch, sceneCount: count, genre, characterAName, characterBName,
+    }).then(r => r.json()),
+    onSuccess: (data) => {
+      if (!data.scenes || data.scenes.length === 0) {
+        toast({ title: "AI 沒有產出有效腳本", variant: "destructive" });
+        return;
+      }
+      onApply(data.scenes);
+      toast({ title: `AI 已生成 ${data.scenes.length} 幕腳本！` });
+      setPitch("");
+      onClose();
+    },
+    onError: (e: any) => toast({ title: "AI 生成失敗", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title="🤖 AI 智慧腳本助手">
+      <div className="space-y-4">
+        <div className="bg-[#6366f1]/5 border border-[#6366f1]/20 rounded-xl p-3 text-xs text-[#a78bfa] leading-relaxed">
+          💡 用一兩句話描述劇情概念，AI 會依 SeedDance 2.0 提示詞最佳實踐自動產出整集分鏡（含場景描述、台詞、運鏡）。
+        </div>
+
+        <div>
+          <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">劇情概念</label>
+          <DarkTextarea
+            value={pitch} onChange={setPitch}
+            placeholder={`例：${genre === "懸疑" ? "失憶女記者調查三年前的命案，意外發現真兇是自己的未婚夫" : "霸道總裁愛上小助理，第一次在電梯相遇文件灑滿地"}`}
+            rows={4}
+          />
+          <p className="text-[10px] text-[#444] mt-1.5">💬 越具體越好（角色、衝突、地點、結局想法都可以加進來）</p>
+        </div>
+
+        <div>
+          <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">
+            幕數：<span className="text-[#a78bfa] font-bold">{count} 幕</span>
+          </label>
+          <input type="range" min={2} max={12} value={count}
+            onChange={e => setCount(Number(e.target.value))} className="w-full accent-[#6366f1]" />
+          <div className="flex justify-between text-xs text-[#444] mt-1"><span>2 幕</span><span>12 幕</span></div>
+        </div>
+
+        {(characterAName || characterBName) && (
+          <div className="bg-[#111122] rounded-lg p-2.5 text-[11px] text-[#666] space-y-0.5">
+            {characterAName && <div>🎭 角色 A：<span className="text-[#a78bfa]">{characterAName}</span></div>}
+            {characterBName && <div>🎭 角色 B：<span className="text-[#fbbf24]">{characterBName}</span></div>}
+          </div>
+        )}
+
+        <div className="bg-[#facc15]/5 border border-[#facc15]/20 rounded-lg p-2.5 text-[11px] text-[#facc15]">
+          ⚠️ AI 會「覆蓋」當前所有幕的標題、描述、台詞、運鏡。已生成圖片的幕不會受影響但內容會被換新。
+        </div>
+
+        <DarkButton
+          onClick={() => aiMutation.mutate()}
+          disabled={!pitch.trim() || aiMutation.isPending}
+          className="w-full justify-center"
+        >
+          {aiMutation.isPending ? "🤖 AI 撰寫中…約 10 秒" : "✨ 生成腳本"}
+        </DarkButton>
+      </div>
+    </Modal>
+  );
+}
+
+// ─── Prompt Snippets Floating Panel (插入到場景描述) ──────────────────────
+function PromptSnippetsPanel({
+  onInsert,
+}: { onInsert: (text: string) => void }) {
+  const [openCategory, setOpenCategory] = useState<string | null>("lighting");
+
+  return (
+    <div className="border-t border-[#1a1a2e] pt-3">
+      <p className="text-[10px] text-[#555] uppercase tracking-wide mb-2 flex items-center gap-1">
+        <span>✨</span><span>提示詞素材庫</span>
+      </p>
+      <p className="text-[10px] text-[#333] mb-2 leading-snug">點擊任一標籤快速插入到場景描述末尾</p>
+      <div className="space-y-1.5">
+        {PROMPT_SNIPPETS.map(cat => (
+          <div key={cat.key} className="rounded-lg border border-[#1a1a2e] overflow-hidden bg-[#0a0a14]">
+            <button
+              onClick={() => setOpenCategory(openCategory === cat.key ? null : cat.key)}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 hover:bg-[#111122] transition-colors"
+              style={{ borderLeft: `2px solid ${cat.color}` }}
+            >
+              <span className="text-[11px] font-medium" style={{ color: cat.color }}>
+                {cat.emoji} {cat.label}
+              </span>
+              <span className="text-[10px] text-[#444]">{openCategory === cat.key ? "▾" : "▸"}</span>
+            </button>
+            {openCategory === cat.key && (
+              <div className="p-2 flex flex-wrap gap-1">
+                {cat.snippets.map(s => (
+                  <button
+                    key={s.label}
+                    onClick={() => onInsert(s.text)}
+                    title={s.text}
+                    className="text-[10px] px-2 py-0.5 rounded-full border bg-[#0a0a14] transition-all hover:scale-105"
+                    style={{ borderColor: `${cat.color}30`, color: `${cat.color}` }}
+                  >
+                    + {s.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Episode View (Main Visual Editor) ────────────────────────────────────────
 function EpisodeView({
   episodeId, projectId, onBack,
@@ -703,6 +1029,7 @@ function EpisodeView({
   const [animDuration, setAnimDuration] = useState(5);
   const [animResolution, setAnimResolution] = useState<"720p" | "1080p">("720p");
   const [animUseOmni, setAnimUseOmni] = useState(false);
+  const [showAIDialog, setShowAIDialog] = useState(false);
 
   useEffect(() => {
     if (episode) {
@@ -825,6 +1152,10 @@ function EpisodeView({
           </button>
         </div>
 
+        <DarkButton variant="secondary" onClick={() => setShowAIDialog(true)}
+          style={{ background: "#6366f110", borderColor: "#6366f140", color: "#a78bfa" }}>
+          🤖 AI 寫腳本
+        </DarkButton>
         <DarkButton variant="secondary" onClick={() => saveScenesMutation.mutate(localScenes)} disabled={saveScenesMutation.isPending}>
           {saveScenesMutation.isPending ? "儲存中..." : "💾 儲存"}
         </DarkButton>
@@ -966,6 +1297,15 @@ function EpisodeView({
                   rows={4}
                 />
               </div>
+
+              {/* Prompt Snippets Library */}
+              <PromptSnippetsPanel
+                onInsert={text => {
+                  const cur = selectedScene.description.trim();
+                  const sep = cur && !cur.endsWith("，") && !cur.endsWith("。") ? "，" : "";
+                  updateScene(selectedIdx!, { description: cur + sep + text });
+                }}
+              />
 
               {/* Dialogue */}
               <div>
@@ -1160,6 +1500,64 @@ function EpisodeView({
           </div>
         )}
       </Modal>
+
+      {/* AI Script Generation Dialog */}
+      <AIScriptDialog
+        open={showAIDialog}
+        onClose={() => setShowAIDialog(false)}
+        defaultSceneCount={localScenes.length || 6}
+        genre={project?.genre ?? undefined}
+        characterAName={project?.characterAName ?? undefined}
+        characterBName={project?.characterBName ?? undefined}
+        onApply={(aiScenes) => {
+          // If AI returns FEWER scenes than current AND any of the trailing scenes
+          // have generated media, warn user before discarding them
+          const trailingWithMedia = localScenes
+            .slice(aiScenes.length)
+            .some(s => s.imageStatus === "completed" || s.videoStatus === "completed");
+
+          let keepTrailing = false;
+          if (aiScenes.length < localScenes.length && trailingWithMedia) {
+            keepTrailing = !confirm(
+              `AI 回傳 ${aiScenes.length} 幕，比目前的 ${localScenes.length} 幕少。\n\n` +
+              `多出的尾端有已生成圖片/影片的場景。\n\n` +
+              `確定要直接覆蓋（會丟失尾端已生成內容）？\n\n` +
+              `按【取消】會保留尾端已生成的場景，只覆蓋前 ${aiScenes.length} 幕。`
+            );
+          }
+
+          const total = keepTrailing ? localScenes.length : aiScenes.length;
+          const merged: DramaScene[] = Array.from({ length: total }, (_, i) => {
+            const existing = localScenes[i];
+            const ai = aiScenes[i];
+            if (!ai) {
+              // Past AI range — keep existing scene as-is, just renumber
+              return { ...existing, sceneNumber: i + 1 };
+            }
+            return {
+              id: existing?.id ?? nid(),
+              sceneNumber: i + 1,
+              title: ai.title,
+              description: ai.description,
+              dialogue: ai.dialogue,
+              cameraMovement: ai.cameraMovement,
+              useCharA: ai.useCharA,
+              useCharB: ai.useCharB,
+              sceneRefImageUrl: existing?.sceneRefImageUrl,
+              imageUrl: existing?.imageUrl,
+              bunnyUrl: existing?.bunnyUrl,
+              imageStatus: existing?.imageStatus ?? "pending",
+              videoUrl: existing?.videoUrl,
+              videoBunnyUrl: existing?.videoBunnyUrl,
+              videoStatus: existing?.videoStatus,
+              videoDuration: existing?.videoDuration,
+              videoResolution: existing?.videoResolution,
+            };
+          });
+          setLocalScenes(merged);
+          saveScenesMutation.mutate(merged);
+        }}
+      />
 
       <style>{`
         @keyframes dash { to { stroke-dashoffset: -20; } }

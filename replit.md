@@ -177,3 +177,7 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Updated home page with NavigationHeader, credit balance display, cost indicators
 - Added insufficient credits blocking with warning messages
 - Redesigned Drama Studio to ComicFlow dark theme visual node editor: SVG scene node flow, right inspector panel, dual view modes (node flow / grid), status bar; fixed border-3 and SelectItem empty value bugs
+- Added 3 script-authoring helpers to Drama Studio (informed by SeedDance 2.0 + 短劇 + 提示詞 reference docs):
+  1. **AI 智慧腳本助手** (POST /api/drama/ai-generate-script via Claude haiku-4-5): one-line pitch → full episode script with title/description/dialogue/camera/character toggles. Robust JSON parsing (multi-strategy + whitelist validation). Smart merge preserves existing scene IDs and generated images/videos; warns user before discarding trailing scenes with media.
+  2. **提示詞素材庫** (PromptSnippetsPanel): 5 collapsible categories (光線/鏡頭/情緒/場景/風格) with 40 click-to-insert snippets, embedded inside scene inspector below description textarea.
+  3. **腳本範本庫** (DRAMA_TEMPLATES): 5 preset short-drama templates (霸總愛情/校園青春/復仇懸疑/穿越奇幻/職場逆襲) selectable in 新增集數 modal, instantly creates 6-scene episode with full descriptions ready to generate.
