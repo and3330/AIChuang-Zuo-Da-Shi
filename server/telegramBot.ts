@@ -1,6 +1,7 @@
 import TelegramBot from "node-telegram-bot-api";
 import { storage } from "./storage";
 import { BunnyStorageService } from "./bunnyStorage";
+import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
 
 const bunnyStorage = new BunnyStorageService();
 
@@ -257,7 +258,7 @@ export function startTelegramBot() {
         },
         body: JSON.stringify({
           model: SEEDDANCE_MODEL,
-          prompt,
+          prompt: enhanceImagePrompt(prompt),
           response_format: "url",
           size: "1024x1024",
           watermark: true,
@@ -373,7 +374,7 @@ export function startTelegramBot() {
         },
         body: JSON.stringify({
           model: VIDEO_ENDPOINT,
-          content: [{ type: "text", text: prompt + " --resolution 720p" }],
+          content: [{ type: "text", text: enhanceVideoPrompt(prompt) + " --resolution 720p" }],
         }),
       });
 
@@ -591,7 +592,7 @@ export function startTelegramBot() {
         },
         body: JSON.stringify({
           model: SEEDDANCE_MODEL,
-          prompt: caption,
+          prompt: enhanceImagePrompt(caption),
           image: [base64Image],
           response_format: "url",
           size: "1024x1024",

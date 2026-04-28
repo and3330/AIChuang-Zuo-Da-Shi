@@ -14,6 +14,7 @@
  */
 
 import sharp from "sharp";
+import { enhanceVideoPrompt } from "./promptEnhancer";
 
 // ─── Endpoints ────────────────────────────────────────────────────────────────
 
@@ -114,12 +115,16 @@ export async function generateSeedDanceVideo(
   const isOmni = req.useOmniMode ?? false;
   const model = isOmni ? SEEDDANCE_OMNI_ENDPOINT : SEEDDANCE_STANDARD_ENDPOINT;
 
+  // 強制套用 NSFW 提示詞增強器（防呆：即使呼叫端忘了包，也保證 API 收到的是增強版）
+  // enhanceVideoPrompt 是 idempotent — 已包過的 prompt 不會被重複包
+  const enhancedPrompt = enhanceVideoPrompt(req.prompt);
+
   // ── Build content array ────────────────────────────────────────────────────
   const contentItems: any[] = [];
 
   if (isOmni) {
     // Omni mode: text prompt first, then all reference images, optional video/audio refs
-    contentItems.push({ type: "text", text: req.prompt });
+    contentItems.push({ type: "text", text: enhancedPrompt });
 
     if (req.mainImage) {
       contentItems.push({
@@ -154,7 +159,7 @@ export async function generateSeedDanceVideo(
     }
   } else {
     // Standard mode: text first, then main image (no extra refs)
-    contentItems.push({ type: "text", text: req.prompt });
+    contentItems.push({ type: "text", text: enhancedPrompt });
 
     if (req.mainImage) {
       contentItems.push({

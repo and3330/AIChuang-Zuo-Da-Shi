@@ -9,6 +9,7 @@ import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextT
 import nodemailer from "nodemailer";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
+import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
 import sharp from "sharp";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
@@ -912,7 +913,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         
         requestBody = {
           model: SEEDDANCE_MODEL,
-          prompt: generation.prompt,
+          prompt: enhanceImagePrompt(generation.prompt),
           response_format: "url",
           size: sizeValue,
           sequential_image_generation: isSequential ? "auto" : "disabled",
@@ -972,7 +973,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         
         requestBody = {
           model: SEEDDANCE_MODEL,
-          prompt: generation.prompt,
+          prompt: enhanceImagePrompt(generation.prompt),
           image: imageParam,
           response_format: "url",
           size: sizeValue,
@@ -1310,7 +1311,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         throw new Error("ARK_API_KEY environment variable is not set");
       }
 
-      const promptText = generation.prompt;
+      const promptText = enhanceVideoPrompt(generation.prompt);
 
       const contentItems: any[] = [
         {
@@ -1650,8 +1651,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         }
       }
 
-      const promptText = generation.prompt || "";
-      console.log(`🎬 Story scene ${sceneIdx}: prompt="${promptText}" | duration=${generation.duration}s | ratio=${autoAspect}`);
+      const promptText = enhanceVideoPrompt(generation.prompt || "");
+      console.log(`🎬 Story scene ${sceneIdx}: prompt="${promptText.substring(0, 100)}..." | duration=${generation.duration}s | ratio=${autoAspect}`);
 
       type VideoContentItem =
         | { type: "text"; text: string }
@@ -2640,10 +2641,11 @@ Requirements:
         : (story.globalSeed ?? undefined);
 
       let requestBody: any;
+      const enhancedScenePrompt = enhanceImagePrompt(scenePrompt);
       if (globalBase64s.length > 0) {
         requestBody = {
           model: "ep-20251223142939-njrkd",
-          prompt: scenePrompt,
+          prompt: enhancedScenePrompt,
           image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
           response_format: "url",
           size: imageSize,
@@ -2653,7 +2655,7 @@ Requirements:
       } else {
         requestBody = {
           model: "ep-20251223142939-njrkd",
-          prompt: scenePrompt,
+          prompt: enhancedScenePrompt,
           response_format: "url",
           size: imageSize,
           watermark: true,
@@ -2896,7 +2898,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             const fullPrompt = `${scenePrompt}${labelNote}`;
             requestBody = {
               model: "ep-20251223142939-njrkd",
-              prompt: fullPrompt,
+              prompt: enhanceImagePrompt(fullPrompt),
               image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
               response_format: "url",
               size: imageSize,
@@ -2906,7 +2908,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
           } else {
             requestBody = {
               model: "ep-20251223142939-njrkd",
-              prompt: scenePrompt,
+              prompt: enhanceImagePrompt(scenePrompt),
               response_format: "url",
               size: imageSize,
               watermark: true,
@@ -3502,7 +3504,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
             requestBody = {
               model: "ep-20251223142939-njrkd",
-              prompt: `${scenePrompt}${labelNote}`,
+              prompt: enhanceImagePrompt(`${scenePrompt}${labelNote}`),
               image: allRefs.length === 1 ? allRefs[0] : allRefs,
               response_format: "url",
               size: imageSize,
@@ -3513,7 +3515,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
           } else {
             requestBody = {
               model: "ep-20251223142939-njrkd",
-              prompt: scenePrompt,
+              prompt: enhanceImagePrompt(scenePrompt),
               response_format: "url",
               size: imageSize,
               watermark: true,
@@ -3646,7 +3648,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         if (styleList.length > 0) { labelParts.push(`第 ${idx}${styleList.length > 1 ? `-${idx + styleList.length - 1}` : ""} 張圖為畫風風格參考`); }
         requestBody = {
           model: "ep-20251223142939-njrkd",
-          prompt: `${scenePrompt}（${labelParts.join("；")}）`,
+          prompt: enhanceImagePrompt(`${scenePrompt}（${labelParts.join("；")}）`),
           image: allRefs.length === 1 ? allRefs[0] : allRefs,
           response_format: "url",
           size: imageSize,
@@ -3656,7 +3658,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       } else {
         requestBody = {
           model: "ep-20251223142939-njrkd",
-          prompt: scenePrompt,
+          prompt: enhanceImagePrompt(scenePrompt),
           response_format: "url",
           size: imageSize,
           watermark: true,
@@ -3764,7 +3766,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       }
 
       const result = await generateSeedDanceVideo({
-        prompt: videoPrompt,
+        prompt: enhanceVideoPrompt(videoPrompt),
         mainImage: { url: mainImageBase64 },
         referenceImages: isOmni ? referenceImages : undefined,
         duration: opts.duration,
