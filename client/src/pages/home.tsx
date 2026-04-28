@@ -949,21 +949,16 @@ export default function Home() {
                 </div>
                 {isVideoMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600" />}
               </button>
-              <button
-                onClick={() => setMode("story")}
-                className={`flex-1 py-3 px-6 text-sm font-medium transition-all relative ${
-                  isStoryMode
-                    ? "text-emerald-700 bg-emerald-50"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                }`}
+              <a
+                href="/drama"
+                className="flex-1 py-3 px-6 text-sm font-medium transition-all relative text-gray-500 hover:text-emerald-700 hover:bg-emerald-50"
               >
                 <div className="flex items-center justify-center gap-2">
-                  <span className="text-lg">📖</span>
-                  <span className="font-semibold">故事模式</span>
-                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">分鏡</span>
+                  <span className="text-lg">🎬</span>
+                  <span className="font-semibold">漫劇工作室</span>
+                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">NEW</span>
                 </div>
-                {isStoryMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600" />}
-              </button>
+              </a>
             </div>
 
             {/* SeedDance Sub-modes */}

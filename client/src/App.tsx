@@ -15,6 +15,7 @@ import LandingPage from "@/pages/landing";
 import AdminPage from "@/pages/admin";
 import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
+import DramaPage from "@/pages/drama";
 import NotFound from "@/pages/not-found";
 import ChatWidget from "@/components/ChatWidget";
 import MobileTabBar from "@/components/MobileTabBar";
@@ -314,6 +315,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
+      <Route path="/drama" component={DramaPage} />
       <Route path="/account" component={AccountPage} />
       <Route path="/transactions" component={TransactionsPage} />
       <Route path="/admin" component={AdminPage} />

@@ -120,15 +120,24 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Users table has telegramChatId field for account linking
 - Environment secret: TELEGRAM_BOT_TOKEN
 
-### Story Mode (故事模式)
-- **storyGenerations** DB table: id, userId, title, style, sceneCount, referenceImageUrls (text[]), scenes (JSON string of StoryScene[]), status, creditsUsed, cost, errorMessage, sceneSize, characterImageUrls (text[]), characterBImageUrls (text[]), sceneRefImageUrls (text[]), styleImageUrls (text[]), globalSeed, createdAt, updatedAt
-- **StoryScene type**: { id, title, description, imageUrl?, bunnyUrl?, status: pending/generating/completed/failed }
-- **API**: POST /api/story-generations (requireAuth), GET /api/story-generations/:id (requireAuth)
-- **Processing**: Sequential per-scene image generation; ref images loaded as base64 (charA → charB → sceneRef → style); scenes JSON updated in real-time; Bunny CDN upload per scene; full refund on total failure
-- **Pricing**: 3 credits/scene (2-12 scenes, 6-36 credits total)
-- **Frontend**: "故事模式" tab (3rd tab, emerald theme) in home.tsx; scene count 2-12; dual character upload (角色A/B, max 2 each); per-scene duration selector (4/5/6/8/10/12s) in animation panel; per-scene resolution selector; batch animate sends perSceneDurations + perSceneResolutions; sequel inherits characterB images
+### Drama Studio 漫劇工作室 (NEW - replaces Story Mode)
+- **Route**: /drama (separate page from home.tsx)
+- **DB Tables**:
+  - `dramaProjects`: id, userId, title, genre, characterAName/Url, characterBName/Url, styleImageUrls (text[]), sceneSize, episodeCount, status, createdAt, updatedAt
+  - `dramaEpisodes`: id, projectId, userId, episodeNumber, title, scenes (JSON string), globalSeed, status, creditsUsed, errorMessage, createdAt, updatedAt
+- **DramaScene type**: { id, sceneNumber, title, description, dialogue, cameraMovement, useCharA, useCharB, sceneRefImageUrl, imageUrl, bunnyUrl, imageStatus, videoUrl, videoBunnyUrl, videoStatus, videoDuration, videoResolution }
+- **API Routes**: Full CRUD for projects + episodes, batch generate images, regenerate single scene, replace scene image, animate scene
+- **Backend files**: server/seedDanceV2.ts (SeedDance 2.0 multi-image client), processDramaEpisode() + regenerateDramaScene() + animateDramaScene() in routes.ts
+- **Pricing**: 3 credits/scene image; video same as standard (720P 3.4/sec, 1080P 6.8/sec)
+- **Frontend**: client/src/pages/drama.tsx — 3-panel: project list sidebar, episode list, episode editor (3-step: ①設定 ②分鏡 ③生成)
+- **Navigation**: "🎬 漫劇工作室" link in home.tsx 3rd tab + NavigationHeader
+
+### Story Mode (故事模式) — Legacy
+- Still accessible via existing storyGenerations API (/api/story-generations)
+- UI removed from home.tsx tabs (replaced by drama studio link)
 
 ## Recent Changes
+- Added Drama Studio 漫劇工作室: new /drama page replacing故事模式 tab; dramaProjects + dramaEpisodes DB tables; SeedDance 2.0 multi-image client (seedDanceV2.ts); full CRUD API; 3-step episode editor workflow
 - Fixed session store: switched from MemoryStore to PostgreSQL-backed sessions (connect-pg-simple, createTableIfMissing: true), preventing session loss on restart
 - Fixed session cookie: added httpOnly, sameSite: "lax", secure: production-only settings
 - Fixed security: added requireAuth middleware to GET /api/image-generations/:id, /api/batch-generations/:batchId, /api/video-generations/:id

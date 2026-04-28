@@ -41,6 +41,11 @@ function NavigationHeader() {
                   <i className="fas fa-home mr-1"></i> 首頁
                 </Button>
               </Link>
+              <Link href="/drama">
+                <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700 font-medium">
+                  🎬 漫劇工作室
+                </Button>
+              </Link>
               <Link href="/account">
                 <Button variant="ghost" size="sm" className="text-purple-600 font-medium">
                   <i className="fas fa-user mr-1"></i> 帳戶

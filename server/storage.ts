@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, type StoryGeneration, type InsertStoryGeneration, type StoryScene, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages, storyGenerations } from "@shared/schema";
+import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, type StoryGeneration, type InsertStoryGeneration, type StoryScene, type DramaProject, type DramaEpisode, type InsertDramaProject, type InsertDramaEpisode, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages, storyGenerations, dramaProjects, dramaEpisodes } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gt, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -58,6 +58,19 @@ export interface IStorage {
   getUserStoryGenerations(userId: string): Promise<StoryGeneration[]>;
   getAllStoryGenerations(): Promise<StoryGeneration[]>;
   failStoryGenerationAndRefund(id: string, errorMessage: string): Promise<boolean>;
+
+  // Drama Studio
+  createDramaProject(data: InsertDramaProject & { userId: string }): Promise<DramaProject>;
+  getDramaProject(id: string): Promise<DramaProject | undefined>;
+  updateDramaProject(id: string, updates: Partial<DramaProject>): Promise<DramaProject | undefined>;
+  deleteDramaProject(id: string): Promise<void>;
+  getUserDramaProjects(userId: string): Promise<DramaProject[]>;
+  createDramaEpisode(data: { projectId: string; userId: string; episodeNumber: number; title: string; scenes: string; sceneCount: number; globalSeed?: number }): Promise<DramaEpisode>;
+  getDramaEpisode(id: string): Promise<DramaEpisode | undefined>;
+  updateDramaEpisode(id: string, updates: Partial<DramaEpisode>): Promise<DramaEpisode | undefined>;
+  deleteDramaEpisode(id: string): Promise<void>;
+  getDramaEpisodesByProject(projectId: string): Promise<DramaEpisode[]>;
+  getAllDramaEpisodes(): Promise<DramaEpisode[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -623,6 +636,101 @@ export class DatabaseStorage implements IStorage {
       await this.atomicAddCredits(updated.userId, updated.creditsUsed, `故事生成失敗退還 ${updated.creditsUsed} 積分`);
     }
     return true;
+  }
+
+  // ─── Drama Studio ──────────────────────────────────────────────────────────
+
+  async createDramaProject(data: InsertDramaProject & { userId: string }): Promise<DramaProject> {
+    const [project] = await db.insert(dramaProjects).values({
+      userId: data.userId,
+      title: data.title,
+      genre: data.genre ?? "",
+      description: data.description ?? "",
+      characterAName: data.characterAName ?? "角色A",
+      characterAUrls: data.characterAUrls ?? [],
+      characterBName: data.characterBName ?? "角色B",
+      characterBUrls: data.characterBUrls ?? [],
+      styleImageUrls: data.styleImageUrls ?? [],
+      sceneSize: data.sceneSize ?? "9:16",
+      episodeCount: 0,
+      status: "active",
+    }).returning();
+    return project;
+  }
+
+  async getDramaProject(id: string): Promise<DramaProject | undefined> {
+    const [project] = await db.select().from(dramaProjects).where(eq(dramaProjects.id, id));
+    return project;
+  }
+
+  async updateDramaProject(id: string, updates: Partial<DramaProject>): Promise<DramaProject | undefined> {
+    const [project] = await db.update(dramaProjects)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(dramaProjects.id, id))
+      .returning();
+    return project;
+  }
+
+  async deleteDramaProject(id: string): Promise<void> {
+    await db.delete(dramaEpisodes).where(eq(dramaEpisodes.projectId, id));
+    await db.delete(dramaProjects).where(eq(dramaProjects.id, id));
+  }
+
+  async getUserDramaProjects(userId: string): Promise<DramaProject[]> {
+    return db.select().from(dramaProjects)
+      .where(eq(dramaProjects.userId, userId))
+      .orderBy(desc(dramaProjects.updatedAt));
+  }
+
+  async createDramaEpisode(data: { projectId: string; userId: string; episodeNumber: number; title: string; scenes: string; sceneCount: number; globalSeed?: number }): Promise<DramaEpisode> {
+    const [episode] = await db.insert(dramaEpisodes).values({
+      projectId: data.projectId,
+      userId: data.userId,
+      episodeNumber: data.episodeNumber,
+      title: data.title,
+      scenes: data.scenes,
+      sceneCount: data.sceneCount,
+      globalSeed: data.globalSeed,
+      status: "draft",
+      creditsUsed: 0,
+    }).returning();
+    await db.update(dramaProjects)
+      .set({ episodeCount: sql`${dramaProjects.episodeCount} + 1`, updatedAt: new Date() })
+      .where(eq(dramaProjects.id, data.projectId));
+    return episode;
+  }
+
+  async getDramaEpisode(id: string): Promise<DramaEpisode | undefined> {
+    const [episode] = await db.select().from(dramaEpisodes).where(eq(dramaEpisodes.id, id));
+    return episode;
+  }
+
+  async updateDramaEpisode(id: string, updates: Partial<DramaEpisode>): Promise<DramaEpisode | undefined> {
+    const [episode] = await db.update(dramaEpisodes)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(dramaEpisodes.id, id))
+      .returning();
+    return episode;
+  }
+
+  async deleteDramaEpisode(id: string): Promise<void> {
+    const [ep] = await db.select().from(dramaEpisodes).where(eq(dramaEpisodes.id, id));
+    await db.delete(dramaEpisodes).where(eq(dramaEpisodes.id, id));
+    if (ep) {
+      await db.update(dramaProjects)
+        .set({ episodeCount: sql`GREATEST(${dramaProjects.episodeCount} - 1, 0)`, updatedAt: new Date() })
+        .where(eq(dramaProjects.id, ep.projectId));
+    }
+  }
+
+  async getDramaEpisodesByProject(projectId: string): Promise<DramaEpisode[]> {
+    return db.select().from(dramaEpisodes)
+      .where(eq(dramaEpisodes.projectId, projectId))
+      .orderBy(dramaEpisodes.episodeNumber);
+  }
+
+  async getAllDramaEpisodes(): Promise<DramaEpisode[]> {
+    return db.select().from(dramaEpisodes).orderBy(desc(dramaEpisodes.createdAt));
   }
 }
 

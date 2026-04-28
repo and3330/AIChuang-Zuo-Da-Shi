@@ -2942,6 +2942,693 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     }
   }
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DRAMA STUDIO — 漫劇工作室
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ─── Projects CRUD ────────────────────────────────────────────────────────
+
+  app.get("/api/drama/projects", requireAuth, async (req, res) => {
+    try {
+      const projects = await storage.getUserDramaProjects(req.session.userId!);
+      res.json(projects);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/drama/projects", requireAuth, async (req, res) => {
+    try {
+      const { insertDramaProjectSchema } = await import("@shared/schema");
+      const data = insertDramaProjectSchema.parse(req.body);
+      const project = await storage.createDramaProject({ ...data, userId: req.session.userId! });
+      res.json(project);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/drama/projects/:projectId", requireAuth, async (req, res) => {
+    try {
+      const project = await storage.getDramaProject(req.params.projectId);
+      if (!project || project.userId !== req.session.userId!) return res.status(404).json({ error: "找不到漫劇" });
+      res.json(project);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.patch("/api/drama/projects/:projectId", requireAuth, async (req, res) => {
+    try {
+      const project = await storage.getDramaProject(req.params.projectId);
+      if (!project || project.userId !== req.session.userId!) return res.status(404).json({ error: "找不到漫劇" });
+      const { updateDramaProjectSchema } = await import("@shared/schema");
+      const data = updateDramaProjectSchema.parse(req.body);
+      const updated = await storage.updateDramaProject(req.params.projectId, data);
+      res.json(updated);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/drama/projects/:projectId", requireAuth, async (req, res) => {
+    try {
+      const project = await storage.getDramaProject(req.params.projectId);
+      if (!project || project.userId !== req.session.userId!) return res.status(404).json({ error: "找不到漫劇" });
+      await storage.deleteDramaProject(req.params.projectId);
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Episodes CRUD ────────────────────────────────────────────────────────
+
+  app.get("/api/drama/projects/:projectId/episodes", requireAuth, async (req, res) => {
+    try {
+      const project = await storage.getDramaProject(req.params.projectId);
+      if (!project || project.userId !== req.session.userId!) return res.status(404).json({ error: "找不到漫劇" });
+      const episodes = await storage.getDramaEpisodesByProject(req.params.projectId);
+      res.json(episodes);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/drama/projects/:projectId/episodes", requireAuth, async (req, res) => {
+    try {
+      const project = await storage.getDramaProject(req.params.projectId);
+      if (!project || project.userId !== req.session.userId!) return res.status(404).json({ error: "找不到漫劇" });
+
+      const body = req.body as {
+        episodeNumber?: number;
+        title: string;
+        scenes: any[];
+        globalSeed?: number;
+      };
+
+      const existingEpisodes = await storage.getDramaEpisodesByProject(req.params.projectId);
+      const episodeNumber = body.episodeNumber ?? existingEpisodes.length + 1;
+
+      const episode = await storage.createDramaEpisode({
+        projectId: req.params.projectId,
+        userId: req.session.userId!,
+        episodeNumber,
+        title: body.title || `第 ${episodeNumber} 集`,
+        scenes: JSON.stringify(body.scenes || []),
+        sceneCount: (body.scenes || []).length,
+        globalSeed: body.globalSeed,
+      });
+      res.json(episode);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/drama/episodes/:episodeId", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+      res.json(episode);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.patch("/api/drama/episodes/:episodeId", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+      const updated = await storage.updateDramaEpisode(req.params.episodeId, {
+        ...req.body,
+        scenes: req.body.scenes ? JSON.stringify(req.body.scenes) : episode.scenes,
+      });
+      res.json(updated);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.delete("/api/drama/episodes/:episodeId", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+      await storage.deleteDramaEpisode(req.params.episodeId);
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Episode Image Generation ─────────────────────────────────────────────
+
+  app.post("/api/drama/episodes/:episodeId/generate-images", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+
+      const project = await storage.getDramaProject(episode.projectId);
+      if (!project) return res.status(404).json({ error: "找不到漫劇專案" });
+
+      const scenes: any[] = JSON.parse(episode.scenes);
+      const pendingScenes = scenes.filter(s => s.imageStatus !== "completed");
+      const creditCost = pendingScenes.length * 3;
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || (user.credits ?? 0) < creditCost) {
+        return res.status(400).json({ error: `積分不足，需要 ${creditCost} 積分` });
+      }
+
+      // Deduct credits
+      const newBalance = (user.credits ?? 0) - creditCost;
+      await storage.updateUserCredits(req.session.userId!, newBalance);
+      await storage.createCreditTransaction({
+        userId: req.session.userId!,
+        type: "consume",
+        amount: -creditCost,
+        balance: newBalance,
+        description: `漫劇「${project.title}」第 ${episode.episodeNumber} 集生成 ${pendingScenes.length} 幕圖片`,
+      });
+
+      await storage.updateDramaEpisode(req.params.episodeId, {
+        status: "generating",
+        creditsUsed: (episode.creditsUsed ?? 0) + creditCost,
+      });
+
+      // Run generation in background
+      processDramaEpisode(req.params.episodeId, episode.projectId, objectStorageService, bunnyStorage).catch(console.error);
+      res.json({ ok: true, creditCost, episodeId: req.params.episodeId });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Single Scene Regenerate ───────────────────────────────────────────────
+
+  app.post("/api/drama/episodes/:episodeId/regenerate-scene/:sceneIdx", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+
+      const sceneIdx = parseInt(req.params.sceneIdx);
+      const scenes: any[] = JSON.parse(episode.scenes);
+      if (sceneIdx < 0 || sceneIdx >= scenes.length) return res.status(400).json({ error: "幕索引超出範圍" });
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || (user.credits ?? 0) < 3) return res.status(400).json({ error: "積分不足，需要 3 積分" });
+
+      const project = await storage.getDramaProject(episode.projectId);
+      const newBalance = (user.credits ?? 0) - 3;
+      await storage.updateUserCredits(req.session.userId!, newBalance);
+      await storage.createCreditTransaction({
+        userId: req.session.userId!,
+        type: "consume",
+        amount: -3,
+        balance: newBalance,
+        description: `漫劇重生第 ${sceneIdx + 1} 幕`,
+      });
+
+      // Merge request overrides into scene
+      const overrides = req.body || {};
+      if (overrides.description) scenes[sceneIdx].description = overrides.description;
+      if (overrides.dialogue !== undefined) scenes[sceneIdx].dialogue = overrides.dialogue;
+      if (overrides.cameraMovement !== undefined) scenes[sceneIdx].cameraMovement = overrides.cameraMovement;
+      if (overrides.useCharA !== undefined) scenes[sceneIdx].useCharA = overrides.useCharA;
+      if (overrides.useCharB !== undefined) scenes[sceneIdx].useCharB = overrides.useCharB;
+      if (overrides.sceneRefImageUrl !== undefined) scenes[sceneIdx].sceneRefImageUrl = overrides.sceneRefImageUrl;
+      if (overrides.newSeed) scenes[sceneIdx]._tempSeed = Math.floor(Math.random() * 998000) + 1000;
+
+      scenes[sceneIdx].imageStatus = "generating";
+      await storage.updateDramaEpisode(req.params.episodeId, { scenes: JSON.stringify(scenes) });
+
+      regenerateDramaScene(req.params.episodeId, episode.projectId, sceneIdx, objectStorageService, bunnyStorage).catch(console.error);
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Replace Scene Image (free) ────────────────────────────────────────────
+
+  app.post("/api/drama/episodes/:episodeId/replace-scene-image/:sceneIdx", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+
+      const sceneIdx = parseInt(req.params.sceneIdx);
+      const scenes: any[] = JSON.parse(episode.scenes);
+      if (sceneIdx < 0 || sceneIdx >= scenes.length) return res.status(400).json({ error: "幕索引超出範圍" });
+
+      const { objectPath } = req.body;
+      if (!objectPath) return res.status(400).json({ error: "缺少 objectPath" });
+
+      let bunnyUrl: string | null = null;
+      if (bunnyStorage.isConfigured()) {
+        const user = await storage.getUser(req.session.userId!);
+        const userFolder = user?.username || req.session.userId!;
+        const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
+        const chunks: Buffer[] = [];
+        for await (const chunk of objectFile.createReadStream()) chunks.push(Buffer.from(chunk));
+        const imgBuffer = Buffer.concat(chunks);
+        const remotePath = `users/${userFolder}/drama/${episode.projectId}_ep${episode.episodeNumber}_scene${sceneIdx}.jpg`;
+        bunnyUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
+      }
+
+      const versionedUrl = bunnyUrl ? `${bunnyUrl}?v=${Date.now()}` : null;
+      scenes[sceneIdx].imageUrl = objectPath;
+      scenes[sceneIdx].bunnyUrl = versionedUrl;
+      scenes[sceneIdx].imageStatus = "completed";
+      await storage.updateDramaEpisode(req.params.episodeId, { scenes: JSON.stringify(scenes) });
+
+      res.json({ ok: true, bunnyUrl: versionedUrl });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Animate Scene with SeedDance 2.0 ─────────────────────────────────────
+
+  app.post("/api/drama/episodes/:episodeId/animate-scene/:sceneIdx", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+
+      const sceneIdx = parseInt(req.params.sceneIdx);
+      const scenes: any[] = JSON.parse(episode.scenes);
+      if (sceneIdx < 0 || sceneIdx >= scenes.length) return res.status(400).json({ error: "幕索引超出範圍" });
+
+      const scene = scenes[sceneIdx];
+      if (scene.imageStatus !== "completed" || !scene.bunnyUrl) {
+        return res.status(400).json({ error: "請先完成圖片生成" });
+      }
+
+      const { duration = 5, resolution = "720p", prompt, useOmniMode = false } = req.body;
+      const creditCost = resolution === "1080p"
+        ? Math.ceil(duration * 6.8)
+        : Math.ceil(duration * 3.4);
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || (user.credits ?? 0) < creditCost) {
+        return res.status(400).json({ error: `積分不足，需要 ${creditCost} 積分` });
+      }
+
+      const project = await storage.getDramaProject(episode.projectId);
+      const newBalance = (user.credits ?? 0) - creditCost;
+      await storage.updateUserCredits(req.session.userId!, newBalance);
+      await storage.createCreditTransaction({
+        userId: req.session.userId!,
+        type: "consume",
+        amount: -creditCost,
+        balance: newBalance,
+        description: `漫劇動畫第 ${sceneIdx + 1} 幕（${duration}秒 ${resolution}）`,
+      });
+
+      scenes[sceneIdx].videoStatus = "generating";
+      scenes[sceneIdx].videoDuration = duration;
+      scenes[sceneIdx].videoResolution = resolution;
+      await storage.updateDramaEpisode(req.params.episodeId, { scenes: JSON.stringify(scenes) });
+
+      animateDramaScene(
+        req.params.episodeId, episode.projectId, sceneIdx,
+        { duration, resolution, prompt, useOmniMode },
+        objectStorageService, bunnyStorage
+      ).catch(console.error);
+
+      res.json({ ok: true, creditCost });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Background processing functions ──────────────────────────────────────
+
+  async function processDramaEpisode(
+    episodeId: string,
+    projectId: string,
+    objectStorage: ObjectStorageService,
+    bunny: BunnyStorageService
+  ) {
+    try {
+      const episode = await storage.getDramaEpisode(episodeId);
+      if (!episode) return;
+      const project = await storage.getDramaProject(projectId);
+      if (!project) return;
+
+      const user = await storage.getUser(episode.userId);
+      const userFolder = user?.username || episode.userId;
+      const apiKey = process.env.ARK_API_KEY;
+      if (!apiKey) throw new Error("ARK_API_KEY 未設定");
+
+      const scenes: any[] = JSON.parse(episode.scenes);
+      const sceneSizeMap: Record<string, string> = {
+        "1:1": "2048x2048", "9:16": "1440x2560", "16:9": "2560x1440",
+      };
+      const imageSize = sceneSizeMap[project.sceneSize ?? "9:16"] || "1440x2560";
+
+      const loadRefImageAsBase64 = async (imagePath: string): Promise<string> => {
+        const objectFile = await objectStorage.getObjectEntityFile(imagePath);
+        const chunks: Buffer[] = [];
+        for await (const chunk of objectFile.createReadStream()) chunks.push(Buffer.from(chunk));
+        return `data:image/jpeg;base64,${Buffer.concat(chunks).toString("base64")}`;
+      };
+
+      const loadImageList = async (urls: string[]): Promise<string[]> => {
+        if (!urls || urls.length === 0) return [];
+        try { return await Promise.all(urls.map(loadRefImageAsBase64)); } catch { return []; }
+      };
+
+      const characterABase64s = await loadImageList(project.characterAUrls ?? []);
+      const characterBBase64s = await loadImageList(project.characterBUrls ?? []);
+      const styleBase64s = await loadImageList(project.styleImageUrls ?? []);
+
+      let totalCost = 0;
+      for (let i = 0; i < scenes.length; i++) {
+        if (scenes[i].imageStatus === "completed") continue;
+        scenes[i].imageStatus = "generating";
+        await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(scenes) });
+
+        try {
+          const dialoguePart = scenes[i].dialogue?.trim() ? `，台詞：「${scenes[i].dialogue}」` : "";
+          const scenePrompt = `${scenes[i].description}${dialoguePart}`;
+
+          const useA = scenes[i].useCharA !== false;
+          const useB = scenes[i].useCharB !== false;
+          const charAList = useA ? characterABase64s : [];
+          const charBList = useB ? characterBBase64s : [];
+
+          let sceneRefList: string[] = [];
+          if (scenes[i].sceneRefImageUrl) {
+            try { sceneRefList = [await loadRefImageAsBase64(scenes[i].sceneRefImageUrl)]; } catch {}
+          }
+
+          const allRefs = [...charAList, ...charBList, ...sceneRefList, ...styleBase64s];
+
+          let requestBody: any;
+          if (allRefs.length > 0) {
+            const labelParts: string[] = [];
+            let idx = 1;
+            if (charAList.length > 0) {
+              const end = idx + charAList.length - 1;
+              labelParts.push(`第 ${idx}${charAList.length > 1 ? `-${end}` : ""} 張圖為角色 A 外貌，保持角色一致`);
+              idx += charAList.length;
+            }
+            if (charBList.length > 0) {
+              const end = idx + charBList.length - 1;
+              labelParts.push(`第 ${idx}${charBList.length > 1 ? `-${end}` : ""} 張圖為角色 B 外貌，保持角色一致`);
+              idx += charBList.length;
+            }
+            if (sceneRefList.length > 0) {
+              labelParts.push(`第 ${idx} 張圖為場景構圖參考`);
+              idx += sceneRefList.length;
+            }
+            if (styleBase64s.length > 0) {
+              const end = idx + styleBase64s.length - 1;
+              labelParts.push(`第 ${idx}${styleBase64s.length > 1 ? `-${end}` : ""} 張圖為畫風風格參考`);
+            }
+            const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
+            requestBody = {
+              model: "ep-20251223142939-njrkd",
+              prompt: `${scenePrompt}${labelNote}`,
+              image: allRefs.length === 1 ? allRefs[0] : allRefs,
+              response_format: "url",
+              size: imageSize,
+              watermark: true,
+              ...(episode.globalSeed ? { seed: episode.globalSeed } :
+                scenes[i]._tempSeed ? { seed: scenes[i]._tempSeed } : {}),
+            };
+          } else {
+            requestBody = {
+              model: "ep-20251223142939-njrkd",
+              prompt: scenePrompt,
+              response_format: "url",
+              size: imageSize,
+              watermark: true,
+              ...(episode.globalSeed ? { seed: episode.globalSeed } : {}),
+            };
+          }
+
+          const apiResp = await fetch(ARK_API_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+            body: JSON.stringify(requestBody),
+          });
+
+          if (!apiResp.ok) {
+            const errText = await apiResp.text();
+            throw new Error(`API error ${apiResp.status}: ${errText}`);
+          }
+
+          const apiResult = await apiResp.json();
+          const imageUrl = apiResult.data?.[0]?.url;
+          if (!imageUrl) throw new Error("API 未回傳圖片 URL");
+
+          totalCost += 0.05;
+          scenes[i].imageUrl = imageUrl;
+
+          if (bunny.isConfigured()) {
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              try {
+                const imgResp = await fetch(imageUrl);
+                const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+                const remotePath = `users/${userFolder}/drama/${projectId}_ep${episode.episodeNumber}_scene${i}.jpg`;
+                const cdnUrl = await bunny.uploadBuffer(imgBuffer, remotePath);
+                scenes[i].bunnyUrl = cdnUrl;
+                break;
+              } catch (e) {
+                if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
+              }
+            }
+          }
+
+          scenes[i].imageStatus = "completed";
+          console.log(`✅ Drama episode ${episodeId} scene ${i + 1}/${scenes.length} completed`);
+        } catch (sceneErr: any) {
+          console.error(`❌ Drama scene ${i + 1} failed:`, sceneErr.message);
+          scenes[i].imageStatus = "failed";
+          scenes[i].imageError = sceneErr.message;
+        }
+
+        await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(scenes) });
+      }
+
+      const allFailed = scenes.every(s => s.imageStatus === "failed");
+      if (allFailed) {
+        // Refund credits
+        const ep = await storage.getDramaEpisode(episodeId);
+        if (ep && ep.creditsUsed && ep.creditsUsed > 0) {
+          await storage.atomicAddCredits(ep.userId, ep.creditsUsed, `漫劇生成失敗退還 ${ep.creditsUsed} 積分`);
+        }
+        await storage.updateDramaEpisode(episodeId, { status: "failed", errorMessage: "所有場景生成失敗" });
+      } else {
+        await storage.updateDramaEpisode(episodeId, { status: "completed", scenes: JSON.stringify(scenes) });
+        console.log(`✅ Drama episode ${episodeId} generation completed`);
+      }
+    } catch (err: any) {
+      console.error("❌ Drama episode generation failed:", err.message);
+      await storage.updateDramaEpisode(episodeId, { status: "failed", errorMessage: err.message });
+    }
+  }
+
+  async function regenerateDramaScene(
+    episodeId: string,
+    projectId: string,
+    sceneIdx: number,
+    objectStorage: ObjectStorageService,
+    bunny: BunnyStorageService
+  ) {
+    try {
+      const episode = await storage.getDramaEpisode(episodeId);
+      if (!episode) return;
+      const project = await storage.getDramaProject(projectId);
+      if (!project) return;
+
+      const user = await storage.getUser(episode.userId);
+      const userFolder = user?.username || episode.userId;
+      const apiKey = process.env.ARK_API_KEY;
+      if (!apiKey) throw new Error("ARK_API_KEY 未設定");
+
+      const scenes: any[] = JSON.parse(episode.scenes);
+      const scene = scenes[sceneIdx];
+      const sceneSizeMap: Record<string, string> = {
+        "1:1": "2048x2048", "9:16": "1440x2560", "16:9": "2560x1440",
+      };
+      const imageSize = sceneSizeMap[project.sceneSize ?? "9:16"] || "1440x2560";
+
+      const loadRefImageAsBase64 = async (imagePath: string): Promise<string> => {
+        const objectFile = await objectStorage.getObjectEntityFile(imagePath);
+        const chunks: Buffer[] = [];
+        for await (const chunk of objectFile.createReadStream()) chunks.push(Buffer.from(chunk));
+        return `data:image/jpeg;base64,${Buffer.concat(chunks).toString("base64")}`;
+      };
+
+      const loadImageList = async (urls: string[]): Promise<string[]> => {
+        if (!urls || urls.length === 0) return [];
+        try { return await Promise.all(urls.map(loadRefImageAsBase64)); } catch { return []; }
+      };
+
+      const useA = scene.useCharA !== false;
+      const useB = scene.useCharB !== false;
+      const charAList = useA ? await loadImageList(project.characterAUrls ?? []) : [];
+      const charBList = useB ? await loadImageList(project.characterBUrls ?? []) : [];
+      const styleList = await loadImageList(project.styleImageUrls ?? []);
+
+      let sceneRefList: string[] = [];
+      if (scene.sceneRefImageUrl) {
+        try { sceneRefList = [await loadRefImageAsBase64(scene.sceneRefImageUrl)]; } catch {}
+      }
+
+      const allRefs = [...charAList, ...charBList, ...sceneRefList, ...styleList];
+      const dialoguePart = scene.dialogue?.trim() ? `，台詞：「${scene.dialogue}」` : "";
+      const scenePrompt = `${scene.description}${dialoguePart}`;
+      const useSeed = scene._tempSeed || episode.globalSeed;
+
+      let requestBody: any;
+      if (allRefs.length > 0) {
+        const labelParts: string[] = [];
+        let idx = 1;
+        if (charAList.length > 0) { labelParts.push(`第 ${idx}${charAList.length > 1 ? `-${idx + charAList.length - 1}` : ""} 張圖為角色 A 外貌，保持角色一致`); idx += charAList.length; }
+        if (charBList.length > 0) { labelParts.push(`第 ${idx}${charBList.length > 1 ? `-${idx + charBList.length - 1}` : ""} 張圖為角色 B 外貌，保持角色一致`); idx += charBList.length; }
+        if (sceneRefList.length > 0) { labelParts.push(`第 ${idx} 張圖為場景構圖參考`); idx += sceneRefList.length; }
+        if (styleList.length > 0) { labelParts.push(`第 ${idx}${styleList.length > 1 ? `-${idx + styleList.length - 1}` : ""} 張圖為畫風風格參考`); }
+        requestBody = {
+          model: "ep-20251223142939-njrkd",
+          prompt: `${scenePrompt}（${labelParts.join("；")}）`,
+          image: allRefs.length === 1 ? allRefs[0] : allRefs,
+          response_format: "url",
+          size: imageSize,
+          watermark: true,
+          ...(useSeed ? { seed: useSeed } : {}),
+        };
+      } else {
+        requestBody = {
+          model: "ep-20251223142939-njrkd",
+          prompt: scenePrompt,
+          response_format: "url",
+          size: imageSize,
+          watermark: true,
+          ...(useSeed ? { seed: useSeed } : {}),
+        };
+      }
+
+      const apiResp = await fetch(ARK_API_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!apiResp.ok) {
+        const errText = await apiResp.text();
+        throw new Error(`API error ${apiResp.status}: ${errText}`);
+      }
+
+      const apiResult = await apiResp.json();
+      const imageUrl = apiResult.data?.[0]?.url;
+      if (!imageUrl) throw new Error("API 未回傳圖片 URL");
+
+      scenes[sceneIdx].imageUrl = imageUrl;
+      delete scenes[sceneIdx]._tempSeed;
+
+      if (bunny.isConfigured()) {
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          try {
+            const imgResp = await fetch(imageUrl);
+            const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+            const remotePath = `users/${userFolder}/drama/${projectId}_ep${episode.episodeNumber}_scene${sceneIdx}.jpg`;
+            const cdnUrl = await bunny.uploadBuffer(imgBuffer, remotePath);
+            scenes[sceneIdx].bunnyUrl = cdnUrl;
+            break;
+          } catch (e) {
+            if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
+          }
+        }
+      }
+
+      scenes[sceneIdx].imageStatus = "completed";
+      delete scenes[sceneIdx].imageError;
+      await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(scenes) });
+      console.log(`✅ Drama scene ${sceneIdx + 1} regenerated`);
+    } catch (err: any) {
+      console.error(`❌ Drama scene ${sceneIdx + 1} regen failed:`, err.message);
+      const ep = await storage.getDramaEpisode(episodeId);
+      if (ep) {
+        const scenes: any[] = JSON.parse(ep.scenes);
+        scenes[sceneIdx].imageStatus = "failed";
+        scenes[sceneIdx].imageError = err.message;
+        await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(scenes) });
+      }
+    }
+  }
+
+  async function animateDramaScene(
+    episodeId: string,
+    projectId: string,
+    sceneIdx: number,
+    opts: { duration: number; resolution: string; prompt?: string; useOmniMode?: boolean },
+    objectStorage: ObjectStorageService,
+    bunny: BunnyStorageService
+  ) {
+    try {
+      const { generateSeedDanceVideo, urlToBase64 } = await import("./seedDanceV2");
+      const episode = await storage.getDramaEpisode(episodeId);
+      if (!episode) return;
+      const project = await storage.getDramaProject(projectId);
+      if (!project) return;
+
+      const user = await storage.getUser(episode.userId);
+      const userFolder = user?.username || episode.userId;
+      const scenes: any[] = JSON.parse(episode.scenes);
+      const scene = scenes[sceneIdx];
+
+      const mainImageUrl = scene.bunnyUrl?.split("?")[0] || scene.imageUrl;
+      const mainImageBase64 = await urlToBase64(mainImageUrl);
+
+      const videoPrompt = opts.prompt || scene.description || "電影感鏡頭，角色自然動作";
+      const aspectRatioMap: Record<string, "16:9" | "9:16" | "1:1"> = {
+        "9:16": "9:16", "16:9": "16:9", "1:1": "1:1",
+      };
+      const aspectRatio = aspectRatioMap[project.sceneSize ?? "9:16"] || "9:16";
+
+      const result = await generateSeedDanceVideo({
+        prompt: videoPrompt,
+        mainImage: { url: mainImageBase64 },
+        duration: opts.duration,
+        aspectRatio,
+        resolution: opts.resolution as "720p" | "1080p",
+        cameraFixed: false,
+        useOmniMode: opts.useOmniMode ?? false,
+      });
+
+      let videoBunnyUrl: string | undefined;
+      if (bunny.isConfigured()) {
+        try {
+          videoBunnyUrl = await bunny.uploadVideoFromUrl(
+            result.videoUrl,
+            userFolder,
+            `drama_${projectId}_ep${episode.episodeNumber}_scene${sceneIdx}`
+          );
+        } catch (e) { console.error("Bunny video upload failed:", e); }
+      }
+
+      scenes[sceneIdx].videoUrl = result.videoUrl;
+      scenes[sceneIdx].videoBunnyUrl = videoBunnyUrl || result.videoUrl;
+      scenes[sceneIdx].videoStatus = "completed";
+      scenes[sceneIdx].videoDuration = opts.duration;
+      scenes[sceneIdx].videoResolution = opts.resolution;
+      delete scenes[sceneIdx].videoError;
+      await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(scenes) });
+      console.log(`✅ Drama scene ${sceneIdx + 1} animated`);
+    } catch (err: any) {
+      console.error(`❌ Drama scene ${sceneIdx + 1} animation failed:`, err.message);
+      const ep = await storage.getDramaEpisode(episodeId);
+      if (ep) {
+        const scenes: any[] = JSON.parse(ep.scenes);
+        scenes[sceneIdx].videoStatus = "failed";
+        scenes[sceneIdx].videoError = err.message;
+        await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(scenes) });
+      }
+    }
+  }
+
   const httpServer = createServer(app);
   return httpServer;
 }

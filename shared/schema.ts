@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, real, integer, json } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, real, integer, json, serial } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -262,8 +262,113 @@ export type StoryScene = {
   status: "pending" | "generating" | "completed" | "failed";
 };
 
+export type DramaScene = {
+  id: string;
+  sceneNumber: number;
+  title: string;
+  description: string;
+  dialogue?: string;
+  cameraMovement?: string;
+  useCharA: boolean;
+  useCharB: boolean;
+  sceneRefImageUrl?: string;
+  // Image
+  imageUrl?: string;
+  bunnyUrl?: string;
+  imageStatus: "pending" | "generating" | "completed" | "failed";
+  imageError?: string;
+  // Video
+  videoUrl?: string;
+  videoBunnyUrl?: string;
+  videoStatus?: "pending" | "generating" | "completed" | "failed";
+  videoError?: string;
+  videoDuration?: number;
+  videoResolution?: "720p" | "1080p";
+};
+
+// ─── Drama Studio ─────────────────────────────────────────────────────────────
+
+export const dramaProjects = pgTable("drama_projects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  title: text("title").notNull(),
+  genre: text("genre").default(""),
+  description: text("description").default(""),
+  characterAName: text("character_a_name").default("角色A"),
+  characterAUrls: text("character_a_urls").array().default([]),
+  characterBName: text("character_b_name").default("角色B"),
+  characterBUrls: text("character_b_urls").array().default([]),
+  styleImageUrls: text("style_image_urls").array().default([]),
+  sceneSize: text("scene_size").default("9:16"),
+  episodeCount: integer("episode_count").default(0),
+  status: text("status").default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const dramaEpisodes = pgTable("drama_episodes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  episodeNumber: integer("episode_number").notNull(),
+  title: text("title").notNull(),
+  scenes: text("scenes").notNull().default("[]"),
+  sceneCount: integer("scene_count").default(0),
+  globalSeed: integer("global_seed"),
+  status: text("status").default("draft"),
+  creditsUsed: integer("credits_used").default(0),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const session = pgTable("session", {
   sid: varchar("sid").primaryKey(),
   sess: json("sess").notNull(),
   expire: timestamp("expire", { precision: 6, mode: "date" }).notNull(),
 });
+
+// ─── Drama Studio Schemas & Types ─────────────────────────────────────────────
+
+export const insertDramaProjectSchema = z.object({
+  title: z.string().min(1).max(60),
+  genre: z.string().optional().default(""),
+  description: z.string().optional().default(""),
+  characterAName: z.string().optional().default("角色A"),
+  characterAUrls: z.array(z.string()).max(4).optional().default([]),
+  characterBName: z.string().optional().default("角色B"),
+  characterBUrls: z.array(z.string()).max(4).optional().default([]),
+  styleImageUrls: z.array(z.string()).max(4).optional().default([]),
+  sceneSize: z.enum(["1:1", "9:16", "16:9"]).optional().default("9:16"),
+});
+
+export const updateDramaProjectSchema = insertDramaProjectSchema.partial();
+
+export const insertDramaEpisodeSchema = z.object({
+  projectId: z.string(),
+  episodeNumber: z.number().int().min(1),
+  title: z.string().min(1).max(60),
+  scenes: z.array(z.object({
+    id: z.string(),
+    sceneNumber: z.number(),
+    title: z.string(),
+    description: z.string().min(1),
+    dialogue: z.string().optional(),
+    cameraMovement: z.string().optional(),
+    useCharA: z.boolean().default(true),
+    useCharB: z.boolean().default(true),
+    sceneRefImageUrl: z.string().optional(),
+    imageStatus: z.enum(["pending", "generating", "completed", "failed"]).default("pending"),
+    videoStatus: z.enum(["pending", "generating", "completed", "failed"]).optional(),
+    videoDuration: z.number().optional().default(5),
+    videoResolution: z.enum(["720p", "1080p"]).optional().default("720p"),
+  })).min(2).max(12),
+  globalSeed: z.number().int().min(1000).max(999999).optional(),
+});
+
+export const updateDramaEpisodeSchema = insertDramaEpisodeSchema.partial().omit({ projectId: true });
+
+export type DramaProject = typeof dramaProjects.$inferSelect;
+export type DramaEpisode = typeof dramaEpisodes.$inferSelect;
+export type InsertDramaProject = z.infer<typeof insertDramaProjectSchema>;
+export type InsertDramaEpisode = z.infer<typeof insertDramaEpisodeSchema>;
