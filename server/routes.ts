@@ -1278,13 +1278,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         throw new Error("ARK_API_KEY environment variable is not set");
       }
 
-      let promptText = generation.prompt;
-      promptText += ` --duration ${generation.duration}`;
-      promptText += ` --camerafixed ${generation.cameraFixed}`;
-      promptText += ` --resolution ${generation.resolution || '1080p'}`;
-      if (generation.aspectRatio) {
-        promptText += ` --ratio ${generation.aspectRatio}`;
-      }
+      const promptText = generation.prompt;
 
       const contentItems: any[] = [
         {
@@ -1341,13 +1335,17 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
 
 
-      const requestBody = {
+      const aspectRatio = generation.aspectRatio || "16:9";
+      const requestBody: any = {
         model: VIDEO_MODEL,
-        content: contentItems
+        content: contentItems,
+        duration: generation.duration || 5,
+        ratio: aspectRatio,
+        watermark: false,
       };
 
       console.log(`Creating video generation task...`);
-      console.log(`Prompt: ${promptText}`);
+      console.log(`Prompt: ${promptText} | duration: ${requestBody.duration}s | ratio: ${aspectRatio}`);
 
       const createResponse = await fetch(VIDEO_API_ENDPOINT, {
         method: "POST",
@@ -1620,11 +1618,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         }
       }
 
-      let promptText = generation.prompt || "";
-      promptText += ` --duration ${generation.duration}`;
-      promptText += ` --camerafixed false`;
-      promptText += ` --resolution ${generation.resolution || "720p"}`;
-      promptText += ` --ratio ${autoAspect}`;
+      const promptText = generation.prompt || "";
+      console.log(`🎬 Story scene ${sceneIdx}: prompt="${promptText}" | duration=${generation.duration}s | ratio=${autoAspect}`);
 
       type VideoContentItem =
         | { type: "text"; text: string }
@@ -1638,9 +1633,12 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         contentItems.push({ type: "image_url", image_url: { url: tailDataUri } });
       }
 
-      const requestBody = {
+      const requestBody: any = {
         model: VIDEO_MODEL,
         content: contentItems,
+        duration: generation.duration || 5,
+        ratio: autoAspect,
+        watermark: false,
       };
 
       const createResponse = await fetch(VIDEO_API_ENDPOINT, {

@@ -19,8 +19,11 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ## API Configuration
 - Image generation: Seedream 5.0 model (endpoint: ep-20251223142939-njrkd)
-- Video generation standard: SeedDance 2.0 model (endpoint: ep-20250813120833-g4mpb)
-- Video generation omni (全能模式): ep-20260428161232-4znch (ARK_VIDEO_OMNI_MODEL env var)
+- Video generation: SeedDance 2.0 — ALL modes use ep-20260428161232-4znch (ARK_VIDEO_MODEL env var)
+  - API format: top-level `duration`, `ratio`, `watermark: false` (no text flags)
+  - Standard mode (文字/圖片生影片, 故事動畫): single image + text prompt
+  - Omni mode (漫劇工作室): multi-image reference (charA + charB + scene ref)
+  - `generate_audio: true` only in omni mode
 - Environment secrets: ARK_API_KEY, ARK_TEXT_TO_IMAGE_API_KEY
 
 ## System Architecture
