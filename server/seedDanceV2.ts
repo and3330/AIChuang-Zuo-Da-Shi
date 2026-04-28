@@ -179,9 +179,8 @@ export async function generateSeedDanceVideo(
   // ratio, duration, generate_audio are top-level fields (new API format)
   if (req.aspectRatio) body.ratio = req.aspectRatio;
   if (req.duration) body.duration = req.duration;
-  if (isOmni) {
-    body.generate_audio = req.generateAudio ?? true;
-  }
+  // Enable AI sound effects by default for both standard and omni mode
+  body.generate_audio = req.generateAudio ?? true;
 
   // ── Submit task ────────────────────────────────────────────────────────────
   const startTime = Date.now();

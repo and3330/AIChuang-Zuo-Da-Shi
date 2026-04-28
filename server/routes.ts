@@ -3362,6 +3362,148 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     }
   });
 
+  // ─── Batch animate ALL scenes in an episode ───────────────────────────────
+  app.post("/api/drama/episodes/:episodeId/animate-all", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) {
+        return res.status(404).json({ error: "找不到集數" });
+      }
+      const { duration = 5, resolution = "720p", useOmniMode = false, generateAudio = true, onlyMissing = true } = req.body;
+
+      const scenes: any[] = JSON.parse(episode.scenes);
+      // Pick scenes that need animating
+      const targets: number[] = [];
+      for (let i = 0; i < scenes.length; i++) {
+        const s = scenes[i];
+        if (s.imageStatus !== "completed" || !s.bunnyUrl) continue; // need image first
+        if (onlyMissing && s.videoStatus === "completed" && s.videoBunnyUrl) continue;
+        if (s.videoStatus === "generating") continue; // already in flight
+        targets.push(i);
+      }
+      if (targets.length === 0) {
+        return res.status(400).json({ error: "沒有需要生成影片的場景（請先完成圖片生成）" });
+      }
+
+      const perSceneCost = resolution === "1080p" ? Math.ceil(duration * 15) : Math.ceil(duration * 8);
+      const totalCost = perSceneCost * targets.length;
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || (user.credits ?? 0) < totalCost) {
+        return res.status(400).json({ error: `積分不足，需要 ${totalCost} 積分` });
+      }
+
+      // Mark all targets as generating + deduct credits up-front (refund per-scene on failure)
+      let balance = user.credits ?? 0;
+      for (const i of targets) {
+        scenes[i].videoStatus = "generating";
+        scenes[i].videoDuration = duration;
+        scenes[i].videoResolution = resolution;
+        delete scenes[i].videoError;
+        balance -= perSceneCost;
+        await storage.updateUserCredits(req.session.userId!, balance);
+        await storage.createCreditTransaction({
+          userId: req.session.userId!,
+          type: "consume",
+          amount: -perSceneCost,
+          balance,
+          description: `漫劇動畫第 ${i + 1} 幕（${duration}秒 ${resolution}，批次）`,
+        });
+      }
+      await storage.updateDramaEpisode(req.params.episodeId, { scenes: JSON.stringify(scenes) });
+
+      // Sequential background processing (avoid overwhelming the API)
+      (async () => {
+        for (const i of targets) {
+          try {
+            await animateDramaScene(
+              req.params.episodeId, episode.projectId, i,
+              { duration, resolution, useOmniMode, generateAudio },
+              objectStorageService, bunnyStorage
+            );
+          } catch (err) {
+            console.error(`[Drama batch animate] scene ${i} failed:`, err);
+          }
+        }
+        console.log(`[Drama batch animate] episode ${req.params.episodeId} done (${targets.length} scenes)`);
+      })().catch(console.error);
+
+      res.json({ ok: true, sceneCount: targets.length, creditCost: totalCost });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Compile episode: stitch all scene videos + burn dialogue subtitles ──
+  app.post("/api/drama/episodes/:episodeId/compile", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) {
+        return res.status(404).json({ error: "找不到集數" });
+      }
+      if (episode.compiledStatus === "compiling") {
+        return res.status(400).json({ error: "正在剪接中，請稍候" });
+      }
+
+      const scenes: any[] = JSON.parse(episode.scenes);
+      if (scenes.length === 0) return res.status(400).json({ error: "沒有可剪接的場景" });
+
+      const missing = scenes.filter(s => !s.videoBunnyUrl && !s.videoUrl).map((_, i) => i + 1);
+      const notReadyIdxs: number[] = [];
+      scenes.forEach((s, i) => { if (!s.videoBunnyUrl && !s.videoUrl) notReadyIdxs.push(i + 1); });
+      if (notReadyIdxs.length > 0) {
+        return res.status(400).json({ error: `第 ${notReadyIdxs.join("、")} 幕還沒生成影片，請先完成` });
+      }
+
+      await storage.updateDramaEpisode(req.params.episodeId, {
+        compiledStatus: "compiling",
+        compiledError: null,
+      });
+
+      // Background processing
+      (async () => {
+        try {
+          const { compileEpisode } = await import("./dramaCompiler");
+          const user = await storage.getUser(episode.userId);
+          const userFolder = user?.username || episode.userId;
+
+          const compileScenes = scenes.map((s, i) => ({
+            sceneNumber: i + 1,
+            videoUrl: (s.videoBunnyUrl || s.videoUrl).split("?")[0],
+            duration: s.videoDuration || 5,
+            dialogue: s.dialogue || "",
+          }));
+
+          const result = await compileEpisode({
+            episodeId: req.params.episodeId,
+            userFolder,
+            scenes: compileScenes,
+            bunny: bunnyStorage,
+            outputName: `drama_${episode.projectId}_ep${episode.episodeNumber}_${Date.now()}`,
+          });
+
+          await storage.updateDramaEpisode(req.params.episodeId, {
+            compiledVideoUrl: result.videoUrl,
+            compiledStatus: "completed",
+            compiledError: null,
+            compiledAt: new Date(),
+          });
+          console.log(`✅ Drama episode ${req.params.episodeId} compiled (${result.totalDuration}s)`);
+        } catch (err: any) {
+          console.error(`❌ Drama compile failed:`, err);
+          await storage.updateDramaEpisode(req.params.episodeId, {
+            compiledStatus: "failed",
+            compiledError: err.message || "剪接失敗",
+          });
+        }
+      })().catch(console.error);
+
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Animate Scene with SeedDance 2.0 ─────────────────────────────────────
 
   app.post("/api/drama/episodes/:episodeId/animate-scene/:sceneIdx", requireAuth, async (req, res) => {
@@ -3378,7 +3520,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         return res.status(400).json({ error: "請先完成圖片生成" });
       }
 
-      const { duration = 5, resolution = "720p", prompt, useOmniMode = false } = req.body;
+      const { duration = 5, resolution = "720p", prompt, useOmniMode = false, generateAudio = true } = req.body;
       const creditCost = resolution === "1080p"
         ? Math.ceil(duration * 15)
         : Math.ceil(duration * 8);
@@ -3406,7 +3548,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
       animateDramaScene(
         req.params.episodeId, episode.projectId, sceneIdx,
-        { duration, resolution, prompt, useOmniMode },
+        { duration, resolution, prompt, useOmniMode, generateAudio },
         objectStorageService, bunnyStorage
       ).catch(console.error);
 
@@ -3719,7 +3861,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     episodeId: string,
     projectId: string,
     sceneIdx: number,
-    opts: { duration: number; resolution: string; prompt?: string; useOmniMode?: boolean },
+    opts: { duration: number; resolution: string; prompt?: string; useOmniMode?: boolean; generateAudio?: boolean },
     objectStorage: ObjectStorageService,
     bunny: BunnyStorageService
   ) {
@@ -3772,6 +3914,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         duration: opts.duration,
         aspectRatio,
         useOmniMode: isOmni,
+        generateAudio: opts.generateAudio ?? true,
       });
 
       let videoBunnyUrl: string | undefined;

@@ -318,6 +318,11 @@ export const dramaEpisodes = pgTable("drama_episodes", {
   status: text("status").default("draft"),
   creditsUsed: integer("credits_used").default(0),
   errorMessage: text("error_message"),
+  // Final compiled video (all scenes stitched + subtitles burned in)
+  compiledVideoUrl: text("compiled_video_url"),
+  compiledStatus: text("compiled_status").default("idle"), // idle | compiling | completed | failed
+  compiledError: text("compiled_error"),
+  compiledAt: timestamp("compiled_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

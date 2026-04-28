@@ -1083,6 +1083,25 @@ function EpisodeView({
     onError: (e: any) => toast({ title: "動畫失敗", description: e.message, variant: "destructive" }),
   });
 
+  const animateAllMutation = useMutation({
+    mutationFn: ({ duration, resolution, useOmniMode }: any) =>
+      apiRequest("POST", `/api/drama/episodes/${episodeId}/animate-all`, { duration, resolution, useOmniMode, generateAudio: true }).then(r => r.json()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
+      toast({ title: `🎬 開始批次生成 ${data.sceneCount} 幕影片`, description: `共消耗 ${data.creditCost} 積分，請耐心等候` });
+    },
+    onError: (e: any) => toast({ title: "批次生成失敗", description: e.message, variant: "destructive" }),
+  });
+
+  const compileMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/drama/episodes/${episodeId}/compile`, {}).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
+      toast({ title: "🎞️ 開始剪接合併", description: "完成後可在下方播放器播放與下載" });
+    },
+    onError: (e: any) => toast({ title: "剪接失敗", description: e.message, variant: "destructive" }),
+  });
+
   const replaceImageMutation = useMutation({
     mutationFn: ({ sceneIdx, objectPath }: { sceneIdx: number; objectPath: string }) =>
       apiRequest("POST", `/api/drama/episodes/${episodeId}/replace-scene-image/${sceneIdx}`, { objectPath }).then(r => r.json()),
@@ -1174,7 +1193,86 @@ function EpisodeView({
         {!hasEnoughCredits && creditCost > 0 && (
           <span className="text-xs text-[#ef4444] shrink-0">積分不足</span>
         )}
+
+        {/* Batch animate all scenes */}
+        {(() => {
+          const animatable = serverScenes.filter(s => s.imageStatus === "completed" && s.bunnyUrl && !(s.videoStatus === "completed" && s.videoBunnyUrl) && s.videoStatus !== "generating").length;
+          const generatingCount = serverScenes.filter(s => s.videoStatus === "generating").length;
+          const batchCost = animatable * 5 * 8; // 5s @ 720p
+          return animatable > 0 ? (
+            <DarkButton
+              onClick={() => {
+                if (!confirm(`即將為 ${animatable} 幕生成影片（5秒 720P + AI 音效），共消耗 ${batchCost} 積分，確定？`)) return;
+                animateAllMutation.mutate({ duration: 5, resolution: "720p", useOmniMode: false });
+              }}
+              disabled={animateAllMutation.isPending || (user?.credits ?? 0) < batchCost}
+              style={{ background: "#0ea5e9", borderColor: "#0ea5e9" }}
+            >
+              {animateAllMutation.isPending ? "⏳ 派發中..." : `🎬 一鍵生成全部影片 (-${batchCost})`}
+            </DarkButton>
+          ) : generatingCount > 0 ? (
+            <span className="text-xs text-[#0ea5e9] animate-pulse shrink-0">● {generatingCount} 幕影片生成中</span>
+          ) : null;
+        })()}
+
+        {/* Compile (stitch + subtitles) */}
+        {(() => {
+          const allDone = serverScenes.length > 0 && serverScenes.every(s => s.videoBunnyUrl || s.videoUrl);
+          const isCompiling = episode.compiledStatus === "compiling";
+          if (!allDone && !isCompiling) return null;
+          return (
+            <DarkButton
+              onClick={() => {
+                if (!confirm(`即將剪接合併 ${serverScenes.length} 幕影片並燒入字幕，約需 1-3 分鐘。確定？`)) return;
+                compileMutation.mutate();
+              }}
+              disabled={isCompiling || compileMutation.isPending}
+              style={{ background: "#10b981", borderColor: "#10b981" }}
+            >
+              {isCompiling ? "⏳ 剪接中..." : episode.compiledVideoUrl ? "🎞 重新剪接" : "🎞 剪接合併＋字幕"}
+            </DarkButton>
+          );
+        })()}
       </div>
+
+      {/* ── Compiled Episode Player ─────────────────────────────────────────── */}
+      {(episode.compiledVideoUrl || episode.compiledStatus === "compiling" || episode.compiledStatus === "failed") && (
+        <div className="px-4 py-3 bg-[#ecfdf5] border-b border-[#10b98140] shrink-0">
+          {episode.compiledStatus === "compiling" && (
+            <div className="flex items-center gap-2 text-sm text-[#047857]">
+              <Spinner /> <span>正在剪接合併並燒字幕，約需 1-3 分鐘…</span>
+            </div>
+          )}
+          {episode.compiledStatus === "failed" && (
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm text-[#dc2626]">❌ 剪接失敗：{episode.compiledError}</div>
+              <DarkButton variant="secondary" onClick={() => compileMutation.mutate()}>重試</DarkButton>
+            </div>
+          )}
+          {episode.compiledStatus === "completed" && episode.compiledVideoUrl && (
+            <div className="flex items-center gap-4">
+              <video
+                src={episode.compiledVideoUrl}
+                controls
+                className="h-32 w-auto rounded-md bg-black shrink-0"
+                data-testid="video-compiled-episode"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-[#047857]">✅ 完整漫劇影片已生成</div>
+                <div className="text-xs text-[#64748b] truncate">{episode.compiledVideoUrl}</div>
+              </div>
+              <a
+                href={episode.compiledVideoUrl}
+                download
+                className="text-sm font-medium text-white bg-[#10b981] hover:bg-[#059669] px-4 py-2 rounded-md transition-colors shrink-0"
+                data-testid="link-download-compiled"
+              >
+                ⬇ 下載 MP4
+              </a>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ── Main Workspace ──────────────────────────────────────────────────── */}
       <div className="flex flex-1 overflow-hidden">
