@@ -18,6 +18,38 @@ const anthropic = new Anthropic({
   baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
 });
 
+function translateApiError(rawError: string): string {
+  const lower = rawError.toLowerCase();
+  if (lower.includes("inputtextsensitivecontentdetected") || lower.includes("input text may contain sensitive")) {
+    return "提示詞包含敏感內容被系統攔截，請修改用詞後重試（避免暴力、色情、政治、名人姓名等敏感字眼）";
+  }
+  if (lower.includes("inputimagesensitivecontentdetected") || lower.includes("input image may contain sensitive")) {
+    return "上傳圖片包含敏感內容被系統攔截，請更換圖片後重試";
+  }
+  if (lower.includes("outputimagesensitivecontentdetected") || lower.includes("outputvideosensitivecontentdetected") || lower.includes("output may contain sensitive")) {
+    return "生成結果被系統判定含敏感內容，已自動攔截。請調整提示詞後重試";
+  }
+  if (lower.includes("ratelimit") || lower.includes("rate limit") || lower.includes("too many requests")) {
+    return "API 請求過於頻繁，請稍後再試";
+  }
+  if (lower.includes("invalidparameter") || lower.includes("invalid parameter")) {
+    return "請求參數錯誤，請檢查輸入內容（例如圖片格式、解析度、長度）";
+  }
+  if (lower.includes("imagesizeexceeded") || lower.includes("image size") || lower.includes("filesizetoolarge")) {
+    return "圖片檔案過大，請壓縮後再上傳";
+  }
+  if (lower.includes("unsupportedimageformat") || lower.includes("unsupported image")) {
+    return "不支援的圖片格式，請改用 JPG / PNG";
+  }
+  if (lower.includes("aspectratio") || lower.includes("aspect ratio")) {
+    return "圖片長寬比超出範圍，請使用接近正方形或標準比例的圖片";
+  }
+  if (lower.includes("timeout")) {
+    return "影片生成超時，請稍後重試";
+  }
+  return rawError;
+}
+
 function fixBunnyCdnUrl(url: string | null | undefined): string | null | undefined {
   if (!url) return url;
   const cdnHost = process.env.BUNNY_CDN_HOST || "";
@@ -1359,7 +1391,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       if (!createResponse.ok) {
         const errorText = await createResponse.text();
         console.log(`❌ Video API Error ${createResponse.status}:`, errorText);
-        throw new Error(`Video API error: ${createResponse.status} - ${errorText}`);
+        throw new Error(translateApiError(errorText));
       }
 
       const createResult = await createResponse.json();
@@ -1649,7 +1681,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       if (!createResponse.ok) {
         const errText = await createResponse.text();
-        throw new Error(`Video API error ${createResponse.status}: ${errText}`);
+        throw new Error(translateApiError(errText));
       }
 
       const createResult = await createResponse.json();
@@ -3760,13 +3792,36 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(scenes) });
       console.log(`✅ Drama scene ${sceneIdx + 1} animated`);
     } catch (err: any) {
+      const friendlyMessage = translateApiError(err.message || "未知錯誤");
       console.error(`❌ Drama scene ${sceneIdx + 1} animation failed:`, err.message);
       const ep = await storage.getDramaEpisode(episodeId);
       if (ep) {
         const scenes: any[] = JSON.parse(ep.scenes);
         scenes[sceneIdx].videoStatus = "failed";
-        scenes[sceneIdx].videoError = err.message;
+        scenes[sceneIdx].videoError = friendlyMessage;
         await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(scenes) });
+      }
+      // Refund credits on drama scene animation failure
+      try {
+        const ep2 = await storage.getDramaEpisode(episodeId);
+        if (ep2) {
+          const user = await storage.getUser(ep2.userId);
+          const creditCost = opts.resolution === "1080p" ? Math.ceil(opts.duration * 15) : Math.ceil(opts.duration * 8);
+          if (user) {
+            const newBalance = (user.credits ?? 0) + creditCost;
+            await storage.updateUserCredits(ep2.userId, newBalance);
+            await storage.createCreditTransaction({
+              userId: ep2.userId,
+              type: "refund",
+              amount: creditCost,
+              balance: newBalance,
+              description: `漫劇動畫第 ${sceneIdx + 1} 幕失敗退款（${friendlyMessage}）`,
+            });
+            console.log(`✅ Refunded ${creditCost} credits for failed drama scene ${sceneIdx + 1}`);
+          }
+        }
+      } catch (refundErr) {
+        console.error("Failed to refund drama scene credits:", refundErr);
       }
     }
   }
