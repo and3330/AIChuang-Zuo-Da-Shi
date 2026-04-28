@@ -129,6 +129,12 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ### Drama Studio 漫劇工作室
 - **Route**: /drama (separate page from home.tsx)
+- **UI**: ComicFlow-inspired dark theme visual node editor
+  - Scene nodes displayed as connected cards with SVG bezier arrows (visual flow)
+  - Right inspector panel for scene editing (title, description, dialogue, camera, character toggles)
+  - Two view modes: ⬡ 節點流 (node flow) and ⊞ 格網 (grid)
+  - Status bar: node count, credits remaining, generation status
+  - Fixed bugs: removed invalid `border-3` Tailwind class, fixed SelectItem empty value
 - **DB Tables**:
   - `dramaProjects`: id, userId, title, genre, characterAName, characterAUrls (text[]), characterBName, characterBUrls (text[]), styleImageUrls (text[]), sceneSize, episodeCount, status, createdAt, updatedAt
   - `dramaEpisodes`: id, projectId, userId, episodeNumber, title, scenes (JSON string), globalSeed, status, creditsUsed, errorMessage, createdAt, updatedAt
@@ -140,7 +146,8 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
   - Supports reference_image, reference_video, reference_audio content types
   - Omni mode auto-loads characterAUrls[0] + characterBUrls[0] + scene.sceneRefImageUrl as reference images
 - **Pricing**: 3 credits/scene image; video same as standard (720P 3.4/sec, 1080P 6.8/sec)
-- **Frontend**: 3-panel layout — project list sidebar, episode list, episode editor (3-step: ①設定 ②分鏡 ③生成)
+- **Frontend**: Visual node editor — project list, episode list, episode editor with ComicFlow dark theme
+  - Episode editor: SVG node flow canvas + right inspector panel + dual view (node flow / grid)
 - **Navigation**: "🎬 漫劇工作室" link in home.tsx 3rd tab + NavigationHeader
 
 ### Story Mode (故事模式) — Legacy
@@ -169,3 +176,4 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 - Created transaction history page
 - Updated home page with NavigationHeader, credit balance display, cost indicators
 - Added insufficient credits blocking with warning messages
+- Redesigned Drama Studio to ComicFlow dark theme visual node editor: SVG scene node flow, right inspector panel, dual view modes (node flow / grid), status bar; fixed border-3 and SelectItem empty value bugs
