@@ -43,7 +43,7 @@ type SnippetCategory = {
 
 const PROMPT_SNIPPETS: SnippetCategory[] = [
   {
-    key: "lighting", emoji: "💡", label: "光線氛圍", color: "#facc15",
+    key: "lighting", emoji: "💡", label: "光線氛圍", color: "#ca8a04",
     snippets: [
       { label: "黃金時刻", text: "黃金時刻溫暖斜陽光，金橘色調，柔和側光" },
       { label: "霓虹冷光", text: "賽博龐克霓虹冷光，藍紫光斑反射在臉上" },
@@ -69,7 +69,7 @@ const PROMPT_SNIPPETS: SnippetCategory[] = [
     ],
   },
   {
-    key: "emotion", emoji: "😢", label: "情緒表現", color: "#f472b6",
+    key: "emotion", emoji: "😢", label: "情緒表現", color: "#db2777",
     snippets: [
       { label: "憂鬱", text: "她眼眶泛紅，眼神空洞，低頭不語" },
       { label: "震驚", text: "他瞳孔微縮，呼吸停頓，難以置信" },
@@ -193,7 +193,7 @@ async function uploadToObjectStorage(file: File): Promise<string> {
 // ─── Shared styles ─────────────────────────────────────────────────────────────
 const S = {
   root: "min-h-screen flex flex-col",
-  page: "flex-1 bg-[#0a0a14] text-[#ccc]",
+  page: "flex-1 bg-[#f8fafc] text-[#0f172a]",
 };
 
 // ─── Small helpers ──────────────────────────────────────────────────────────────
@@ -213,10 +213,10 @@ function DarkButton({
 }) {
   const base = "px-3 py-1.5 rounded-lg text-sm font-medium transition-all focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed";
   const variants = {
-    primary:   "bg-[#6366f1] hover:bg-[#4f51c5] text-white",
-    secondary: "bg-[#1a1a2e] hover:bg-[#252540] border border-[#2a2a4a] text-[#aaa]",
-    danger:    "bg-[#ef4444]/10 hover:bg-[#ef4444]/20 border border-[#ef4444]/30 text-[#f87171]",
-    ghost:     "hover:bg-[#1a1a2e] text-[#666] hover:text-[#aaa]",
+    primary:   "bg-[#6366f1] hover:bg-[#4338ca] text-white",
+    secondary: "bg-[#e2e8f0] hover:bg-[#f1f5f9] border border-[#cbd5e1] text-[#334155]",
+    danger:    "bg-[#ef4444]/10 hover:bg-[#ef4444]/20 border border-[#ef4444]/30 text-[#dc2626]",
+    ghost:     "hover:bg-[#e2e8f0] text-[#64748b] hover:text-[#334155]",
   };
   return (
     <button className={`${base} ${variants[variant]} ${className}`} onClick={onClick} disabled={disabled} style={style}>
@@ -233,8 +233,8 @@ function DarkInput({
       value={value}
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
-      className={`w-full bg-[#111122] border border-[#2a2a4a] rounded-lg px-3 py-2 text-[#ccc] text-sm
-        placeholder-[#444] focus:outline-none focus:border-[#6366f1] transition-colors ${className}`}
+      className={`w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#0f172a] text-sm
+        placeholder-[#94a3b8] focus:outline-none focus:border-[#6366f1] transition-colors ${className}`}
     />
   );
 }
@@ -248,8 +248,8 @@ function DarkTextarea({
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       rows={rows}
-      className={`w-full bg-[#111122] border border-[#2a2a4a] rounded-lg px-3 py-2 text-[#ccc] text-sm
-        placeholder-[#444] focus:outline-none focus:border-[#6366f1] transition-colors resize-none ${className}`}
+      className={`w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#0f172a] text-sm
+        placeholder-[#94a3b8] focus:outline-none focus:border-[#6366f1] transition-colors resize-none ${className}`}
     />
   );
 }
@@ -261,7 +261,7 @@ function DarkSelect({
     <select
       value={value}
       onChange={e => onChange(e.target.value)}
-      className="w-full bg-[#111122] border border-[#2a2a4a] rounded-lg px-3 py-2 text-[#ccc] text-sm
+      className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#0f172a] text-sm
         focus:outline-none focus:border-[#6366f1] transition-colors"
     >
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
@@ -275,11 +275,11 @@ function Modal({
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-[#0d0d1a] border border-[#2a2a4a] rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative bg-[#ffffff] border border-[#cbd5e1] rounded-2xl p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
         <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-semibold text-white">{title}</h3>
-          <button onClick={onClose} className="text-[#555] hover:text-[#aaa] text-xl leading-none">×</button>
+          <h3 className="text-base font-semibold text-[#0f172a]">{title}</h3>
+          <button onClick={onClose} className="text-[#64748b] hover:text-[#334155] text-xl leading-none">×</button>
         </div>
         {children}
       </div>
@@ -317,10 +317,10 @@ function ImageUploadButton({
 
   return (
     <div className="space-y-2">
-      <p className="text-xs font-medium text-[#666] uppercase tracking-wide">{label}</p>
+      <p className="text-xs font-medium text-[#64748b] uppercase tracking-wide">{label}</p>
       <div className="flex gap-2 flex-wrap">
         {objectPaths.map((_, i) => (
-          <div key={i} className="relative w-12 h-12 rounded-lg bg-[#1a1a2e] border border-[#2a2a4a] flex items-center justify-center group">
+          <div key={i} className="relative w-12 h-12 rounded-lg bg-[#e2e8f0] border border-[#cbd5e1] flex items-center justify-center group">
             <span className="text-[#6366f1] text-xs font-bold">✓</span>
             <button onClick={() => onRemove(i)}
               className="absolute -top-1 -right-1 w-4 h-4 bg-[#ef4444] text-white text-xs rounded-full hidden group-hover:flex items-center justify-center">×</button>
@@ -328,7 +328,7 @@ function ImageUploadButton({
         ))}
         {objectPaths.length < max && (
           <button onClick={() => inputRef.current?.click()} disabled={uploading}
-            className="w-12 h-12 rounded-lg border border-dashed border-[#2a2a4a] flex flex-col items-center justify-center text-[#444] hover:border-[#6366f1] hover:text-[#6366f1] transition-all">
+            className="w-12 h-12 rounded-lg border border-dashed border-[#cbd5e1] flex flex-col items-center justify-center text-[#94a3b8] hover:border-[#6366f1] hover:text-[#6366f1] transition-all">
             {uploading ? <span className="text-xs">...</span> : <><span className="text-lg leading-none">+</span><span className="text-[9px]">上傳</span></>}
           </button>
         )}
@@ -373,8 +373,8 @@ function ProjectsView({ onSelect }: { onSelect: (id: string) => void }) {
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-white">🎬 漫劇工作室</h1>
-          <p className="text-sm text-[#555] mt-1">視覺化 AI 漫劇生成流程</p>
+          <h1 className="text-2xl font-bold text-[#0f172a]">🎬 漫劇工作室</h1>
+          <p className="text-sm text-[#64748b] mt-1">視覺化 AI 漫劇生成流程</p>
         </div>
         <DarkButton onClick={() => setShowCreate(true)}>＋ 新建漫劇</DarkButton>
       </div>
@@ -384,25 +384,25 @@ function ProjectsView({ onSelect }: { onSelect: (id: string) => void }) {
       ) : projects.length === 0 ? (
         <div className="text-center py-24">
           <div className="text-6xl mb-4">🎬</div>
-          <p className="text-lg font-medium text-[#aaa] mb-2">還沒有漫劇專案</p>
-          <p className="text-sm text-[#555] mb-6">點擊「新建漫劇」開始你的第一部 AI 漫劇</p>
+          <p className="text-lg font-medium text-[#334155] mb-2">還沒有漫劇專案</p>
+          <p className="text-sm text-[#64748b] mb-6">點擊「新建漫劇」開始你的第一部 AI 漫劇</p>
           <DarkButton onClick={() => setShowCreate(true)}>＋ 新建漫劇</DarkButton>
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {projects.map(p => (
             <div key={p.id} onClick={() => onSelect(p.id)}
-              className="bg-[#0d0d1a] border border-[#1a1a2e] rounded-2xl p-5 cursor-pointer
+              className="bg-[#ffffff] border border-[#e2e8f0] rounded-2xl p-5 cursor-pointer
                 hover:border-[#6366f1] hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] transition-all group">
               <div className="flex items-start justify-between mb-3">
                 <div className="w-10 h-10 bg-[#6366f1]/10 rounded-xl flex items-center justify-center text-xl">🎬</div>
                 <button onClick={e => { e.stopPropagation(); if (confirm(`確定刪除「${p.title}」？`)) deleteMutation.mutate(p.id); }}
-                  className="opacity-0 group-hover:opacity-100 text-[#444] hover:text-[#ef4444] transition-all text-sm">✕</button>
+                  className="opacity-0 group-hover:opacity-100 text-[#94a3b8] hover:text-[#ef4444] transition-all text-sm">✕</button>
               </div>
-              <h3 className="font-bold text-white truncate">{p.title}</h3>
+              <h3 className="font-bold text-[#0f172a] truncate">{p.title}</h3>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                {p.genre && <span className="text-xs bg-[#6366f1]/10 text-[#a78bfa] px-2 py-0.5 rounded-full">{p.genre}</span>}
-                <span className="text-xs text-[#555]">{p.episodeCount ?? 0} 集</span>
+                {p.genre && <span className="text-xs bg-[#6366f1]/10 text-[#4f46e5] px-2 py-0.5 rounded-full">{p.genre}</span>}
+                <span className="text-xs text-[#64748b]">{p.episodeCount ?? 0} 集</span>
               </div>
             </div>
           ))}
@@ -412,15 +412,15 @@ function ProjectsView({ onSelect }: { onSelect: (id: string) => void }) {
       <Modal open={showCreate} onClose={() => setShowCreate(false)} title="新建漫劇專案">
         <div className="space-y-4">
           <div>
-            <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">漫劇標題</label>
+            <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">漫劇標題</label>
             <DarkInput value={newTitle} onChange={setNewTitle} placeholder="例：霸道總裁的秘密" />
           </div>
           <div>
-            <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">類型</label>
+            <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">類型</label>
             <div className="flex flex-wrap gap-2">
               {GENRES.map(g => (
                 <button key={g} onClick={() => setNewGenre(g)}
-                  className={`px-3 py-1 rounded-full text-xs border transition-all ${newGenre === g ? "bg-[#6366f1] text-white border-[#6366f1]" : "border-[#2a2a4a] text-[#666] hover:border-[#6366f1] hover:text-[#a78bfa]"}`}>
+                  className={`px-3 py-1 rounded-full text-xs border transition-all ${newGenre === g ? "bg-[#6366f1] text-white border-[#6366f1]" : "border-[#cbd5e1] text-[#64748b] hover:border-[#6366f1] hover:text-[#4f46e5]"}`}>
                   {g}
                 </button>
               ))}
@@ -541,12 +541,12 @@ function ProjectView({
     <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <button onClick={onBack} className="text-[#555] hover:text-[#aaa] text-sm transition-colors">← 返回</button>
+        <button onClick={onBack} className="text-[#64748b] hover:text-[#334155] text-sm transition-colors">← 返回</button>
         <div className="flex-1">
           <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-xl font-bold text-white">{project.title}</h1>
-            {project.genre && <span className="text-xs bg-[#6366f1]/10 text-[#a78bfa] px-2 py-0.5 rounded-full">{project.genre}</span>}
-            <span className="text-xs text-[#444]">{SIZE_LABELS[project.sceneSize ?? "9:16"]}</span>
+            <h1 className="text-xl font-bold text-[#0f172a]">{project.title}</h1>
+            {project.genre && <span className="text-xs bg-[#6366f1]/10 text-[#4f46e5] px-2 py-0.5 rounded-full">{project.genre}</span>}
+            <span className="text-xs text-[#94a3b8]">{SIZE_LABELS[project.sceneSize ?? "9:16"]}</span>
           </div>
         </div>
         <DarkButton variant="secondary" onClick={() => setShowSettings(true)}>✏️ 編輯設定</DarkButton>
@@ -554,8 +554,8 @@ function ProjectView({
       </div>
 
       {/* Character Library */}
-      <div className="bg-[#0d0d1a] border border-[#1a1a2e] rounded-2xl p-5">
-        <h2 className="font-semibold text-[#aaa] mb-4 text-sm uppercase tracking-wide">🎭 角色庫</h2>
+      <div className="bg-[#ffffff] border border-[#e2e8f0] rounded-2xl p-5">
+        <h2 className="font-semibold text-[#334155] mb-4 text-sm uppercase tracking-wide">🎭 角色庫</h2>
         <div className="grid grid-cols-3 gap-6">
           {[
             { label: "角色 A", urls: project.characterAUrls ?? [], color: "#6366f1" },
@@ -563,7 +563,7 @@ function ProjectView({
             { label: "風格參考", urls: project.styleImageUrls ?? [], color: "#10b981" },
           ].map(({ label, urls, color }) => (
             <div key={label}>
-              <p className="text-xs text-[#555] mb-2">{label}（{urls.length} 張）</p>
+              <p className="text-xs text-[#64748b] mb-2">{label}（{urls.length} 張）</p>
               <div className="flex flex-wrap gap-1.5">
                 {urls.map((_, i) => (
                   <div key={i} className="w-10 h-10 rounded-lg flex items-center justify-center border text-xs font-bold"
@@ -571,7 +571,7 @@ function ProjectView({
                     {label[2]}{i + 1}
                   </div>
                 ))}
-                {urls.length === 0 && <p className="text-xs text-[#333]">未設定</p>}
+                {urls.length === 0 && <p className="text-xs text-[#cbd5e1]">未設定</p>}
               </div>
             </div>
           ))}
@@ -579,13 +579,13 @@ function ProjectView({
       </div>
 
       {/* Episodes */}
-      <div className="bg-[#0d0d1a] border border-[#1a1a2e] rounded-2xl p-5">
-        <h2 className="font-semibold text-[#aaa] mb-4 text-sm uppercase tracking-wide">📋 集數列表</h2>
+      <div className="bg-[#ffffff] border border-[#e2e8f0] rounded-2xl p-5">
+        <h2 className="font-semibold text-[#334155] mb-4 text-sm uppercase tracking-wide">📋 集數列表</h2>
         {loadingEpisodes ? (
           <div className="flex items-center justify-center h-16"><Spinner /></div>
         ) : episodes.length === 0 ? (
           <div className="text-center py-8">
-            <p className="text-[#444] mb-3 text-sm">還沒有集數</p>
+            <p className="text-[#94a3b8] mb-3 text-sm">還沒有集數</p>
             <DarkButton variant="secondary" onClick={() => setShowNewEpisode(true)}>＋ 新增第一集</DarkButton>
           </div>
         ) : (
@@ -593,17 +593,17 @@ function ProjectView({
             {episodes.map(ep => {
               const scenes: DramaScene[] = JSON.parse(ep.scenes || "[]");
               const done = scenes.filter(s => s.imageStatus === "completed").length;
-              const statusColor = ep.status === "completed" ? "#22c55e" : ep.status === "generating" ? "#facc15" : ep.status === "failed" ? "#ef4444" : "#444";
+              const statusColor = ep.status === "completed" ? "#22c55e" : ep.status === "generating" ? "#ca8a04" : ep.status === "failed" ? "#ef4444" : "#94a3b8";
               return (
                 <div key={ep.id} onClick={() => onSelectEpisode(ep.id)}
-                  className="flex items-center gap-4 p-4 rounded-xl border border-[#1a1a2e] hover:border-[#6366f1]/40 hover:bg-[#6366f1]/5 cursor-pointer transition-all group">
+                  className="flex items-center gap-4 p-4 rounded-xl border border-[#e2e8f0] hover:border-[#6366f1]/40 hover:bg-[#6366f1]/5 cursor-pointer transition-all group">
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm"
-                    style={{ background: "#6366f115", color: "#a78bfa" }}>
+                    style={{ background: "#6366f115", color: "#4f46e5" }}>
                     {ep.episodeNumber}
                   </div>
                   <div className="flex-1">
-                    <p className="font-medium text-[#ccc]">{ep.title}</p>
-                    <p className="text-xs text-[#444]">{ep.sceneCount} 幕 · {done} 幕已生成圖片</p>
+                    <p className="font-medium text-[#0f172a]">{ep.title}</p>
+                    <p className="text-xs text-[#94a3b8]">{ep.sceneCount} 幕 · {done} 幕已生成圖片</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <span className="text-xs px-2 py-0.5 rounded-full border"
@@ -611,7 +611,7 @@ function ProjectView({
                       {ep.status === "generating" ? "生成中" : ep.status === "completed" ? "完成" : ep.status === "failed" ? "失敗" : "草稿"}
                     </span>
                     <button onClick={e => { e.stopPropagation(); if (confirm("確定刪除此集？")) deleteEpisodeMutation.mutate(ep.id); }}
-                      className="opacity-0 group-hover:opacity-100 text-[#444] hover:text-[#ef4444] transition-all text-sm">✕</button>
+                      className="opacity-0 group-hover:opacity-100 text-[#94a3b8] hover:text-[#ef4444] transition-all text-sm">✕</button>
                   </div>
                 </div>
               );
@@ -624,26 +624,26 @@ function ProjectView({
       <Modal open={showSettings} onClose={() => setShowSettings(false)} title="編輯漫劇設定">
         <div className="space-y-5">
           <div>
-            <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">漫劇標題</label>
+            <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">漫劇標題</label>
             <DarkInput value={pTitle} onChange={setPTitle} />
           </div>
           <div>
-            <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">類型</label>
+            <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">類型</label>
             <div className="flex flex-wrap gap-2">
               {GENRES.map(g => (
                 <button key={g} onClick={() => setPGenre(g)}
-                  className={`px-2.5 py-1 rounded-full text-xs border transition-all ${pGenre === g ? "bg-[#6366f1] text-white border-[#6366f1]" : "border-[#2a2a4a] text-[#666] hover:border-[#6366f1]"}`}>
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-all ${pGenre === g ? "bg-[#6366f1] text-white border-[#6366f1]" : "border-[#cbd5e1] text-[#64748b] hover:border-[#6366f1]"}`}>
                   {g}
                 </button>
               ))}
             </div>
           </div>
           <div>
-            <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">圖片尺寸</label>
+            <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">圖片尺寸</label>
             <div className="grid grid-cols-3 gap-2">
               {Object.entries(SIZE_LABELS).map(([val, label]) => (
                 <button key={val} onClick={() => setPSceneSize(val)}
-                  className={`p-2.5 rounded-xl border text-xs transition-all ${pSceneSize === val ? "border-[#6366f1] bg-[#6366f1]/10 text-[#a78bfa]" : "border-[#2a2a4a] text-[#555] hover:border-[#6366f1]/40"}`}>
+                  className={`p-2.5 rounded-xl border text-xs transition-all ${pSceneSize === val ? "border-[#6366f1] bg-[#6366f1]/10 text-[#4f46e5]" : "border-[#cbd5e1] text-[#64748b] hover:border-[#6366f1]/40"}`}>
                   {label}
                 </button>
               ))}
@@ -666,16 +666,16 @@ function ProjectView({
       <Modal open={showNewEpisode} onClose={() => { setShowNewEpisode(false); setSelectedTemplate(null); }} title="新增集數">
         <div className="space-y-4">
           <div>
-            <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">集數標題</label>
+            <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">集數標題</label>
             <DarkInput value={newEpTitle} onChange={setNewEpTitle} placeholder={`第 ${episodes.length + 1} 集`} />
           </div>
 
           {/* Template picker */}
           <div>
-            <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block flex items-center justify-between">
+            <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block flex items-center justify-between">
               <span>📚 從範本開始（選填）</span>
               {selectedTemplate && (
-                <button onClick={() => setSelectedTemplate(null)} className="text-[10px] text-[#a78bfa] hover:text-[#6366f1] normal-case tracking-normal">清除</button>
+                <button onClick={() => setSelectedTemplate(null)} className="text-[10px] text-[#4f46e5] hover:text-[#6366f1] normal-case tracking-normal">清除</button>
               )}
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -683,13 +683,13 @@ function ProjectView({
                 const active = selectedTemplate === t.key;
                 return (
                   <button key={t.key} onClick={() => setSelectedTemplate(t.key)}
-                    className={`p-2.5 rounded-xl border text-left transition-all ${active ? "border-[#6366f1] bg-[#6366f1]/10" : "border-[#1a1a2e] bg-[#0a0a14] hover:border-[#6366f1]/40"}`}>
+                    className={`p-2.5 rounded-xl border text-left transition-all ${active ? "border-[#6366f1] bg-[#6366f1]/10" : "border-[#e2e8f0] bg-[#f8fafc] hover:border-[#6366f1]/40"}`}>
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="text-base">{t.emoji}</span>
-                      <span className={`text-xs font-semibold ${active ? "text-[#a78bfa]" : "text-[#aaa]"}`}>{t.title}</span>
+                      <span className={`text-xs font-semibold ${active ? "text-[#4f46e5]" : "text-[#334155]"}`}>{t.title}</span>
                     </div>
-                    <p className="text-[10px] text-[#555] leading-snug line-clamp-2">{t.description}</p>
-                    <p className="text-[10px] text-[#444] mt-1">共 {t.scenes.length} 幕 · {t.scenes.length * 3} 積分</p>
+                    <p className="text-[10px] text-[#64748b] leading-snug line-clamp-2">{t.description}</p>
+                    <p className="text-[10px] text-[#94a3b8] mt-1">共 {t.scenes.length} 幕 · {t.scenes.length * 3} 積分</p>
                   </button>
                 );
               })}
@@ -699,20 +699,20 @@ function ProjectView({
           {/* Scene count slider (disabled when template selected) */}
           {!selectedTemplate && (
             <div>
-              <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">
-                場景數量：<span className="text-[#a78bfa] font-bold">{newEpSceneCount} 幕</span>
-                <span className="text-[#444] ml-2">（{newEpSceneCount * 3} 積分）</span>
+              <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">
+                場景數量：<span className="text-[#4f46e5] font-bold">{newEpSceneCount} 幕</span>
+                <span className="text-[#94a3b8] ml-2">（{newEpSceneCount * 3} 積分）</span>
               </label>
               <input type="range" min={2} max={12} value={newEpSceneCount}
                 onChange={e => setNewEpSceneCount(Number(e.target.value))}
                 className="w-full accent-[#6366f1]" />
-              <div className="flex justify-between text-xs text-[#444] mt-1"><span>2 幕</span><span>12 幕</span></div>
-              <p className="text-[10px] text-[#555] mt-2">💡 建立後可在編輯器中用「🤖 AI 寫腳本」一鍵生成所有幕的內容</p>
+              <div className="flex justify-between text-xs text-[#94a3b8] mt-1"><span>2 幕</span><span>12 幕</span></div>
+              <p className="text-[10px] text-[#64748b] mt-2">💡 建立後可在編輯器中用「🤖 AI 寫腳本」一鍵生成所有幕的內容</p>
             </div>
           )}
 
           {selectedTemplate && (
-            <div className="bg-[#6366f1]/5 border border-[#6366f1]/20 rounded-lg p-2.5 text-[11px] text-[#a78bfa]">
+            <div className="bg-[#6366f1]/5 border border-[#6366f1]/20 rounded-lg p-2.5 text-[11px] text-[#4f46e5]">
               ✨ 將以「{DRAMA_TEMPLATES.find(t => t.key === selectedTemplate)?.title}」範本建立完整腳本，建立後可隨時微調
             </div>
           )}
@@ -762,7 +762,7 @@ function SceneFlowCanvas({
           const ss = serverScenes[idx];
           const ns = serverScenes[idx + 1];
           const bothDone = ss?.imageStatus === "completed" && ns?.imageStatus === "completed";
-          const color = bothDone ? "#22c55e" : "#2a2a4a";
+          const color = bothDone ? "#22c55e" : "#cbd5e1";
           return (
             <g key={idx}>
               <path d={`M${x1},${y} C${x1 + GAP * 0.4},${y} ${x2 - GAP * 0.4},${y} ${x2},${y}`}
@@ -783,7 +783,7 @@ function SceneFlowCanvas({
           const isDone = ss?.imageStatus === "completed";
           const isFailed = ss?.imageStatus === "failed";
           const hasVideo = ss?.videoStatus === "completed";
-          const borderColor = isSelected ? "#6366f1" : isGenerating ? "#facc15" : isDone ? "#22c55e" : isFailed ? "#ef4444" : "#2a2a4a";
+          const borderColor = isSelected ? "#6366f1" : isGenerating ? "#ca8a04" : isDone ? "#22c55e" : isFailed ? "#ef4444" : "#cbd5e1";
           const x = PAD + idx * (CARD_W + GAP);
           const y = PAD;
 
@@ -798,10 +798,10 @@ function SceneFlowCanvas({
               )}
 
               {/* Shadow */}
-              <rect x={3} y={3} width={CARD_W} height={CARD_H} rx={10} fill="black" fillOpacity="0.5" />
+              <rect x={3} y={3} width={CARD_W} height={CARD_H} rx={10} fill="#94a3b8" fillOpacity="0.25" />
 
               {/* Card background */}
-              <rect width={CARD_W} height={CARD_H} rx={10} fill="#0d0d1a" stroke={borderColor} strokeWidth={isSelected ? 2 : 1.5} />
+              <rect width={CARD_W} height={CARD_H} rx={10} fill="#ffffff" stroke={borderColor} strokeWidth={isSelected ? 2 : 1.5} />
 
               {/* Image area */}
               {imgUrl ? (
@@ -809,17 +809,17 @@ function SceneFlowCanvas({
                   preserveAspectRatio="xMidYMid slice"
                   style={{ borderRadius: 10 }} clipPath={`inset(0 0 0 0 round 10px)`} />
               ) : (
-                <rect x={0} y={0} width={CARD_W} height={CARD_H * 0.65} rx={10} fill="#111122" />
+                <rect x={0} y={0} width={CARD_W} height={CARD_H * 0.65} rx={10} fill="#f8fafc" />
               )}
 
               {/* Image placeholder icon */}
               {!imgUrl && (
-                <text x={CARD_W / 2} y={CARD_H * 0.33} textAnchor="middle" fontSize="24" fill="#2a2a4a">🎬</text>
+                <text x={CARD_W / 2} y={CARD_H * 0.33} textAnchor="middle" fontSize="24" fill="#cbd5e1">🎬</text>
               )}
 
               {/* Generating animation */}
               {isGenerating && (
-                <rect x={0} y={0} width={CARD_W} height={CARD_H * 0.65} rx={10} fill="#facc1520">
+                <rect x={0} y={0} width={CARD_W} height={CARD_H * 0.65} rx={10} fill="#ca8a0420">
                   <animate attributeName="opacity" values="1;0.3;1" dur="1.2s" repeatCount="indefinite" />
                 </rect>
               )}
@@ -828,8 +828,8 @@ function SceneFlowCanvas({
               <rect x={0} y={CARD_H * 0.65} width={CARD_W} height={1} fill={borderColor} fillOpacity="0.3" />
 
               {/* Scene number badge */}
-              <rect x={4} y={4} width={22} height={16} rx={4} fill="black" fillOpacity="0.7" />
-              <text x={15} y={15} textAnchor="middle" fill="#ccc" fontSize="10" fontFamily="monospace">{scene.sceneNumber}</text>
+              <rect x={4} y={4} width={22} height={16} rx={4} fill="#0f172a" fillOpacity="0.85" />
+              <text x={15} y={15} textAnchor="middle" fill="#ffffff" fontSize="10" fontFamily="monospace">{scene.sceneNumber}</text>
 
               {/* Status dot */}
               <circle cx={CARD_W - 10} cy={10} r={4} fill={borderColor}
@@ -846,18 +846,18 @@ function SceneFlowCanvas({
               )}
 
               {/* Scene title */}
-              <text x={8} y={CARD_H * 0.65 + 16} fill="#888" fontSize="10" fontFamily="'Noto Sans TC', sans-serif">
+              <text x={8} y={CARD_H * 0.65 + 16} fill="#475569" fontSize="10" fontFamily="'Noto Sans TC', sans-serif">
                 {scene.title.length > 7 ? scene.title.slice(0, 7) + "…" : scene.title}
               </text>
 
               {/* Description preview */}
-              <text x={8} y={CARD_H * 0.65 + 30} fill="#444" fontSize="9" fontFamily="'Noto Sans TC', sans-serif">
+              <text x={8} y={CARD_H * 0.65 + 30} fill="#94a3b8" fontSize="9" fontFamily="'Noto Sans TC', sans-serif">
                 {(scene.description || "未填寫場景描述").slice(0, 10)}…
               </text>
 
               {/* Port connectors */}
-              <circle cx={0} cy={CARD_H / 2} r={5} fill="#0d0d1a" stroke="#2a2a4a" strokeWidth={1.5} />
-              <circle cx={CARD_W} cy={CARD_H / 2} r={5} fill="#0d0d1a" stroke={borderColor} strokeWidth={1.5} />
+              <circle cx={0} cy={CARD_H / 2} r={5} fill="#ffffff" stroke="#cbd5e1" strokeWidth={1.5} />
+              <circle cx={CARD_W} cy={CARD_H / 2} r={5} fill="#ffffff" stroke={borderColor} strokeWidth={1.5} />
             </g>
           );
         })}
@@ -904,37 +904,37 @@ function AIScriptDialog({
   return (
     <Modal open={open} onClose={onClose} title="🤖 AI 智慧腳本助手">
       <div className="space-y-4">
-        <div className="bg-[#6366f1]/5 border border-[#6366f1]/20 rounded-xl p-3 text-xs text-[#a78bfa] leading-relaxed">
+        <div className="bg-[#6366f1]/5 border border-[#6366f1]/20 rounded-xl p-3 text-xs text-[#4f46e5] leading-relaxed">
           💡 用一兩句話描述劇情概念，AI 會依 SeedDance 2.0 提示詞最佳實踐自動產出整集分鏡（含場景描述、台詞、運鏡）。
         </div>
 
         <div>
-          <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">劇情概念</label>
+          <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">劇情概念</label>
           <DarkTextarea
             value={pitch} onChange={setPitch}
             placeholder={`例：${genre === "懸疑" ? "失憶女記者調查三年前的命案，意外發現真兇是自己的未婚夫" : "霸道總裁愛上小助理，第一次在電梯相遇文件灑滿地"}`}
             rows={4}
           />
-          <p className="text-[10px] text-[#444] mt-1.5">💬 越具體越好（角色、衝突、地點、結局想法都可以加進來）</p>
+          <p className="text-[10px] text-[#94a3b8] mt-1.5">💬 越具體越好（角色、衝突、地點、結局想法都可以加進來）</p>
         </div>
 
         <div>
-          <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">
-            幕數：<span className="text-[#a78bfa] font-bold">{count} 幕</span>
+          <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">
+            幕數：<span className="text-[#4f46e5] font-bold">{count} 幕</span>
           </label>
           <input type="range" min={2} max={12} value={count}
             onChange={e => setCount(Number(e.target.value))} className="w-full accent-[#6366f1]" />
-          <div className="flex justify-between text-xs text-[#444] mt-1"><span>2 幕</span><span>12 幕</span></div>
+          <div className="flex justify-between text-xs text-[#94a3b8] mt-1"><span>2 幕</span><span>12 幕</span></div>
         </div>
 
         {(characterAName || characterBName) && (
-          <div className="bg-[#111122] rounded-lg p-2.5 text-[11px] text-[#666] space-y-0.5">
-            {characterAName && <div>🎭 角色 A：<span className="text-[#a78bfa]">{characterAName}</span></div>}
-            {characterBName && <div>🎭 角色 B：<span className="text-[#fbbf24]">{characterBName}</span></div>}
+          <div className="bg-[#f8fafc] rounded-lg p-2.5 text-[11px] text-[#64748b] space-y-0.5">
+            {characterAName && <div>🎭 角色 A：<span className="text-[#4f46e5]">{characterAName}</span></div>}
+            {characterBName && <div>🎭 角色 B：<span className="text-[#d97706]">{characterBName}</span></div>}
           </div>
         )}
 
-        <div className="bg-[#facc15]/5 border border-[#facc15]/20 rounded-lg p-2.5 text-[11px] text-[#facc15]">
+        <div className="bg-[#ca8a04]/5 border border-[#ca8a04]/20 rounded-lg p-2.5 text-[11px] text-[#ca8a04]">
           ⚠️ AI 會「覆蓋」當前所有幕的標題、描述、台詞、運鏡。已生成圖片的幕不會受影響但內容會被換新。
         </div>
 
@@ -957,23 +957,23 @@ function PromptSnippetsPanel({
   const [openCategory, setOpenCategory] = useState<string | null>("lighting");
 
   return (
-    <div className="border-t border-[#1a1a2e] pt-3">
-      <p className="text-[10px] text-[#555] uppercase tracking-wide mb-2 flex items-center gap-1">
+    <div className="border-t border-[#e2e8f0] pt-3">
+      <p className="text-[10px] text-[#64748b] uppercase tracking-wide mb-2 flex items-center gap-1">
         <span>✨</span><span>提示詞素材庫</span>
       </p>
-      <p className="text-[10px] text-[#333] mb-2 leading-snug">點擊任一標籤快速插入到場景描述末尾</p>
+      <p className="text-[10px] text-[#cbd5e1] mb-2 leading-snug">點擊任一標籤快速插入到場景描述末尾</p>
       <div className="space-y-1.5">
         {PROMPT_SNIPPETS.map(cat => (
-          <div key={cat.key} className="rounded-lg border border-[#1a1a2e] overflow-hidden bg-[#0a0a14]">
+          <div key={cat.key} className="rounded-lg border border-[#e2e8f0] overflow-hidden bg-[#f8fafc]">
             <button
               onClick={() => setOpenCategory(openCategory === cat.key ? null : cat.key)}
-              className="w-full flex items-center justify-between px-2.5 py-1.5 hover:bg-[#111122] transition-colors"
+              className="w-full flex items-center justify-between px-2.5 py-1.5 hover:bg-[#f8fafc] transition-colors"
               style={{ borderLeft: `2px solid ${cat.color}` }}
             >
               <span className="text-[11px] font-medium" style={{ color: cat.color }}>
                 {cat.emoji} {cat.label}
               </span>
-              <span className="text-[10px] text-[#444]">{openCategory === cat.key ? "▾" : "▸"}</span>
+              <span className="text-[10px] text-[#94a3b8]">{openCategory === cat.key ? "▾" : "▸"}</span>
             </button>
             {openCategory === cat.key && (
               <div className="p-2 flex flex-wrap gap-1">
@@ -982,7 +982,7 @@ function PromptSnippetsPanel({
                     key={s.label}
                     onClick={() => onInsert(s.text)}
                     title={s.text}
-                    className="text-[10px] px-2 py-0.5 rounded-full border bg-[#0a0a14] transition-all hover:scale-105"
+                    className="text-[10px] px-2 py-0.5 rounded-full border bg-[#f8fafc] transition-all hover:scale-105"
                     style={{ borderColor: `${cat.color}30`, color: `${cat.color}` }}
                   >
                     + {s.label}
@@ -1126,34 +1126,34 @@ function EpisodeView({
   const selectedServerScene = selectedIdx !== null ? serverScenes[selectedIdx] : null;
 
   return (
-    <div className="h-[calc(100vh-56px)] flex flex-col bg-[#0a0a14]">
+    <div className="h-[calc(100vh-56px)] flex flex-col bg-[#f8fafc]">
 
       {/* ── Top Bar ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-4 h-12 bg-[#0d0d1a] border-b border-[#1a1a2e] shrink-0">
-        <button onClick={onBack} className="text-[#555] hover:text-[#aaa] text-sm transition-colors shrink-0">← 返回</button>
-        <div className="w-px h-4 bg-[#1a1a2e]" />
+      <div className="flex items-center gap-3 px-4 h-12 bg-[#ffffff] border-b border-[#e2e8f0] shrink-0">
+        <button onClick={onBack} className="text-[#64748b] hover:text-[#334155] text-sm transition-colors shrink-0">← 返回</button>
+        <div className="w-px h-4 bg-[#e2e8f0]" />
         <div className="flex-1 min-w-0">
-          <span className="text-xs text-[#444]">{project?.title} · </span>
-          <span className="text-sm font-medium text-[#ccc]">{episode.title}</span>
+          <span className="text-xs text-[#94a3b8]">{project?.title} · </span>
+          <span className="text-sm font-medium text-[#0f172a]">{episode.title}</span>
           {episode.status === "generating" && (
-            <span className="ml-2 text-xs text-[#facc15] animate-pulse">● 生成中</span>
+            <span className="ml-2 text-xs text-[#ca8a04] animate-pulse">● 生成中</span>
           )}
         </div>
 
         {/* View toggle */}
-        <div className="flex gap-1 bg-[#111122] rounded-lg p-0.5">
+        <div className="flex gap-1 bg-[#f8fafc] rounded-lg p-0.5">
           <button onClick={() => setActiveView("flow")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${activeView === "flow" ? "bg-[#6366f1] text-white" : "text-[#555] hover:text-[#aaa]"}`}>
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${activeView === "flow" ? "bg-[#6366f1] text-white" : "text-[#64748b] hover:text-[#334155]"}`}>
             ⬡ 節點流
           </button>
           <button onClick={() => setActiveView("grid")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${activeView === "grid" ? "bg-[#6366f1] text-white" : "text-[#555] hover:text-[#aaa]"}`}>
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${activeView === "grid" ? "bg-[#6366f1] text-white" : "text-[#64748b] hover:text-[#334155]"}`}>
             ⊞ 格網
           </button>
         </div>
 
         <DarkButton variant="secondary" onClick={() => setShowAIDialog(true)}
-          style={{ background: "#6366f110", borderColor: "#6366f140", color: "#a78bfa" }}>
+          style={{ background: "#6366f110", borderColor: "#6366f140", color: "#4f46e5" }}>
           🤖 AI 寫腳本
         </DarkButton>
         <DarkButton variant="secondary" onClick={() => saveScenesMutation.mutate(localScenes)} disabled={saveScenesMutation.isPending}>
@@ -1179,14 +1179,14 @@ function EpisodeView({
 
           {/* Background grid */}
           <div className="absolute inset-0 opacity-30"
-            style={{ backgroundImage: "radial-gradient(circle, #2a2a4a 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
+            style={{ backgroundImage: "radial-gradient(circle, #cbd5e1 1px, transparent 1px)", backgroundSize: "24px 24px" }} />
 
           {activeView === "flow" ? (
             <div className="relative z-10">
               {/* Pipeline labels */}
               <div className="flex items-center gap-2 mb-4">
                 {["📝 分鏡描述", "→", "🖼 SeedDream 出圖", "→", "🎬 SeedDance 動畫"].map((s, i) => (
-                  <span key={i} className={`text-xs ${s === "→" ? "text-[#2a2a4a]" : "bg-[#0d0d1a] border border-[#1a1a2e] px-3 py-1 rounded-full text-[#555]"}`}>
+                  <span key={i} className={`text-xs ${s === "→" ? "text-[#cbd5e1]" : "bg-[#ffffff] border border-[#e2e8f0] px-3 py-1 rounded-full text-[#64748b]"}`}>
                     {s}
                   </span>
                 ))}
@@ -1203,15 +1203,15 @@ function EpisodeView({
               {/* Legend */}
               <div className="flex items-center gap-4 mt-4">
                 {[
-                  { color: "#2a2a4a", label: "待生成" },
-                  { color: "#facc15", label: "生成中" },
+                  { color: "#cbd5e1", label: "待生成" },
+                  { color: "#ca8a04", label: "生成中" },
                   { color: "#22c55e", label: "完成" },
                   { color: "#ef4444", label: "失敗" },
                   { color: "#6366f1", label: "已選取" },
                 ].map(({ color, label }) => (
                   <div key={label} className="flex items-center gap-1.5">
                     <div className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
-                    <span className="text-[10px] text-[#444]">{label}</span>
+                    <span className="text-[10px] text-[#94a3b8]">{label}</span>
                   </div>
                 ))}
               </div>
@@ -1223,26 +1223,26 @@ function EpisodeView({
                 const ss = serverScenes[idx];
                 const imgUrl = ss ? getSceneImageUrl(ss) : null;
                 const isSelected = selectedIdx === idx;
-                const statusColor = ss?.imageStatus === "completed" ? "#22c55e" : ss?.imageStatus === "generating" ? "#facc15" : ss?.imageStatus === "failed" ? "#ef4444" : "#2a2a4a";
+                const statusColor = ss?.imageStatus === "completed" ? "#22c55e" : ss?.imageStatus === "generating" ? "#ca8a04" : ss?.imageStatus === "failed" ? "#ef4444" : "#cbd5e1";
                 return (
                   <div key={scene.id} onClick={() => setSelectedIdx(isSelected ? null : idx)}
                     className="cursor-pointer rounded-xl border-2 overflow-hidden transition-all"
                     style={{ borderColor: isSelected ? "#6366f1" : statusColor, boxShadow: isSelected ? "0 0 16px rgba(99,102,241,0.3)" : "none" }}>
-                    <div className="aspect-[9/16] bg-[#111122] relative">
+                    <div className="aspect-[9/16] bg-[#f8fafc] relative">
                       {imgUrl ? (
                         <img src={imgUrl} alt={scene.title} className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center">
                           {ss?.imageStatus === "generating" ? (
-                            <><Spinner color="#facc15" /><span className="text-xs text-[#facc15] mt-2">生成中</span></>
+                            <><Spinner color="#ca8a04" /><span className="text-xs text-[#ca8a04] mt-2">生成中</span></>
                           ) : <span className="text-3xl">🎬</span>}
                         </div>
                       )}
-                      <div className="absolute top-1.5 left-1.5 bg-black/70 text-white text-[10px] px-1.5 py-0.5 rounded-full">{scene.sceneNumber}</div>
+                      <div className="absolute top-1.5 left-1.5 bg-[#0f172a]/85 text-white text-[10px] px-1.5 py-0.5 rounded-full">{scene.sceneNumber}</div>
                       {ss?.videoStatus === "completed" && <div className="absolute top-1.5 right-1.5 bg-[#a855f7]/80 text-white text-[10px] px-1.5 py-0.5 rounded-full">▶</div>}
                     </div>
-                    <div className="p-2 bg-[#0d0d1a]">
-                      <p className="text-[10px] text-[#666] truncate">{scene.title}</p>
+                    <div className="p-2 bg-[#ffffff]">
+                      <p className="text-[10px] text-[#64748b] truncate">{scene.title}</p>
                     </div>
                   </div>
                 );
@@ -1253,33 +1253,33 @@ function EpisodeView({
 
         {/* ── Right Inspector Panel ─────────────────────────────────────────── */}
         {selectedScene ? (
-          <div className="w-72 bg-[#0d0d1a] border-l border-[#1a1a2e] flex flex-col shrink-0 overflow-hidden">
+          <div className="w-72 bg-[#ffffff] border-l border-[#e2e8f0] flex flex-col shrink-0 overflow-hidden">
             {/* Inspector header */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-[#1a1a2e]">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#e2e8f0]">
               <div>
                 <span className="text-xs text-[#6366f1] font-mono">SCENE {(selectedIdx ?? 0) + 1}</span>
-                <p className="text-sm font-semibold text-[#ccc] mt-0.5">場景屬性</p>
+                <p className="text-sm font-semibold text-[#0f172a] mt-0.5">場景屬性</p>
               </div>
-              <button onClick={() => setSelectedIdx(null)} className="text-[#444] hover:text-[#aaa] text-lg">×</button>
+              <button onClick={() => setSelectedIdx(null)} className="text-[#94a3b8] hover:text-[#334155] text-lg">×</button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
 
               {/* Image preview */}
               {selectedServerScene && getSceneImageUrl(selectedServerScene) && (
-                <div className="rounded-xl overflow-hidden border border-[#1a1a2e]">
+                <div className="rounded-xl overflow-hidden border border-[#e2e8f0]">
                   <img src={getSceneImageUrl(selectedServerScene)!} alt="scene" className="w-full object-cover" />
                 </div>
               )}
               {selectedServerScene && getSceneVideoUrl(selectedServerScene) && (
-                <div className="rounded-xl overflow-hidden border border-[#1a1a2e]">
+                <div className="rounded-xl overflow-hidden border border-[#e2e8f0]">
                   <video src={getSceneVideoUrl(selectedServerScene)!} controls className="w-full" />
                 </div>
               )}
 
               {/* Scene title */}
               <div>
-                <label className="text-[10px] text-[#555] uppercase tracking-wide mb-1.5 block">幕名稱</label>
+                <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">幕名稱</label>
                 <DarkInput
                   value={selectedScene.title}
                   onChange={v => updateScene(selectedIdx!, { title: v })}
@@ -1289,7 +1289,7 @@ function EpisodeView({
 
               {/* Description */}
               <div>
-                <label className="text-[10px] text-[#555] uppercase tracking-wide mb-1.5 block">場景描述</label>
+                <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">場景描述</label>
                 <DarkTextarea
                   value={selectedScene.description}
                   onChange={v => updateScene(selectedIdx!, { description: v })}
@@ -1309,7 +1309,7 @@ function EpisodeView({
 
               {/* Dialogue */}
               <div>
-                <label className="text-[10px] text-[#555] uppercase tracking-wide mb-1.5 block">台詞（選填）</label>
+                <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">台詞（選填）</label>
                 <DarkInput
                   value={selectedScene.dialogue || ""}
                   onChange={v => updateScene(selectedIdx!, { dialogue: v })}
@@ -1319,7 +1319,7 @@ function EpisodeView({
 
               {/* Camera movement */}
               <div>
-                <label className="text-[10px] text-[#555] uppercase tracking-wide mb-1.5 block">攝影機運鏡</label>
+                <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">攝影機運鏡</label>
                 <DarkSelect
                   value={selectedScene.cameraMovement || "none"}
                   onChange={v => updateScene(selectedIdx!, { cameraMovement: v === "none" ? "" : v })}
@@ -1330,17 +1330,17 @@ function EpisodeView({
               {/* Character toggles */}
               {((project?.characterAUrls ?? []).length > 0 || (project?.characterBUrls ?? []).length > 0) && (
                 <div>
-                  <label className="text-[10px] text-[#555] uppercase tracking-wide mb-1.5 block">角色出場</label>
+                  <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">角色出場</label>
                   <div className="flex gap-2">
                     {(project?.characterAUrls ?? []).length > 0 && (
                       <button onClick={() => updateScene(selectedIdx!, { useCharA: !selectedScene.useCharA })}
-                        className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharA ? "bg-[#6366f1]/10 border-[#6366f1]/40 text-[#a78bfa]" : "border-[#2a2a4a] text-[#444]"}`}>
+                        className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharA ? "bg-[#6366f1]/10 border-[#6366f1]/40 text-[#4f46e5]" : "border-[#cbd5e1] text-[#94a3b8]"}`}>
                         角色A {selectedScene.useCharA ? "✓" : "×"}
                       </button>
                     )}
                     {(project?.characterBUrls ?? []).length > 0 && (
                       <button onClick={() => updateScene(selectedIdx!, { useCharB: !selectedScene.useCharB })}
-                        className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharB ? "bg-[#f59e0b]/10 border-[#f59e0b]/40 text-[#fbbf24]" : "border-[#2a2a4a] text-[#444]"}`}>
+                        className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharB ? "bg-[#f59e0b]/10 border-[#f59e0b]/40 text-[#d97706]" : "border-[#cbd5e1] text-[#94a3b8]"}`}>
                         角色B {selectedScene.useCharB ? "✓" : "×"}
                       </button>
                     )}
@@ -1349,11 +1349,11 @@ function EpisodeView({
               )}
 
               {/* Separator */}
-              <div className="border-t border-[#1a1a2e]" />
+              <div className="border-t border-[#e2e8f0]" />
 
               {/* Actions */}
               <div className="space-y-2">
-                <p className="text-[10px] text-[#555] uppercase tracking-wide">動作</p>
+                <p className="text-[10px] text-[#64748b] uppercase tracking-wide">動作</p>
 
                 {selectedServerScene?.imageStatus === "completed" && (
                   <DarkButton variant="secondary" className="w-full justify-center"
@@ -1378,7 +1378,7 @@ function EpisodeView({
                 )}
 
                 {selectedServerScene?.videoStatus === "generating" && (
-                  <div className="text-xs text-center text-[#facc15] animate-pulse py-2">影片生成中...</div>
+                  <div className="text-xs text-center text-[#ca8a04] animate-pulse py-2">影片生成中...</div>
                 )}
 
                 {/* Replace image */}
@@ -1404,15 +1404,15 @@ function EpisodeView({
               </div>
 
               {/* Port info (like ComicFlow inspector) */}
-              <div className="border-t border-[#1a1a2e] pt-3">
-                <p className="text-[10px] text-[#333] uppercase tracking-wide mb-2">連接埠</p>
+              <div className="border-t border-[#e2e8f0] pt-3">
+                <p className="text-[10px] text-[#cbd5e1] uppercase tracking-wide mb-2">連接埠</p>
                 <div className="flex items-center justify-between">
-                  <span className="text-[10px] text-[#444] font-mono border border-[#1a1a2e] rounded px-2 py-0.5">◎ text_in</span>
+                  <span className="text-[10px] text-[#94a3b8] font-mono border border-[#e2e8f0] rounded px-2 py-0.5">◎ text_in</span>
                   <span className="text-[10px] text-[#6366f1] font-mono border border-[#6366f1]/20 rounded px-2 py-0.5">image_out ◉</span>
                 </div>
                 {selectedServerScene?.imageStatus === "completed" && (
                   <div className="flex items-center justify-between mt-1">
-                    <span className="text-[10px] text-[#444] font-mono border border-[#1a1a2e] rounded px-2 py-0.5">◎ image_in</span>
+                    <span className="text-[10px] text-[#94a3b8] font-mono border border-[#e2e8f0] rounded px-2 py-0.5">◎ image_in</span>
                     <span className="text-[10px] text-[#a855f7] font-mono border border-[#a855f7]/20 rounded px-2 py-0.5">video_out ◉</span>
                   </div>
                 )}
@@ -1421,20 +1421,20 @@ function EpisodeView({
           </div>
         ) : (
           /* No selection placeholder */
-          <div className="w-64 bg-[#0d0d1a] border-l border-[#1a1a2e] flex items-center justify-center shrink-0">
+          <div className="w-64 bg-[#ffffff] border-l border-[#e2e8f0] flex items-center justify-center shrink-0">
             <div className="text-center px-6">
-              <p className="text-[#2a2a4a] text-3xl mb-3">←</p>
-              <p className="text-xs text-[#333]">點擊場景節點<br />開啟屬性面板</p>
+              <p className="text-[#cbd5e1] text-3xl mb-3">←</p>
+              <p className="text-xs text-[#cbd5e1]">點擊場景節點<br />開啟屬性面板</p>
             </div>
           </div>
         )}
       </div>
 
       {/* Status bar */}
-      <div className="flex items-center justify-between px-4 h-7 bg-[#080810] border-t border-[#1a1a2e] shrink-0">
-        <span className="text-[10px] text-[#333]">節點 {localScenes.length} 個 ／ 完成 {serverScenes.filter(s => s.imageStatus === "completed").length} 幕</span>
-        <span className="text-[10px] text-[#333]">積分 {user?.credits ?? 0} ／ 待生成 {pendingCount} 幕</span>
-        <span className={`text-[10px] ${episode.status === "generating" ? "text-[#facc15]" : "text-[#333]"}`}>
+      <div className="flex items-center justify-between px-4 h-7 bg-[#f1f5f9] border-t border-[#e2e8f0] shrink-0">
+        <span className="text-[10px] text-[#cbd5e1]">節點 {localScenes.length} 個 ／ 完成 {serverScenes.filter(s => s.imageStatus === "completed").length} 幕</span>
+        <span className="text-[10px] text-[#cbd5e1]">積分 {user?.credits ?? 0} ／ 待生成 {pendingCount} 幕</span>
+        <span className={`text-[10px] ${episode.status === "generating" ? "text-[#ca8a04]" : "text-[#cbd5e1]"}`}>
           {episode.status === "generating" ? "⟳ 執行中..." : "● 就緒"}
         </span>
       </div>
@@ -1444,43 +1444,43 @@ function EpisodeView({
         {animateDialog && (
           <div className="space-y-5">
             <div>
-              <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">
-                影片時長：<span className="text-[#a78bfa] font-bold">{animDuration} 秒</span>
+              <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">
+                影片時長：<span className="text-[#4f46e5] font-bold">{animDuration} 秒</span>
               </label>
               <input type="range" min={4} max={12} value={animDuration}
                 onChange={e => setAnimDuration(Number(e.target.value))} className="w-full accent-[#6366f1]" />
-              <div className="flex justify-between text-xs text-[#444] mt-1"><span>4秒</span><span>12秒</span></div>
+              <div className="flex justify-between text-xs text-[#94a3b8] mt-1"><span>4秒</span><span>12秒</span></div>
             </div>
 
             <div onClick={() => setAnimUseOmni(!animUseOmni)}
-              className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${animUseOmni ? "border-[#6366f1] bg-[#6366f1]/5" : "border-[#1a1a2e] hover:border-[#6366f1]/30"}`}>
+              className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${animUseOmni ? "border-[#6366f1] bg-[#6366f1]/5" : "border-[#e2e8f0] hover:border-[#6366f1]/30"}`}>
               <div>
-                <p className="text-sm font-semibold text-[#ccc]">🌟 SeedDance 2.0 全能模式</p>
-                <p className="text-xs text-[#555] mt-0.5">多圖參考，保持角色A/B一致性</p>
+                <p className="text-sm font-semibold text-[#0f172a]">🌟 SeedDance 2.0 全能模式</p>
+                <p className="text-xs text-[#64748b] mt-0.5">多圖參考，保持角色A/B一致性</p>
               </div>
-              <div className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-all ${animUseOmni ? "bg-[#6366f1]" : "bg-[#1a1a2e]"}`}>
+              <div className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-all ${animUseOmni ? "bg-[#6366f1]" : "bg-[#e2e8f0]"}`}>
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${animUseOmni ? "left-5" : "left-1"}`} />
               </div>
             </div>
 
             <div>
-              <label className="text-xs text-[#666] uppercase tracking-wide mb-2 block">解析度</label>
+              <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">解析度</label>
               <div className="grid grid-cols-2 gap-3">
                 {(["720p", "1080p"] as const).map(r => {
                   const cost = r === "1080p" ? Math.ceil(animDuration * 6.8) : Math.ceil(animDuration * 3.4);
                   return (
                     <button key={r} onClick={() => setAnimResolution(r)}
-                      className={`p-3 rounded-xl border-2 text-sm transition-all ${animResolution === r ? "border-[#6366f1] bg-[#6366f1]/10 text-[#a78bfa]" : "border-[#1a1a2e] text-[#555] hover:border-[#6366f1]/40"}`}>
+                      className={`p-3 rounded-xl border-2 text-sm transition-all ${animResolution === r ? "border-[#6366f1] bg-[#6366f1]/10 text-[#4f46e5]" : "border-[#e2e8f0] text-[#64748b] hover:border-[#6366f1]/40"}`}>
                       <div className="font-bold">{r}</div>
-                      <div className="text-xs text-[#444]">{cost} 積分</div>
+                      <div className="text-xs text-[#94a3b8]">{cost} 積分</div>
                     </button>
                   );
                 })}
               </div>
             </div>
 
-            <div className="bg-[#111122] rounded-lg p-3 text-sm text-[#666]">
-              消耗 <span className="font-bold text-[#a78bfa]">
+            <div className="bg-[#f8fafc] rounded-lg p-3 text-sm text-[#64748b]">
+              消耗 <span className="font-bold text-[#4f46e5]">
                 {animResolution === "1080p" ? Math.ceil(animDuration * 6.8) : Math.ceil(animDuration * 3.4)} 積分
               </span>
               （現有 {user?.credits ?? 0} 積分）
@@ -1571,7 +1571,7 @@ export default function DramaPage() {
   const [view, setView] = useState<View>({ kind: "projects" });
 
   return (
-    <div className="min-h-screen bg-[#0a0a14] flex flex-col">
+    <div className="min-h-screen bg-[#f8fafc] flex flex-col">
       <NavigationHeader />
       {view.kind === "projects" && (
         <div className="flex-1">
