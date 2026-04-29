@@ -3634,15 +3634,11 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         if (ov === "off") return false;
         return episodeChainOn;
       };
-      // If ANY scene needs the previous scene's output as a reference we MUST
-      // process scenes sequentially. Otherwise we can keep the legacy
-      // sequential behavior (no behavior change for chain-off episodes). We
-      // intentionally do NOT add a parallel-batch path here because pre-existing
-      // image generation in this codebase has always been sequential and the
-      // BytePlus ARK side has tight per-account rate limits — parallelizing
-      // would risk 429s and is out of scope for Task #8.
-      const anySceneChainOn = scenes.some((sc) => isSceneChainOn(sc));
-      void anySceneChainOn; // computed for clarity / future batching
+      // NOTE: image generation has always been sequential here and remains so
+      // — chain mode strictly REQUIRES sequential ordering (scene N+1 reads
+      // scene N's last frame), and the BytePlus ARK rate limits make parallel
+      // batching risky. Conditional parallelism is intentionally out of scope
+      // for the chain-mode feature.
       const getSceneContinuityUrl = (sc: any): string | null => {
         return sc?.lastFrameBunnyUrl
           || sc?.lastFrameUrl
