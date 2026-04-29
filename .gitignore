@@ -1,6 +1,54 @@
+# Dependencies
 node_modules
+.pnp
+.pnp.js
+
+# Build output
 dist
-.DS_Store
+build
 server/public
-vite.config.ts.*
+.cache
+.parcel-cache
+
+# Environment / secrets — NEVER commit these
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials*.json
+service-account*.json
+
+# Replit / Agent local state (skills, plans, follow-up tasks, etc.)
+.local/
+.replit
+.upm/
+.config/
+.cache/
+.breakpoints
+
+# Attached / uploaded reference assets (private screenshots, drafts)
+attached_assets/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Logs / temp
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+tmp/
+.tmp/
+
+# Bundles
 *.tar.gz
+*.zip
+
+# Vite cache
+vite.config.ts.*
+.vite/
