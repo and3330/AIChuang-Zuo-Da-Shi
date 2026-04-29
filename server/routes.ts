@@ -11,6 +11,7 @@ import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
 import sharp from "sharp";
+import { registerDramaLibraryRoutes } from "./dramaLibrary";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -3520,7 +3521,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         return res.status(400).json({ error: "請先完成圖片生成" });
       }
 
-      const { duration = 5, resolution = "720p", prompt, useOmniMode = false, generateAudio = true } = req.body;
+      const { duration = 5, resolution = "720p", prompt, useOmniMode = false, generateAudio = true, useFirstLastFrame = false } = req.body;
       const creditCost = resolution === "1080p"
         ? Math.ceil(duration * 15)
         : Math.ceil(duration * 8);
@@ -3548,7 +3549,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
       animateDramaScene(
         req.params.episodeId, episode.projectId, sceneIdx,
-        { duration, resolution, prompt, useOmniMode, generateAudio },
+        { duration, resolution, prompt, useOmniMode, generateAudio, useFirstLastFrame },
         objectStorageService, bunnyStorage
       ).catch(console.error);
 
@@ -3861,7 +3862,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     episodeId: string,
     projectId: string,
     sceneIdx: number,
-    opts: { duration: number; resolution: string; prompt?: string; useOmniMode?: boolean; generateAudio?: boolean },
+    opts: { duration: number; resolution: string; prompt?: string; useOmniMode?: boolean; generateAudio?: boolean; useFirstLastFrame?: boolean },
     objectStorage: ObjectStorageService,
     bunny: BunnyStorageService
   ) {
@@ -3877,15 +3878,23 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const scenes: any[] = JSON.parse(episode.scenes);
       const scene = scenes[sceneIdx];
 
-      const mainImageUrl = scene.bunnyUrl?.split("?")[0] || scene.imageUrl;
-      const mainImageBase64 = await urlToBase64(mainImageUrl);
+      // Decide first/last frame mode (auto-on if scene has both frames)
+      const hasBothFrames = !!(
+        (scene.firstFrameBunnyUrl || scene.firstFrameUrl) &&
+        (scene.lastFrameBunnyUrl || scene.lastFrameUrl)
+      );
+      const useFirstLast = (opts.useFirstLastFrame ?? scene.useFirstLastFrame ?? false) && hasBothFrames;
 
-      const videoPrompt = opts.prompt || scene.description || "電影感鏡頭，角色自然動作";
+      const mainImageUrl = scene.bunnyUrl?.split("?")[0] || scene.imageUrl;
+      const mainImageBase64 = useFirstLast ? "" : await urlToBase64(mainImageUrl);
+
+      // Prefer AI-generated video prompt → caller-supplied prompt → description
+      const videoPrompt = opts.prompt || scene.videoPrompt || scene.description || "電影感鏡頭，角色自然動作";
       const aspectRatioMap: Record<string, "16:9" | "9:16" | "1:1"> = {
         "9:16": "9:16", "16:9": "16:9", "1:1": "1:1",
       };
       const aspectRatio = aspectRatioMap[project.sceneSize ?? "9:16"] || "9:16";
-      const isOmni = opts.useOmniMode ?? false;
+      const isOmni = useFirstLast || (opts.useOmniMode ?? false);
 
       // Build reference images for omni mode: character A → character B → scene ref
       const referenceImages: { url: string }[] = [];
@@ -3904,13 +3913,25 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
           try { referenceImages.push({ url: await urlToBase64(scene.sceneRefImageUrl) }); }
           catch (e) { console.warn("[Drama] Failed to load scene ref image:", e); }
         }
-        console.log(`[Drama] Omni mode: ${referenceImages.length} extra reference images`);
+        console.log(`[Drama] Omni mode: ${referenceImages.length} extra reference images, first/last=${useFirstLast}`);
+      }
+
+      // Build first/last frame refs if mode is on
+      let firstFrameRef: { url: string } | undefined;
+      let lastFrameRef: { url: string } | undefined;
+      if (useFirstLast) {
+        const ffUrl = (scene.firstFrameBunnyUrl || scene.firstFrameUrl).split("?")[0];
+        const lfUrl = (scene.lastFrameBunnyUrl || scene.lastFrameUrl).split("?")[0];
+        firstFrameRef = { url: await urlToBase64(ffUrl) };
+        lastFrameRef = { url: await urlToBase64(lfUrl) };
       }
 
       const result = await generateSeedDanceVideo({
         prompt: enhanceVideoPrompt(videoPrompt),
-        mainImage: { url: mainImageBase64 },
+        mainImage: useFirstLast ? undefined : { url: mainImageBase64 },
         referenceImages: isOmni ? referenceImages : undefined,
+        firstFrame: firstFrameRef,
+        lastFrame: lastFrameRef,
         duration: opts.duration,
         aspectRatio,
         useOmniMode: isOmni,
@@ -3970,6 +3991,10 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       }
     }
   }
+
+  // ─── Drama Studio extensions: character/scene library, script import,
+  //     AI video prompt, first/last frames, ZIP download ─────────────────────
+  registerDramaLibraryRoutes(app, { requireAuth, objectStorageService, bunnyStorage });
 
   const httpServer = createServer(app);
   return httpServer;

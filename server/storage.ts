@@ -1,4 +1,4 @@
-import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, type StoryGeneration, type InsertStoryGeneration, type StoryScene, type DramaProject, type DramaEpisode, type InsertDramaProject, type InsertDramaEpisode, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages, storyGenerations, dramaProjects, dramaEpisodes } from "@shared/schema";
+import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, type StoryGeneration, type InsertStoryGeneration, type StoryScene, type DramaProject, type DramaEpisode, type InsertDramaProject, type InsertDramaEpisode, type CharacterLibraryItem, type SceneLibraryItem, type InsertCharacterLibrary, type InsertSceneLibrary, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages, storyGenerations, dramaProjects, dramaEpisodes, characterLibrary, sceneLibrary } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gt, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
@@ -71,6 +71,19 @@ export interface IStorage {
   deleteDramaEpisode(id: string): Promise<void>;
   getDramaEpisodesByProject(projectId: string): Promise<DramaEpisode[]>;
   getAllDramaEpisodes(): Promise<DramaEpisode[]>;
+
+  // Character & Scene Library (global, cross-episode reuse)
+  createCharacter(data: InsertCharacterLibrary & { userId: string }): Promise<CharacterLibraryItem>;
+  getCharacter(id: string): Promise<CharacterLibraryItem | undefined>;
+  getUserCharacters(userId: string): Promise<CharacterLibraryItem[]>;
+  updateCharacter(id: string, updates: Partial<CharacterLibraryItem>): Promise<CharacterLibraryItem | undefined>;
+  deleteCharacter(id: string): Promise<void>;
+
+  createSceneLibraryItem(data: InsertSceneLibrary & { userId: string }): Promise<SceneLibraryItem>;
+  getSceneLibraryItem(id: string): Promise<SceneLibraryItem | undefined>;
+  getUserSceneLibrary(userId: string): Promise<SceneLibraryItem[]>;
+  updateSceneLibraryItem(id: string, updates: Partial<SceneLibraryItem>): Promise<SceneLibraryItem | undefined>;
+  deleteSceneLibraryItem(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -709,6 +722,77 @@ export class DatabaseStorage implements IStorage {
 
   async getAllDramaEpisodes(): Promise<DramaEpisode[]> {
     return db.select().from(dramaEpisodes).orderBy(desc(dramaEpisodes.createdAt));
+  }
+
+  // ── Character Library ──────────────────────────────────────────────────────
+
+  async createCharacter(data: InsertCharacterLibrary & { userId: string }): Promise<CharacterLibraryItem> {
+    const [c] = await db.insert(characterLibrary).values({
+      userId: data.userId,
+      name: data.name,
+      description: data.description ?? "",
+      refImageUrls: data.refImageUrls ?? [],
+      styleHint: data.styleHint ?? "",
+    }).returning();
+    return c;
+  }
+
+  async getCharacter(id: string): Promise<CharacterLibraryItem | undefined> {
+    const [c] = await db.select().from(characterLibrary).where(eq(characterLibrary.id, id));
+    return c;
+  }
+
+  async getUserCharacters(userId: string): Promise<CharacterLibraryItem[]> {
+    return db.select().from(characterLibrary)
+      .where(eq(characterLibrary.userId, userId))
+      .orderBy(desc(characterLibrary.createdAt));
+  }
+
+  async updateCharacter(id: string, updates: Partial<CharacterLibraryItem>): Promise<CharacterLibraryItem | undefined> {
+    const [c] = await db.update(characterLibrary)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(characterLibrary.id, id))
+      .returning();
+    return c;
+  }
+
+  async deleteCharacter(id: string): Promise<void> {
+    await db.delete(characterLibrary).where(eq(characterLibrary.id, id));
+  }
+
+  // ── Scene Library ──────────────────────────────────────────────────────────
+
+  async createSceneLibraryItem(data: InsertSceneLibrary & { userId: string }): Promise<SceneLibraryItem> {
+    const [s] = await db.insert(sceneLibrary).values({
+      userId: data.userId,
+      name: data.name,
+      description: data.description ?? "",
+      refImageUrls: data.refImageUrls ?? [],
+    }).returning();
+    return s;
+  }
+
+  async getSceneLibraryItem(id: string): Promise<SceneLibraryItem | undefined> {
+    const [s] = await db.select().from(sceneLibrary).where(eq(sceneLibrary.id, id));
+    return s;
+  }
+
+  async getUserSceneLibrary(userId: string): Promise<SceneLibraryItem[]> {
+    return db.select().from(sceneLibrary)
+      .where(eq(sceneLibrary.userId, userId))
+      .orderBy(desc(sceneLibrary.createdAt));
+  }
+
+  async updateSceneLibraryItem(id: string, updates: Partial<SceneLibraryItem>): Promise<SceneLibraryItem | undefined> {
+    const [s] = await db.update(sceneLibrary)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(sceneLibrary.id, id))
+      .returning();
+    return s;
+  }
+
+  async deleteSceneLibraryItem(id: string): Promise<void> {
+    await db.delete(sceneLibrary).where(eq(sceneLibrary.id, id));
   }
 }
 

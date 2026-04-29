@@ -272,11 +272,24 @@ export type DramaScene = {
   useCharA: boolean;
   useCharB: boolean;
   sceneRefImageUrl?: string;
-  // Image
+  /** Optional global library refs (cross-episode reuse) */
+  characterIds?: string[];
+  sceneLocationId?: string;
+  // Image (single key frame, used in legacy single-frame mode)
   imageUrl?: string;
   bunnyUrl?: string;
   imageStatus: "pending" | "generating" | "completed" | "failed";
   imageError?: string;
+  // First / Last frame mode (AIComicBuilder-style 首尾幀插值)
+  useFirstLastFrame?: boolean;
+  firstFrameUrl?: string;
+  firstFrameBunnyUrl?: string;
+  firstFrameStatus?: "pending" | "generating" | "completed" | "failed";
+  lastFrameUrl?: string;
+  lastFrameBunnyUrl?: string;
+  lastFrameStatus?: "pending" | "generating" | "completed" | "failed";
+  /** AI-generated professional video prompt (overrides description if present) */
+  videoPrompt?: string;
   // Video
   videoUrl?: string;
   videoBunnyUrl?: string;
@@ -323,6 +336,34 @@ export const dramaEpisodes = pgTable("drama_episodes", {
   compiledStatus: text("compiled_status").default("idle"), // idle | compiling | completed | failed
   compiledError: text("compiled_error"),
   compiledAt: timestamp("compiled_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ─── Global Asset Libraries (cross-episode/project reuse) ────────────────────
+
+export const characterLibrary = pgTable("character_library", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  /** Reference image URLs uploaded by user (Bunny CDN) */
+  refImageUrls: text("ref_image_urls").array().default([]),
+  /** Generated 4-view URLs: { front, threeQuarter, side, back } */
+  fourViewUrls: json("four_view_urls"),
+  fourViewStatus: text("four_view_status").default("idle"), // idle | generating | completed | failed
+  fourViewError: text("four_view_error"),
+  styleHint: text("style_hint").default(""), // e.g. "anime", "realistic"
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const sceneLibrary = pgTable("scene_library", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  refImageUrls: text("ref_image_urls").array().default([]),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -377,3 +418,33 @@ export type DramaProject = typeof dramaProjects.$inferSelect;
 export type DramaEpisode = typeof dramaEpisodes.$inferSelect;
 export type InsertDramaProject = z.infer<typeof insertDramaProjectSchema>;
 export type InsertDramaEpisode = z.infer<typeof insertDramaEpisodeSchema>;
+
+// ─── Asset Library Schemas ────────────────────────────────────────────────────
+
+export const insertCharacterLibrarySchema = z.object({
+  name: z.string().min(1).max(60),
+  description: z.string().optional().default(""),
+  refImageUrls: z.array(z.string()).max(6).optional().default([]),
+  styleHint: z.string().optional().default(""),
+});
+
+export const updateCharacterLibrarySchema = insertCharacterLibrarySchema.partial();
+
+export const insertSceneLibrarySchema = z.object({
+  name: z.string().min(1).max(60),
+  description: z.string().optional().default(""),
+  refImageUrls: z.array(z.string()).max(6).optional().default([]),
+});
+
+export const updateSceneLibrarySchema = insertSceneLibrarySchema.partial();
+
+export type CharacterLibraryItem = typeof characterLibrary.$inferSelect;
+export type SceneLibraryItem = typeof sceneLibrary.$inferSelect;
+export type InsertCharacterLibrary = z.infer<typeof insertCharacterLibrarySchema>;
+export type InsertSceneLibrary = z.infer<typeof insertSceneLibrarySchema>;
+export type FourViewUrls = {
+  front?: string;
+  threeQuarter?: string;
+  side?: string;
+  back?: string;
+};

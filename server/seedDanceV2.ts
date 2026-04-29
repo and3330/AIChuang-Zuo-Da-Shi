@@ -60,6 +60,14 @@ export interface SeedDanceVideoRequest {
   generateAudio?: boolean;
   /** Use omni multi-image endpoint */
   useOmniMode?: boolean;
+  /**
+   * First/Last frame interpolation mode.
+   * When BOTH provided, SeedDance uses them as start/end keyframes and
+   * interpolates the motion between — produces dramatically smoother
+   * narrative cuts than single-frame image-to-video.
+   */
+  firstFrame?: SeedDanceImageRef;
+  lastFrame?: SeedDanceImageRef;
 }
 
 export interface SeedDanceVideoResult {
@@ -112,7 +120,8 @@ export async function generateSeedDanceVideo(
   const apiKey = process.env.ARK_API_KEY;
   if (!apiKey) throw new Error("ARK_API_KEY environment variable is not set");
 
-  const isOmni = req.useOmniMode ?? false;
+  const useFirstLast = !!(req.firstFrame && req.lastFrame);
+  const isOmni = useFirstLast || (req.useOmniMode ?? false);
   const model = isOmni ? SEEDDANCE_OMNI_ENDPOINT : SEEDDANCE_STANDARD_ENDPOINT;
 
   // 強制套用 NSFW 提示詞增強器（防呆：即使呼叫端忘了包，也保證 API 收到的是增強版）
@@ -126,20 +135,42 @@ export async function generateSeedDanceVideo(
     // Omni mode: text prompt first, then all reference images, optional video/audio refs
     contentItems.push({ type: "text", text: enhancedPrompt });
 
-    if (req.mainImage) {
+    if (useFirstLast) {
+      // First/Last frame interpolation — explicit role labels
       contentItems.push({
         type: "image_url",
-        image_url: { url: req.mainImage.url },
-        role: "reference_image",
+        image_url: { url: req.firstFrame!.url },
+        role: "first_frame",
       });
-    }
+      contentItems.push({
+        type: "image_url",
+        image_url: { url: req.lastFrame!.url },
+        role: "last_frame",
+      });
+      // Additional reference images for character/style consistency
+      for (const ref of req.referenceImages ?? []) {
+        contentItems.push({
+          type: "image_url",
+          image_url: { url: ref.url },
+          role: "reference_image",
+        });
+      }
+    } else {
+      if (req.mainImage) {
+        contentItems.push({
+          type: "image_url",
+          image_url: { url: req.mainImage.url },
+          role: "reference_image",
+        });
+      }
 
-    for (const ref of req.referenceImages ?? []) {
-      contentItems.push({
-        type: "image_url",
-        image_url: { url: ref.url },
-        role: "reference_image",
-      });
+      for (const ref of req.referenceImages ?? []) {
+        contentItems.push({
+          type: "image_url",
+          image_url: { url: ref.url },
+          role: "reference_image",
+        });
+      }
     }
 
     if (req.referenceVideo) {

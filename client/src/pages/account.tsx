@@ -46,6 +46,11 @@ function NavigationHeader() {
                   🎬 漫劇工作室
                 </Button>
               </Link>
+              <Link href="/character-library">
+                <Button variant="ghost" size="sm" className="text-indigo-600 hover:text-indigo-700 font-medium">
+                  🎭 角色庫
+                </Button>
+              </Link>
               <Link href="/account">
                 <Button variant="ghost" size="sm" className="text-purple-600 font-medium">
                   <i className="fas fa-user mr-1"></i> 帳戶

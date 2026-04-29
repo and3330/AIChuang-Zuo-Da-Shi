@@ -1,10 +1,11 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationHeader } from "./account";
 import { useUser } from "@/App";
-import type { DramaProject, DramaEpisode, DramaScene } from "@shared/schema";
+import type { DramaProject, DramaEpisode, DramaScene, CharacterLibraryItem, FourViewUrls } from "@shared/schema";
 
 const nid = () => Math.random().toString(36).slice(2, 10);
 
@@ -452,6 +453,7 @@ function ProjectView({
   const queryClient = useQueryClient();
   const [showSettings, setShowSettings] = useState(false);
   const [showNewEpisode, setShowNewEpisode] = useState(false);
+  const [showImportScript, setShowImportScript] = useState(false);
   const [newEpTitle, setNewEpTitle] = useState("");
   const [newEpSceneCount, setNewEpSceneCount] = useState(6);
   const [pTitle, setPTitle] = useState("");
@@ -554,6 +556,10 @@ function ProjectView({
             <span className="text-xs text-[#94a3b8]">{SIZE_LABELS[project.sceneSize ?? "9:16"]}</span>
           </div>
         </div>
+        <Link href="/character-library">
+          <DarkButton variant="secondary">🎭 角色庫</DarkButton>
+        </Link>
+        <DarkButton variant="secondary" onClick={() => setShowImportScript(true)} data-testid="button-import-script">📄 上傳劇本</DarkButton>
         <DarkButton variant="secondary" onClick={() => setShowSettings(true)}>✏️ 編輯設定</DarkButton>
         <DarkButton onClick={() => setShowNewEpisode(true)}>＋ 新增集數</DarkButton>
       </div>
@@ -727,7 +733,121 @@ function ProjectView({
           </DarkButton>
         </div>
       </Modal>
+
+      {/* Import Script Modal */}
+      <ImportScriptModal
+        open={showImportScript}
+        onClose={() => setShowImportScript(false)}
+        projectId={projectId}
+        onImported={() => {
+          setShowImportScript(false);
+          queryClient.invalidateQueries({ queryKey: ["/api/drama/projects", projectId, "episodes"] });
+          queryClient.invalidateQueries({ queryKey: ["/api/drama/projects", projectId] });
+          queryClient.invalidateQueries({ queryKey: ["/api/character-library"] });
+        }}
+      />
     </div>
+  );
+}
+
+// ─── Import Script Modal ───────────────────────────────────────────────────────
+function ImportScriptModal({
+  open, onClose, projectId, onImported,
+}: { open: boolean; onClose: () => void; projectId: string; onImported: () => void }) {
+  const { toast } = useToast();
+  const [scriptText, setScriptText] = useState("");
+  const [episodeCount, setEpisodeCount] = useState(3);
+  const [scenesPerEpisode, setScenesPerEpisode] = useState(6);
+  const [fileBase64, setFileBase64] = useState<string | null>(null);
+  const [fileName, setFileName] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const importMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/drama/projects/${projectId}/import-script`, {
+        scriptText: scriptText.trim() || undefined,
+        fileBase64: fileBase64 || undefined,
+        fileName: fileName || undefined,
+        episodeCount, scenesPerEpisode,
+      }).then(r => r.json()),
+    onSuccess: (data: any) => {
+      toast({
+        title: `✨ 已建立 ${data.episodesCreated ?? 0} 集 ／ ${data.charactersCreated ?? 0} 個角色`,
+        description: "可在角色庫與集數列表中查看",
+      });
+      setScriptText(""); setFileBase64(null); setFileName("");
+      onImported();
+    },
+    onError: (e: any) => toast({ title: "匯入失敗", description: e.message, variant: "destructive" }),
+  });
+
+  const handleFile = (file: File | null) => {
+    if (!file) return;
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => setFileBase64(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <Modal open={open} onClose={onClose} title="📄 從劇本匯入">
+      <div className="space-y-4">
+        <p className="text-xs text-[#64748b]">
+          上傳故事原文（TXT/DOCX）或直接貼入文字，AI 會自動拆集、抽出主要角色（會自動加到角色庫）並產生分鏡。
+        </p>
+
+        <div>
+          <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">劇本檔案（TXT / DOCX）</label>
+          <input ref={fileRef} type="file" accept=".txt,.docx" className="hidden"
+            onChange={e => handleFile(e.target.files?.[0] ?? null)} />
+          <button onClick={() => fileRef.current?.click()}
+            className="w-full p-3 rounded-lg border-2 border-dashed border-[#cbd5e1] hover:border-[#6366f1] text-sm text-[#64748b] hover:text-[#4f46e5] transition-all"
+            data-testid="button-pick-script-file">
+            {fileName ? `📎 ${fileName}` : "📂 選擇檔案…"}
+          </button>
+        </div>
+
+        <div className="text-center text-[10px] text-[#94a3b8]">— 或 —</div>
+
+        <div>
+          <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">直接貼入劇本文字</label>
+          <DarkTextarea
+            value={scriptText}
+            onChange={setScriptText}
+            placeholder="貼入故事大綱或完整劇本（最多 60,000 字）…"
+            rows={6}
+          />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">集數</label>
+            <input type="number" min={1} max={10} value={episodeCount}
+              onChange={e => setEpisodeCount(Math.min(10, Math.max(1, Number(e.target.value))))}
+              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#6366f1]" />
+          </div>
+          <div>
+            <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">每集幕數</label>
+            <input type="number" min={2} max={12} value={scenesPerEpisode}
+              onChange={e => setScenesPerEpisode(Math.min(12, Math.max(2, Number(e.target.value))))}
+              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#6366f1]" />
+          </div>
+        </div>
+
+        <div className="bg-[#f8fafc] rounded-lg p-2.5 text-[11px] text-[#64748b]">
+          ℹ️ 預估產出：{episodeCount} 集 × {scenesPerEpisode} 幕 = {episodeCount * scenesPerEpisode} 幕分鏡（不會自動扣積分，須在編輯器中手動生成圖片）
+        </div>
+
+        <DarkButton
+          onClick={() => importMutation.mutate()}
+          disabled={importMutation.isPending || (!scriptText.trim() && !fileBase64)}
+          className="w-full justify-center"
+          data-testid="button-import-script-submit"
+        >
+          {importMutation.isPending ? "🤖 AI 拆集中…約 30 秒" : "✨ 開始匯入"}
+        </DarkButton>
+      </div>
+    </Modal>
   );
 }
 
@@ -1034,6 +1154,7 @@ function EpisodeView({
   const [animDuration, setAnimDuration] = useState(5);
   const [animResolution, setAnimResolution] = useState<"720p" | "1080p">("720p");
   const [animUseOmni, setAnimUseOmni] = useState(false);
+  const [animUseFirstLast, setAnimUseFirstLast] = useState(false);
   const [showAIDialog, setShowAIDialog] = useState(false);
 
   useEffect(() => {
@@ -1073,14 +1194,38 @@ function EpisodeView({
   });
 
   const animateSceneMutation = useMutation({
-    mutationFn: ({ sceneIdx, duration, resolution, useOmniMode }: any) =>
-      apiRequest("POST", `/api/drama/episodes/${episodeId}/animate-scene/${sceneIdx}`, { duration, resolution, useOmniMode }).then(r => r.json()),
+    mutationFn: ({ sceneIdx, duration, resolution, useOmniMode, useFirstLastFrame }: any) =>
+      apiRequest("POST", `/api/drama/episodes/${episodeId}/animate-scene/${sceneIdx}`, { duration, resolution, useOmniMode, useFirstLastFrame }).then(r => r.json()),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
       toast({ title: `動畫生成中，消耗 ${data.creditCost} 積分` });
       setAnimateDialog(null);
     },
     onError: (e: any) => toast({ title: "動畫失敗", description: e.message, variant: "destructive" }),
+  });
+
+  // ─── First/Last Frame Generation ─────────────────────────────────────────
+  const generateFramesMutation = useMutation({
+    mutationFn: (sceneIdx: number) =>
+      apiRequest("POST", `/api/drama/episodes/${episodeId}/scenes/${sceneIdx}/generate-frames`, {}).then(r => r.json()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
+      toast({ title: `首尾關鍵幀生成中（-${data.creditsUsed} 積分）` });
+    },
+    onError: (e: any) => toast({ title: "首尾幀生成失敗", description: e.message, variant: "destructive" }),
+  });
+
+  // ─── AI Video Prompt Rewriter ────────────────────────────────────────────
+  const generateVideoPromptMutation = useMutation({
+    mutationFn: (sceneIdx: number) =>
+      apiRequest("POST", `/api/drama/episodes/${episodeId}/scenes/${sceneIdx}/generate-video-prompt`, {}).then(r => r.json()),
+    onSuccess: (data, sceneIdx) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
+      // Reflect immediately in local state
+      setLocalScenes(prev => prev.map((s, i) => i === sceneIdx ? { ...s, videoPrompt: data.videoPrompt } : s));
+      toast({ title: "✨ AI 已寫好專業視頻提示詞" });
+    },
+    onError: (e: any) => toast({ title: "AI 生成提示詞失敗", description: e.message, variant: "destructive" }),
   });
 
   const animateAllMutation = useMutation({
@@ -1233,6 +1378,16 @@ function EpisodeView({
             </DarkButton>
           );
         })()}
+
+        {/* Download all assets as ZIP */}
+        <a
+          href={`/api/drama/episodes/${episodeId}/download-zip`}
+          download
+          className="text-xs font-medium text-[#475569] bg-[#f1f5f9] hover:bg-[#e2e8f0] px-3 py-1.5 rounded-md transition-colors shrink-0 border border-[#e2e8f0]"
+          data-testid="link-download-zip"
+        >
+          📦 下載素材 ZIP
+        </a>
       </div>
 
       {/* ── Compiled Episode Player ─────────────────────────────────────────── */}
@@ -1454,6 +1609,86 @@ function EpisodeView({
               {/* Separator */}
               <div className="border-t border-[#e2e8f0]" />
 
+              {/* AI Video Prompt */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-[10px] text-[#64748b] uppercase tracking-wide">視頻提示詞（影片生成用）</label>
+                  <button
+                    onClick={() => generateVideoPromptMutation.mutate(selectedIdx!)}
+                    disabled={generateVideoPromptMutation.isPending || !selectedScene.description.trim()}
+                    className="text-[10px] text-[#7c3aed] hover:text-[#6d28d9] disabled:text-[#cbd5e1] flex items-center gap-1"
+                    data-testid="button-ai-video-prompt"
+                  >
+                    {generateVideoPromptMutation.isPending ? "AI 撰寫中…" : "✨ AI 寫提示詞"}
+                  </button>
+                </div>
+                <DarkTextarea
+                  value={selectedScene.videoPrompt || ""}
+                  onChange={v => updateScene(selectedIdx!, { videoPrompt: v })}
+                  placeholder="留空＝用場景描述。填入＝動畫優先用此（含運鏡、景別、光線）"
+                  rows={3}
+                />
+              </div>
+
+              {/* First / Last Frame Mode */}
+              <div className="rounded-xl border border-[#e2e8f0] p-3 space-y-3 bg-[#f8fafc]">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-semibold text-[#0f172a]">🎞 首尾關鍵幀模式</p>
+                    <p className="text-[10px] text-[#64748b] mt-0.5">先生兩張關鍵幀，影片更平順</p>
+                  </div>
+                  <button
+                    onClick={() => updateScene(selectedIdx!, { useFirstLastFrame: !selectedScene.useFirstLastFrame })}
+                    className={`w-10 h-6 rounded-full relative shrink-0 transition-all ${selectedScene.useFirstLastFrame ? "bg-[#6366f1]" : "bg-[#e2e8f0]"}`}
+                    data-testid="toggle-use-first-last"
+                  >
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${selectedScene.useFirstLastFrame ? "left-5" : "left-1"}`} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {(["first", "last"] as const).map(which => {
+                    const url = which === "first"
+                      ? (selectedServerScene?.firstFrameBunnyUrl || selectedServerScene?.firstFrameUrl)
+                      : (selectedServerScene?.lastFrameBunnyUrl || selectedServerScene?.lastFrameUrl);
+                    const status = which === "first" ? selectedServerScene?.firstFrameStatus : selectedServerScene?.lastFrameStatus;
+                    return (
+                      <div key={which} className="aspect-[9/16] rounded-lg border border-[#e2e8f0] bg-white overflow-hidden flex flex-col items-center justify-center">
+                        {url ? (
+                          <img src={url} alt={which} className="w-full h-full object-cover" />
+                        ) : status === "generating" ? (
+                          <><Spinner color="#ca8a04" /><span className="text-[10px] text-[#ca8a04] mt-1">生成中</span></>
+                        ) : status === "failed" ? (
+                          <span className="text-[10px] text-[#ef4444]">失敗</span>
+                        ) : (
+                          <span className="text-[10px] text-[#94a3b8]">{which === "first" ? "首幀" : "尾幀"}</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <DarkButton
+                  variant="secondary"
+                  className="w-full justify-center"
+                  onClick={() => generateFramesMutation.mutate(selectedIdx!)}
+                  disabled={
+                    generateFramesMutation.isPending
+                    || !selectedScene.description.trim()
+                    || (user?.credits ?? 0) < 6
+                    || selectedServerScene?.firstFrameStatus === "generating"
+                    || selectedServerScene?.lastFrameStatus === "generating"
+                  }
+                  data-testid="button-generate-frames"
+                >
+                  {generateFramesMutation.isPending ? "派發中…" :
+                   (selectedServerScene?.firstFrameUrl && selectedServerScene?.lastFrameUrl) ? "🔄 重新生成首尾幀 (-6積分)" : "🎞 生成首尾幀 (-6積分)"}
+                </DarkButton>
+              </div>
+
+              {/* Separator */}
+              <div className="border-t border-[#e2e8f0]" />
+
               {/* Actions */}
               <div className="space-y-2">
                 <p className="text-[10px] text-[#64748b] uppercase tracking-wide">動作</p>
@@ -1475,7 +1710,12 @@ function EpisodeView({
 
                 {selectedServerScene?.imageStatus === "completed" && selectedServerScene?.videoStatus !== "completed" && selectedServerScene?.videoStatus !== "generating" && (
                   <DarkButton className="w-full justify-center" style={{ background: "#7c3aed" }}
-                    onClick={() => setAnimateDialog({ sceneIdx: selectedIdx! })}>
+                    onClick={() => {
+                      // Initialise animate dialog flags from the scene's saved preference
+                      const hasFrames = !!(selectedServerScene?.firstFrameUrl && selectedServerScene?.lastFrameUrl);
+                      setAnimUseFirstLast(!!selectedScene.useFirstLastFrame && hasFrames);
+                      setAnimateDialog({ sceneIdx: selectedIdx! });
+                    }}>
                     🎬 生成動畫影片
                   </DarkButton>
                 )}
@@ -1566,6 +1806,26 @@ function EpisodeView({
               </div>
             </div>
 
+            {/* First/Last frame mode (only enabled if both frames exist) */}
+            {(() => {
+              const ss = serverScenes[animateDialog.sceneIdx];
+              const hasFrames = !!(ss?.firstFrameUrl && ss?.lastFrameUrl);
+              const disabled = !hasFrames;
+              return (
+                <div onClick={() => !disabled && setAnimUseFirstLast(!animUseFirstLast)}
+                  className={`flex items-center justify-between p-3 rounded-xl border-2 transition-all ${disabled ? "border-[#e2e8f0] bg-[#f8fafc] cursor-not-allowed opacity-60" : (animUseFirstLast ? "border-[#10b981] bg-[#10b981]/5 cursor-pointer" : "border-[#e2e8f0] hover:border-[#10b981]/30 cursor-pointer")}`}
+                  data-testid="toggle-anim-first-last">
+                  <div>
+                    <p className="text-sm font-semibold text-[#0f172a]">🎞 首尾關鍵幀模式</p>
+                    <p className="text-xs text-[#64748b] mt-0.5">{hasFrames ? "用首尾幀補間，動作最平順" : "請先在右側面板生成首尾幀"}</p>
+                  </div>
+                  <div className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-all ${animUseFirstLast && !disabled ? "bg-[#10b981]" : "bg-[#e2e8f0]"}`}>
+                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${animUseFirstLast && !disabled ? "left-5" : "left-1"}`} />
+                  </div>
+                </div>
+              );
+            })()}
+
             <div>
               <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">解析度</label>
               <div className="grid grid-cols-2 gap-3">
@@ -1593,6 +1853,7 @@ function EpisodeView({
               onClick={() => animateSceneMutation.mutate({
                 sceneIdx: animateDialog.sceneIdx, duration: animDuration,
                 resolution: animResolution, useOmniMode: animUseOmni,
+                useFirstLastFrame: animUseFirstLast,
               })}
               disabled={animateSceneMutation.isPending || (user?.credits ?? 0) < (animResolution === "1080p" ? Math.ceil(animDuration * 15) : Math.ceil(animDuration * 8))}
               className="w-full justify-center"
@@ -1637,7 +1898,9 @@ function EpisodeView({
               // Past AI range — keep existing scene as-is, just renumber
               return { ...existing, sceneNumber: i + 1 };
             }
+            // Preserve all media + library-link fields from existing scene; AI only overrides script content.
             return {
+              ...(existing ?? {}),
               id: existing?.id ?? nid(),
               sceneNumber: i + 1,
               title: ai.title,
@@ -1646,15 +1909,7 @@ function EpisodeView({
               cameraMovement: ai.cameraMovement,
               useCharA: ai.useCharA,
               useCharB: ai.useCharB,
-              sceneRefImageUrl: existing?.sceneRefImageUrl,
-              imageUrl: existing?.imageUrl,
-              bunnyUrl: existing?.bunnyUrl,
               imageStatus: existing?.imageStatus ?? "pending",
-              videoUrl: existing?.videoUrl,
-              videoBunnyUrl: existing?.videoBunnyUrl,
-              videoStatus: existing?.videoStatus,
-              videoDuration: existing?.videoDuration,
-              videoResolution: existing?.videoResolution,
             };
           });
           setLocalScenes(merged);
