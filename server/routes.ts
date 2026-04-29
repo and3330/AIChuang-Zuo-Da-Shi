@@ -4227,6 +4227,28 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         scenes[sceneIdx].imageError = err.message;
         await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(scenes) });
       }
+      // Refund credits on drama scene image regeneration failure
+      try {
+        const ep2 = ep ?? await storage.getDramaEpisode(episodeId);
+        if (ep2) {
+          const user = await storage.getUser(ep2.userId);
+          const creditCost = 3;
+          if (user) {
+            const newBalance = (user.credits ?? 0) + creditCost;
+            await storage.updateUserCredits(ep2.userId, newBalance);
+            await storage.createCreditTransaction({
+              userId: ep2.userId,
+              type: "refund",
+              amount: creditCost,
+              balance: newBalance,
+              description: `漫劇第 ${ep2.episodeNumber} 集第 ${sceneIdx + 1} 幕重生失敗退款`,
+            });
+            console.log(`✅ Refunded ${creditCost} credits for failed drama scene ${sceneIdx + 1} regen`);
+          }
+        }
+      } catch (refundErr) {
+        console.error("Failed to refund drama scene regen credits:", refundErr);
+      }
     }
   }
 
