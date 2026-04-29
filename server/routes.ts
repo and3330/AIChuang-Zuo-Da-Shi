@@ -3535,6 +3535,13 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         return res.status(400).json({ error: `第 ${notReadyIdxs.join("、")} 幕還沒生成影片，請先完成` });
       }
 
+      // Crossfade duration (ms) between adjacent scenes; default 400ms,
+      // clamped to [0, 2000]. Frontend slider sends 0/200/400/800.
+      const rawCf = Number(req.body?.crossfadeMs);
+      const crossfadeMs = Number.isFinite(rawCf)
+        ? Math.max(0, Math.min(2000, Math.round(rawCf)))
+        : 400;
+
       await storage.updateDramaEpisode(req.params.episodeId, {
         compiledStatus: "compiling",
         compiledError: null,
@@ -3559,6 +3566,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             userFolder,
             scenes: compileScenes,
             bunny: bunnyStorage,
+            crossfadeMs,
             outputName: `drama_${episode.projectId}_ep${episode.episodeNumber}_${Date.now()}`,
           });
 

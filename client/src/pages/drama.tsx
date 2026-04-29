@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { NavigationHeader } from "./account";
 import { useUser } from "@/App";
 import type { DramaProject, DramaEpisode, DramaScene, CharacterLibraryItem, FourViewUrls } from "@shared/schema";
+import { Slider } from "@/components/ui/slider";
 
 const nid = () => Math.random().toString(36).slice(2, 10);
 
@@ -1345,6 +1346,9 @@ function EpisodeView({
   // the first poll: the mutation can resolve before the very next refetch sees
   // the server-side status updates we wrote.
   const chainGeneratingObservedRef = useRef(false);
+  // Compile crossfade (ms) between adjacent scenes — sent to /compile.
+  // Slider exposes 0 / 200 / 400 / 800 ms (default 400 = subtle fade).
+  const [compileCrossfadeMs, setCompileCrossfadeMs] = useState<number>(400);
 
   useEffect(() => {
     if (episode) {
@@ -1478,7 +1482,8 @@ function EpisodeView({
   });
 
   const compileMutation = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/drama/episodes/${episodeId}/compile`, {}).then(r => r.json()),
+    mutationFn: (crossfadeMs: number) =>
+      apiRequest("POST", `/api/drama/episodes/${episodeId}/compile`, { crossfadeMs }).then(r => r.json()),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
       toast({ title: "🎞️ 開始剪接合併", description: "完成後可在下方播放器播放與下載" });
@@ -1690,17 +1695,58 @@ function EpisodeView({
           const allDone = serverScenes.length > 0 && serverScenes.every(s => s.videoBunnyUrl || s.videoUrl);
           const isCompiling = episode.compiledStatus === "compiling";
           if (!allDone && !isCompiling) return null;
+          // Discrete crossfade stops (ms) — slider snaps to one of these by index.
+          const crossfadeStops = [0, 200, 400, 800] as const;
+          const foundIdx = crossfadeStops.findIndex(v => v === compileCrossfadeMs);
+          // Fall back to the 400ms stop (index 2) if state ever drifts to a value
+          // outside the slider's discrete domain.
+          const safeIdx = foundIdx === -1 ? 2 : foundIdx;
+          const fadeDisabled = isCompiling || compileMutation.isPending;
           return (
-            <DarkButton
-              onClick={() => {
-                if (!confirm(`即將剪接合併 ${serverScenes.length} 幕影片並燒入字幕，約需 1-3 分鐘。確定？`)) return;
-                compileMutation.mutate();
-              }}
-              disabled={isCompiling || compileMutation.isPending}
-              style={{ background: "#10b981", borderColor: "#10b981" }}
-            >
-              {isCompiling ? "⏳ 剪接中..." : episode.compiledVideoUrl ? "🎞 重新剪接" : "🎞 剪接合併＋字幕"}
-            </DarkButton>
+            <div className="flex items-center gap-2 shrink-0">
+              <div
+                className="flex items-center gap-2 bg-[#f0fdf4] border border-[#10b981]/30 rounded-lg px-3 py-1.5"
+                title="相鄰幕之間的轉場淡入淡出時間（影像 + 音訊），0=硬切"
+                data-testid="group-crossfade-slider"
+              >
+                <span className="text-[11px] text-[#047857] font-medium select-none whitespace-nowrap">
+                  轉場
+                </span>
+                <Slider
+                  className="w-28"
+                  min={0}
+                  max={crossfadeStops.length - 1}
+                  step={1}
+                  value={[safeIdx]}
+                  onValueChange={(v) => {
+                    const i = Math.round(v[0] ?? safeIdx);
+                    setCompileCrossfadeMs(crossfadeStops[i] ?? 400);
+                  }}
+                  disabled={fadeDisabled}
+                  data-testid="slider-crossfade-ms"
+                />
+                <span
+                  className="text-[11px] text-[#047857] font-semibold tabular-nums select-none whitespace-nowrap min-w-[3.5rem] text-right"
+                  data-testid="text-crossfade-value"
+                >
+                  {compileCrossfadeMs === 0 ? "硬切" : `${compileCrossfadeMs}ms`}
+                </span>
+              </div>
+              <DarkButton
+                onClick={() => {
+                  const fadeNote = compileCrossfadeMs > 0
+                    ? `（含 ${compileCrossfadeMs}ms 轉場淡入淡出）`
+                    : "（硬切）";
+                  if (!confirm(`即將剪接合併 ${serverScenes.length} 幕影片並燒入字幕${fadeNote}，約需 1-3 分鐘。確定？`)) return;
+                  compileMutation.mutate(compileCrossfadeMs);
+                }}
+                disabled={fadeDisabled}
+                style={{ background: "#10b981", borderColor: "#10b981" }}
+                data-testid="btn-compile-episode"
+              >
+                {isCompiling ? "⏳ 剪接中..." : episode.compiledVideoUrl ? "🎞 重新剪接" : "🎞 剪接合併＋字幕"}
+              </DarkButton>
+            </div>
           );
         })()}
 
@@ -1726,7 +1772,7 @@ function EpisodeView({
           {episode.compiledStatus === "failed" && (
             <div className="flex items-center justify-between gap-3">
               <div className="text-sm text-[#dc2626]">❌ 剪接失敗：{episode.compiledError}</div>
-              <DarkButton variant="secondary" onClick={() => compileMutation.mutate()}>重試</DarkButton>
+              <DarkButton variant="secondary" onClick={() => compileMutation.mutate(compileCrossfadeMs)}>重試</DarkButton>
             </div>
           )}
           {episode.compiledStatus === "completed" && episode.compiledVideoUrl && (
