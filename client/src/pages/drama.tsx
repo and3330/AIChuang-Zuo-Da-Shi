@@ -1471,6 +1471,23 @@ function EpisodeView({
     if (chainGeneratingObservedRef.current) setChainBatchActive(false);
   }, [episode, chainBatchActive, regenerateAllChainMutation.isPending]);
 
+  // Cancel an in-flight chain regen-all batch. The current scene finishes,
+  // remaining un-started scenes are skipped, and their pre-deducted credits
+  // are refunded server-side.
+  const cancelChainRegenMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/drama/episodes/${episodeId}/cancel-chain-regen`, {}).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      toast({
+        title: "🛑 已送出中止請求",
+        description: "目前這幕跑完後就會停下，剩餘積分會自動退回",
+      });
+    },
+    onError: (e: any) => toast({ title: "中止失敗", description: e.message, variant: "destructive" }),
+  });
+
   const animateAllMutation = useMutation({
     mutationFn: ({ duration, resolution, useOmniMode }: any) =>
       apiRequest("POST", `/api/drama/episodes/${episodeId}/animate-all`, { duration, resolution, useOmniMode, generateAudio: true }).then(r => r.json()),
@@ -1620,13 +1637,32 @@ function EpisodeView({
           const blockNewBatch = isChainBatchRunning || inFlightAfterFirst > 0;
 
           if (isChainBatchRunning) {
+            const cancelRequested = !!episode.chainRegenCancelRequested;
             return (
-              <span
-                className="text-xs text-[#047857] bg-[#10b981]/10 border border-[#10b981]/40 px-3 py-1.5 rounded-lg shrink-0 animate-pulse"
-                data-testid="status-chain-regen-progress"
-              >
-                🔁 整集連續重生中 {completedAfterFirst}/{totalChainTargets}
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  className="text-xs text-[#047857] bg-[#10b981]/10 border border-[#10b981]/40 px-3 py-1.5 rounded-lg animate-pulse"
+                  data-testid="status-chain-regen-progress"
+                >
+                  🔁 整集連續重生中 {completedAfterFirst}/{totalChainTargets}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (cancelChainRegenMutation.isPending || cancelRequested) return;
+                    if (!confirm("中止後，目前這幕跑完就會停下，剩下未開始的幕不再執行，已扣積分會退回。確定中止？")) return;
+                    cancelChainRegenMutation.mutate();
+                  }}
+                  disabled={cancelChainRegenMutation.isPending || cancelRequested}
+                  title={cancelRequested
+                    ? "已送出中止請求，等目前這幕跑完就會停"
+                    : "中止整集連續重生：跑完當前這幕後停下，未開始的幕積分會退回"}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border bg-[#fef2f2] border-[#fecaca] text-[#b91c1c] hover:bg-[#fee2e2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  data-testid="button-cancel-chain-regen"
+                >
+                  {cancelRequested ? "⏳ 中止中…" : "🛑 中止"}
+                </button>
+              </div>
             );
           }
 

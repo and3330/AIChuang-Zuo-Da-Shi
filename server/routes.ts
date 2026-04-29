@@ -3365,6 +3365,11 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         return res.status(400).json({ error: `積分不足，需要 ${totalCost} 積分` });
       }
 
+      // Snapshot each target's pre-batch status so we can restore it on cancel
+      // (without this, cancelled scenes stay stuck on `generating` forever).
+      const preStatusByIdx: Record<number, string> = {};
+      for (const i of targets) preStatusByIdx[i] = scenes[i].imageStatus ?? "pending";
+
       // Mark all targets as generating + deduct credits up-front
       let balance = user.credits ?? 0;
       for (const i of targets) {
@@ -3380,25 +3385,112 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
           description: `漫劇連續模式整集重生第 ${i + 1} 幕`,
         });
       }
-      await storage.updateDramaEpisode(req.params.episodeId, { scenes: JSON.stringify(scenes) });
+      // Reset any stale cancel flag from a previous batch before kicking off.
+      await storage.updateDramaEpisode(req.params.episodeId, {
+        scenes: JSON.stringify(scenes),
+        chainRegenCancelRequested: false,
+      });
+
+      const userId = req.session.userId!;
+      const episodeId = req.params.episodeId;
 
       // Strictly sequential — each scene N+1 reads scene N's freshly written
       // last-frame / main image from storage as continuity reference.
+      // Between scenes we re-fetch the episode to honor a user-issued cancel
+      // request: the in-flight scene finishes, but remaining un-started scenes
+      // are skipped and their pre-deducted credits refunded.
       (async () => {
-        for (const i of targets) {
+        const skipped: number[] = [];
+        let cancelled = false;
+        for (let t = 0; t < targets.length; t++) {
+          const i = targets[t];
+          if (!cancelled) {
+            const fresh = await storage.getDramaEpisode(episodeId);
+            if (fresh?.chainRegenCancelRequested) {
+              cancelled = true;
+            }
+          }
+          if (cancelled) {
+            skipped.push(i);
+            continue;
+          }
           try {
             await regenerateDramaScene(
-              req.params.episodeId, episode.projectId, i,
+              episodeId, episode.projectId, i,
               objectStorageService, bunnyStorage
             );
           } catch (err) {
             console.error(`[Drama chain regen-all] scene ${i} failed:`, err);
           }
         }
-        console.log(`[Drama chain regen-all] episode ${req.params.episodeId} done (${targets.length} scenes)`);
+
+        if (skipped.length > 0) {
+          // Refund credits for every scene we never started, restore their
+          // pre-batch imageStatus, and clear the cancel flag.
+          try {
+            const u = await storage.getUser(userId);
+            let bal = u?.credits ?? 0;
+            for (const i of skipped) {
+              bal += perSceneCost;
+              await storage.updateUserCredits(userId, bal);
+              await storage.createCreditTransaction({
+                userId,
+                type: "refund",
+                amount: perSceneCost,
+                balance: bal,
+                description: `漫劇連續模式整集重生中止退款（第 ${i + 1} 幕）`,
+              });
+            }
+            const ep2 = await storage.getDramaEpisode(episodeId);
+            if (ep2) {
+              const sc: any[] = JSON.parse(ep2.scenes);
+              for (const i of skipped) {
+                if (sc[i]) {
+                  sc[i].imageStatus = preStatusByIdx[i] ?? "pending";
+                  delete sc[i].imageError;
+                }
+              }
+              await storage.updateDramaEpisode(episodeId, {
+                scenes: JSON.stringify(sc),
+                chainRegenCancelRequested: false,
+              });
+            }
+            console.log(`[Drama chain regen-all] episode ${episodeId} cancelled — refunded ${skipped.length} scenes (${skipped.length * perSceneCost} credits)`);
+          } catch (refundErr) {
+            console.error(`[Drama chain regen-all] refund failed:`, refundErr);
+          }
+        } else {
+          // Make sure the cancel flag is cleared after a clean run too.
+          await storage.updateDramaEpisode(episodeId, { chainRegenCancelRequested: false }).catch(() => {});
+          console.log(`[Drama chain regen-all] episode ${episodeId} done (${targets.length} scenes)`);
+        }
       })().catch(console.error);
 
       res.json({ ok: true, sceneCount: targets.length, creditCost: totalCost });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Cancel an in-flight chain regen-all batch ────────────────────────────
+  // Sets chainRegenCancelRequested=true so the background loop skips remaining
+  // un-started scenes after the current one finishes; refund happens there.
+  app.post("/api/drama/episodes/:episodeId/cancel-chain-regen", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+
+      const scenes: any[] = JSON.parse(episode.scenes);
+      // No-op if nothing past scene 1 is currently generating — there is no
+      // batch to stop, and we don't want to leave the flag stuck on for the
+      // next batch.
+      const inFlight = scenes.slice(1).some(s => s.imageStatus === "generating");
+      if (!inFlight) {
+        return res.json({ ok: true, alreadyDone: true });
+      }
+
+      await storage.updateDramaEpisode(req.params.episodeId, { chainRegenCancelRequested: true });
+      res.json({ ok: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

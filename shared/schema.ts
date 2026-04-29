@@ -345,6 +345,11 @@ export const dramaEpisodes = pgTable("drama_episodes", {
    *  last frame (or main image fallback) as a Seedream reference, and Claude
    *  video-prompt rewriting uses prev/next scenes as narrative context. */
   chainMode: boolean("chain_mode").default(false),
+  /** When true, the in-flight chain regen-all background loop should stop
+   *  after the current scene finishes; remaining un-started scenes get their
+   *  pre-deducted credits refunded. Reset to false at the start of every new
+   *  regenerate-all-chain run. */
+  chainRegenCancelRequested: boolean("chain_regen_cancel_requested").default(false),
   // Final compiled video (all scenes stitched + subtitles burned in)
   compiledVideoUrl: text("compiled_video_url"),
   compiledStatus: text("compiled_status").default("idle"), // idle | compiling | completed | failed
