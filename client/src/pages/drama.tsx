@@ -559,6 +559,9 @@ function ProjectView({
         <Link href="/character-library">
           <DarkButton variant="secondary">🎭 角色庫</DarkButton>
         </Link>
+        <Link href="/scene-library">
+          <DarkButton variant="secondary">🏞 場景庫</DarkButton>
+        </Link>
         <DarkButton variant="secondary" onClick={() => setShowImportScript(true)} data-testid="button-import-script">📄 上傳劇本</DarkButton>
         <DarkButton variant="secondary" onClick={() => setShowSettings(true)}>✏️ 編輯設定</DarkButton>
         <DarkButton onClick={() => setShowNewEpisode(true)}>＋ 新增集數</DarkButton>
@@ -746,6 +749,97 @@ function ProjectView({
           queryClient.invalidateQueries({ queryKey: ["/api/character-library"] });
         }}
       />
+    </div>
+  );
+}
+
+// ─── Library pickers (per-scene character/location reuse) ─────────────────────
+function LibraryPickers({
+  scene,
+  onUpdate,
+}: {
+  scene: DramaScene;
+  onUpdate: (patch: Partial<DramaScene>) => void;
+}) {
+  const charsQuery = useQuery<CharacterLibraryItem[]>({ queryKey: ["/api/character-library"] });
+  const scenesQuery = useQuery<any[]>({ queryKey: ["/api/scene-library"] });
+  const characters = charsQuery.data ?? [];
+  const sceneItems = scenesQuery.data ?? [];
+
+  const selectedCharIds = new Set(scene.characterIds ?? []);
+  const toggleChar = (id: string) => {
+    const next = selectedCharIds.has(id)
+      ? (scene.characterIds ?? []).filter(x => x !== id)
+      : [...(scene.characterIds ?? []), id];
+    onUpdate({ characterIds: next });
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-[10px] text-[#64748b] uppercase tracking-wide">角色庫角色（多選，影響出圖）</label>
+          <Link href="/character-library" className="text-[10px] text-[#6366f1] hover:underline" data-testid="link-open-charlib">
+            管理 →
+          </Link>
+        </div>
+        {characters.length === 0 ? (
+          <p className="text-[11px] text-[#94a3b8]">角色庫是空的，先到「角色庫」建一個角色並生成四視圖。</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5" data-testid="char-lib-picker">
+            {characters.map(c => {
+              const active = selectedCharIds.has(c.id);
+              const fv = c.fourViewUrls as FourViewUrls | null;
+              const thumb = fv?.front || fv?.threeQuarter || c.refImageUrls?.[0];
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => toggleChar(c.id)}
+                  className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-[11px] transition-all ${
+                    active
+                      ? "bg-[#6366f1]/10 border-[#6366f1] text-[#4f46e5]"
+                      : "bg-white border-[#cbd5e1] text-[#64748b] hover:border-[#94a3b8]"
+                  }`}
+                  data-testid={`char-lib-chip-${c.id}`}
+                >
+                  {thumb ? (
+                    <img src={thumb} alt={c.name} className="w-5 h-5 rounded-full object-cover" />
+                  ) : (
+                    <span className="w-5 h-5 rounded-full bg-[#e2e8f0]" />
+                  )}
+                  <span>{c.name}</span>
+                  {active && <span>✓</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="text-[10px] text-[#64748b] uppercase tracking-wide">場景庫場景（影響出圖背景）</label>
+          <Link href="/scene-library" className="text-[10px] text-[#6366f1] hover:underline" data-testid="link-open-scenelib">
+            管理 →
+          </Link>
+        </div>
+        {sceneItems.length === 0 ? (
+          <p className="text-[11px] text-[#94a3b8]">場景庫是空的，先到「場景庫」建立場景。</p>
+        ) : (
+          <select
+            value={scene.sceneLocationId ?? ""}
+            onChange={e => onUpdate({ sceneLocationId: e.target.value || undefined })}
+            className="w-full text-xs bg-white border border-[#cbd5e1] rounded-lg px-2 py-1.5 text-[#0f172a]"
+            data-testid="select-scene-lib"
+          >
+            <option value="">不套用場景庫</option>
+            {sceneItems.map(s => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+        )}
+      </div>
     </div>
   );
 }
@@ -1605,6 +1699,15 @@ function EpisodeView({
                   </div>
                 </div>
               )}
+
+              {/* Separator */}
+              <div className="border-t border-[#e2e8f0]" />
+
+              {/* Global library pickers (cross-episode reuse) */}
+              <LibraryPickers
+                scene={selectedScene}
+                onUpdate={(patch) => updateScene(selectedIdx!, patch)}
+              />
 
               {/* Separator */}
               <div className="border-t border-[#e2e8f0]" />

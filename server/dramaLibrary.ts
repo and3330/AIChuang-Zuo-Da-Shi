@@ -23,6 +23,7 @@ import {
 import Anthropic from "@anthropic-ai/sdk";
 import archiver from "archiver";
 import mammoth from "mammoth";
+import { assertAllowedRemoteUrl } from "./ssrfGuard";
 
 const ARK_IMAGE_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 const SEEDREAM_MODEL = "ep-20251223142939-njrkd";
@@ -48,46 +49,6 @@ export function registerDramaLibraryRoutes(
   }
 ) {
   const { requireAuth, objectStorageService, bunnyStorage } = deps;
-
-  // ─── SSRF guard: only allow trusted CDN/storage hosts ──────────────────────
-  // Bunny CDN host is the user-configured pull zone (e.g. cdn.example.b-cdn.net)
-  // plus general bunnycdn.com infra and optionally an ARK media host if needed.
-  const ALLOWED_REMOTE_HOSTS = new Set<string>(
-    [
-      process.env.BUNNY_CDN_HOST,
-      "storage.bunnycdn.com",
-      "ark-content-generation-v2-ap-southeast.tos-ap-southeast-1.bytepluses.com",
-      "tos-ap-southeast-1.bytepluses.com",
-    ].filter((h): h is string => !!h && h.length > 0)
-  );
-
-  function assertAllowedRemoteUrl(rawUrl: string): URL {
-    let u: URL;
-    try { u = new URL(rawUrl); } catch { throw new Error("Invalid URL"); }
-    if (u.protocol !== "https:" && u.protocol !== "http:") {
-      throw new Error(`Disallowed protocol: ${u.protocol}`);
-    }
-    const host = u.hostname.toLowerCase();
-    // Reject obvious internal hosts
-    if (
-      host === "localhost" || host === "0.0.0.0" || host === "::1" ||
-      host.startsWith("127.") || host.startsWith("10.") ||
-      host.startsWith("169.254.") || host.startsWith("192.168.") ||
-      /^172\.(1[6-9]|2\d|3[0-1])\./.test(host) ||
-      host.endsWith(".internal") || host.endsWith(".local")
-    ) {
-      throw new Error(`Blocked internal host: ${host}`);
-    }
-    // Allowlist check (suffix match for subdomains of pull zones)
-    const allowed = Array.from(ALLOWED_REMOTE_HOSTS).some(allowedHost => {
-      const a = allowedHost.toLowerCase();
-      return host === a || host.endsWith("." + a);
-    });
-    if (!allowed) {
-      throw new Error(`Disallowed remote host: ${host}`);
-    }
-    return u;
-  }
 
   // ─── Helper: load a stored ref image as base64 data URL ────────────────────
   async function loadAsBase64(imageUrl: string): Promise<string> {
@@ -177,26 +138,29 @@ export function registerDramaLibraryRoutes(
       const apiKey = process.env.ARK_API_KEY;
       if (!apiKey) return res.status(500).json({ error: "ARK_API_KEY 未設定" });
 
-      const user = await storage.getUser(userId);
-      if (!user || (user.credits ?? 0) < FOUR_VIEW_CREDIT_COST) {
-        return res.status(400).json({ error: `積分不足，需要 ${FOUR_VIEW_CREDIT_COST} 積分` });
+      // Atomic compare-and-set: claim the in-flight slot before deducting
+      // credits. Concurrent duplicate requests get rejected here without ever
+      // reaching the deduction step, so the user can never be charged twice.
+      const claim = await storage.claimCharacterFourViewGeneration(req.params.id, userId);
+      if (!claim.ok) {
+        return res.status(409).json({ error: "此角色的四視圖正在生成中，請稍後" });
       }
+      const previousStatus = claim.previousStatus ?? null;
 
-      // Deduct upfront
-      const newBalance = (user.credits ?? 0) - FOUR_VIEW_CREDIT_COST;
-      await storage.updateUserCredits(userId, newBalance);
-      await storage.createCreditTransaction({
-        userId,
-        type: "consume",
-        amount: -FOUR_VIEW_CREDIT_COST,
-        balance: newBalance,
-        description: `角色「${character.name}」四視圖生成（4 張）`,
-      });
-
-      await storage.updateCharacter(req.params.id, {
-        fourViewStatus: "generating",
-        fourViewError: null,
-      } as any);
+      // Atomic deduction guards against negative balance.
+      try {
+        await storage.atomicDeductCredits(
+          userId,
+          FOUR_VIEW_CREDIT_COST,
+          `角色「${character.name}」四視圖生成（4 張）`
+        );
+      } catch (deductErr: any) {
+        // Restore the prior status — if the user already had completed
+        // four-view URLs we must not downgrade their status to "idle".
+        await storage.releaseCharacterFourViewGeneration(req.params.id, previousStatus);
+        return res.status(400).json({ error: deductErr.message || `積分不足，需要 ${FOUR_VIEW_CREDIT_COST} 積分` });
+      }
+      const user = await storage.getUser(userId);
       res.json({ ok: true, creditsUsed: FOUR_VIEW_CREDIT_COST });
 
       // ── Async background work ────────────────────────────────────────────────
@@ -354,18 +318,35 @@ export function registerDramaLibraryRoutes(
         scenesPerEpisode?: number;
       };
 
+      // Hard limits to protect Claude context + memory
+      const MAX_FILE_BYTES = 2 * 1024 * 1024;   // 2 MB raw upload
+      const MAX_TEXT_CHARS = 30000;             // ~30K chars after parse
+
       let rawText = (scriptText || "").trim();
       if (!rawText && fileBase64) {
         const buffer = Buffer.from(fileBase64.replace(/^data:[^;]+;base64,/, ""), "base64");
+        if (buffer.length > MAX_FILE_BYTES) {
+          return res.status(400).json({
+            error: `檔案太大（${(buffer.length / 1024 / 1024).toFixed(1)} MB），上限 2 MB，請分段上傳。`
+          });
+        }
         if (fileName?.toLowerCase().endsWith(".docx")) {
-          const result = await mammoth.extractRawText({ buffer });
-          rawText = result.value.trim();
+          try {
+            const result = await mammoth.extractRawText({ buffer });
+            rawText = result.value.trim();
+          } catch (parseErr: any) {
+            return res.status(400).json({ error: `DOCX 解析失敗：${parseErr.message || "檔案可能損毀"}` });
+          }
         } else {
           rawText = buffer.toString("utf-8").trim();
         }
       }
       if (!rawText) return res.status(400).json({ error: "請提供劇本文字或檔案" });
-      if (rawText.length > 60000) rawText = rawText.slice(0, 60000); // cap input
+      if (rawText.length > MAX_TEXT_CHARS) {
+        return res.status(400).json({
+          error: `劇本文字太長（${rawText.length.toLocaleString()} 字），上限 ${MAX_TEXT_CHARS.toLocaleString()} 字，請分段上傳或先濃縮大綱。`
+        });
+      }
 
       const apiKey = process.env.ARK_API_KEY;
       if (!apiKey) return res.status(500).json({ error: "ARK_API_KEY 未設定（Claude）" });
@@ -563,24 +544,47 @@ ${rawText}`;
       if (!apiKey) return res.status(500).json({ error: "ARK_API_KEY 未設定" });
 
       const FRAME_COST = 6; // 2 frames × 3 credits
-      const user = await storage.getUser(userId);
-      if (!user || (user.credits ?? 0) < FRAME_COST) {
-        return res.status(400).json({ error: `積分不足，需要 ${FRAME_COST} 積分` });
-      }
 
       const project = await storage.getDramaProject(episode.projectId);
       if (!project) return res.status(404).json({ error: "找不到專案" });
 
-      const newBalance = (user.credits ?? 0) - FRAME_COST;
-      await storage.updateUserCredits(userId, newBalance);
-      await storage.createCreditTransaction({
-        userId, type: "consume", amount: -FRAME_COST, balance: newBalance,
-        description: `漫劇第 ${sceneIdx + 1} 幕首尾關鍵幀生成`,
-      });
+      // Atomic compare-and-set inside a row-locked transaction: claim the
+      // in-flight slot for this scene's frames before deducting credits.
+      // Concurrent duplicate requests get rejected with 409 here.
+      const claim = await storage.claimSceneFrameGeneration(req.params.episodeId, sceneIdx, userId);
+      if (!claim.ok) {
+        if (claim.reason === "in_flight") {
+          return res.status(409).json({ error: "此幕的首尾幀正在生成中，請稍後" });
+        }
+        return res.status(400).json({ error: "claim 失敗" });
+      }
+      const previousFirstStatus = claim.previousFirstStatus ?? null;
+      const previousLastStatus = claim.previousLastStatus ?? null;
 
-      scenes[sceneIdx].firstFrameStatus = "generating";
-      scenes[sceneIdx].lastFrameStatus = "generating";
-      await storage.updateDramaEpisode(req.params.episodeId, { scenes: JSON.stringify(scenes) });
+      try {
+        await storage.atomicDeductCredits(
+          userId,
+          FRAME_COST,
+          `漫劇第 ${sceneIdx + 1} 幕首尾關鍵幀生成`
+        );
+      } catch (deductErr: any) {
+        // Restore the prior status — preserves any prior completed/failed
+        // state instead of clobbering it to "idle" on insufficient credits.
+        await storage.releaseSceneFrameGeneration(
+          req.params.episodeId,
+          sceneIdx,
+          previousFirstStatus,
+          previousLastStatus,
+        );
+        return res.status(400).json({ error: deductErr.message || `積分不足，需要 ${FRAME_COST} 積分` });
+      }
+      const user = await storage.getUser(userId);
+      // Refresh the in-memory `scenes` array so subsequent code sees the
+      // generating status that was set inside the claim transaction.
+      const refreshed = await storage.getDramaEpisode(req.params.episodeId);
+      if (refreshed) {
+        try { scenes.splice(0, scenes.length, ...JSON.parse(refreshed.scenes)); } catch { /* keep stale */ }
+      }
       res.json({ ok: true, creditsUsed: FRAME_COST });
 
       (async () => {

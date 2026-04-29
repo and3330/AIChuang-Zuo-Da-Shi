@@ -17,6 +17,7 @@ import PrivacyPage from "@/pages/privacy";
 import TermsPage from "@/pages/terms";
 import DramaPage from "@/pages/drama";
 import CharacterLibraryPage from "@/pages/character-library";
+import SceneLibraryPage from "@/pages/scene-library";
 import NotFound from "@/pages/not-found";
 import ChatWidget from "@/components/ChatWidget";
 import MobileTabBar from "@/components/MobileTabBar";
@@ -318,6 +319,7 @@ function Router() {
       <Route path="/" component={Home} />
       <Route path="/drama" component={DramaPage} />
       <Route path="/character-library" component={CharacterLibraryPage} />
+      <Route path="/scene-library" component={SceneLibraryPage} />
       <Route path="/account" component={AccountPage} />
       <Route path="/transactions" component={TransactionsPage} />
       <Route path="/admin" component={AdminPage} />

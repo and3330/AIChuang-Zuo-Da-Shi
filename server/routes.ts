@@ -12,6 +12,7 @@ import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
 import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
+import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl } from "./ssrfGuard";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -3596,9 +3597,71 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         try { return await Promise.all(urls.map(loadRefImageAsBase64)); } catch { return []; }
       };
 
+      // Accepts either a stored object-storage path or an allowlisted CDN https URL.
+      // Uses the shared SSRF guard (Bunny pull zone + ARK image hosts only,
+      // private/internal hosts blocked).
+      const loadAnyImageAsBase64 = async (
+        url: string,
+        _objStorage: ObjectStorageService
+      ): Promise<string | null> => {
+        try {
+          if (!url) return null;
+          if (url.startsWith("data:")) return url;
+          if (url.startsWith("/objects/") || url.startsWith("/object-entities/")) {
+            return await loadRefImageAsBase64(url);
+          }
+          let safeUrl: URL;
+          try { safeUrl = ssrfAssertAllowedRemoteUrl(url); }
+          catch { return null; }
+          const resp = await fetch(safeUrl.toString(), { redirect: "error" });
+          if (!resp.ok) return null;
+          const buf = Buffer.from(await resp.arrayBuffer());
+          return `data:image/jpeg;base64,${buf.toString("base64")}`;
+        } catch {
+          return null;
+        }
+      };
+
       const characterABase64s = await loadImageList(project.characterAUrls ?? []);
       const characterBBase64s = await loadImageList(project.characterBUrls ?? []);
       const styleBase64s = await loadImageList(project.styleImageUrls ?? []);
+
+      // ─── Pre-load all global library refs referenced anywhere in this episode ──
+      // For each character pick the front 4-view if available, otherwise its first
+      // uploaded reference image. For each scene location pick the first ref image.
+      const wantedCharIds = new Set<string>();
+      const wantedSceneIds = new Set<string>();
+      for (const sc of scenes) {
+        for (const id of (sc.characterIds ?? [])) wantedCharIds.add(id);
+        if (sc.sceneLocationId) wantedSceneIds.add(sc.sceneLocationId);
+      }
+      const charLibCache = new Map<string, string>(); // charId → base64
+      const sceneLibCache = new Map<string, string>();
+      for (const id of Array.from(wantedCharIds)) {
+        try {
+          const ch = await storage.getCharacter(id);
+          if (!ch || ch.userId !== episode.userId) continue;
+          const fv = (ch.fourViewUrls ?? {}) as Record<string, string | undefined>;
+          const url = fv.front || fv.threeQuarter || ch.refImageUrls?.[0];
+          if (!url) continue;
+          const b64 = await loadAnyImageAsBase64(url, objectStorage);
+          if (b64) charLibCache.set(id, b64);
+        } catch (e: any) {
+          console.warn(`[Drama] failed to load library char ${id}:`, e.message);
+        }
+      }
+      for (const id of Array.from(wantedSceneIds)) {
+        try {
+          const sl = await storage.getSceneLibraryItem(id);
+          if (!sl || sl.userId !== episode.userId) continue;
+          const url = sl.refImageUrls?.[0];
+          if (!url) continue;
+          const b64 = await loadAnyImageAsBase64(url, objectStorage);
+          if (b64) sceneLibCache.set(id, b64);
+        } catch (e: any) {
+          console.warn(`[Drama] failed to load library scene ${id}:`, e.message);
+        }
+      }
 
       let totalCost = 0;
       for (let i = 0; i < scenes.length; i++) {
@@ -3615,12 +3678,24 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
           const charAList = useA ? characterABase64s : [];
           const charBList = useB ? characterBBase64s : [];
 
+          // Per-scene global library refs (override / supplement project-level chars)
+          const libraryCharRefs: string[] = [];
+          for (const id of (scenes[i].characterIds ?? [])) {
+            const b64 = charLibCache.get(id);
+            if (b64) libraryCharRefs.push(b64);
+          }
+          let libraryLocationRef: string | undefined;
+          if (scenes[i].sceneLocationId) {
+            libraryLocationRef = sceneLibCache.get(scenes[i].sceneLocationId);
+          }
+
           let sceneRefList: string[] = [];
           if (scenes[i].sceneRefImageUrl) {
             try { sceneRefList = [await loadRefImageAsBase64(scenes[i].sceneRefImageUrl)]; } catch {}
           }
+          if (libraryLocationRef) sceneRefList.unshift(libraryLocationRef);
 
-          const allRefs = [...charAList, ...charBList, ...sceneRefList, ...styleBase64s];
+          const allRefs = [...charAList, ...charBList, ...libraryCharRefs, ...sceneRefList, ...styleBase64s];
 
           let requestBody: any;
           if (allRefs.length > 0) {

@@ -35,6 +35,11 @@ export interface IStorage {
   getUserVideoGenerations(userId: string): Promise<VideoGeneration[]>;
   getStats(): Promise<{ totalGenerations: number; totalCost: number }>;
   atomicAddCredits(userId: string, amount: number, description: string): Promise<void>;
+  atomicDeductCredits(userId: string, amount: number, description: string): Promise<{ newBalance: number }>;
+  claimCharacterFourViewGeneration(id: string, userId: string): Promise<{ ok: boolean; previousStatus?: string | null }>;
+  releaseCharacterFourViewGeneration(id: string, restoreStatus: string | null): Promise<void>;
+  claimSceneFrameGeneration(episodeId: string, sceneIdx: number, userId: string): Promise<{ ok: boolean; reason?: "not_found" | "in_flight" | "out_of_range"; previousFirstStatus?: string | null; previousLastStatus?: string | null }>;
+  releaseSceneFrameGeneration(episodeId: string, sceneIdx: number, restoreFirst: string | null, restoreLast: string | null): Promise<void>;
   fixStripeTransactionTypes(): Promise<number>;
 
   createVerificationCode(email: string, code: string, expiresAt: Date): Promise<VerificationCode>;
@@ -155,6 +160,124 @@ export class DatabaseStorage implements IStorage {
         description,
       });
     }
+  }
+
+  /**
+   * Atomically deduct credits with a row-level guard so concurrent requests can
+   * never over-deduct or push the balance negative. Throws if balance < amount.
+   */
+  async atomicDeductCredits(userId: string, amount: number, description: string): Promise<{ newBalance: number }> {
+    if (amount <= 0) throw new Error("Deduct amount must be positive");
+    // Conditional update: only succeeds when current balance is sufficient.
+    const [updated] = await db.update(users)
+      .set({ credits: sql`${users.credits} - ${amount}` })
+      .where(and(eq(users.id, userId), sql`${users.credits} >= ${amount}`))
+      .returning();
+    if (!updated) {
+      throw new Error(`積分不足，需要 ${amount} 積分`);
+    }
+    await db.insert(creditTransactions).values({
+      userId,
+      type: "consume",
+      amount: -amount,
+      balance: updated.credits || 0,
+      description,
+    });
+    return { newBalance: updated.credits || 0 };
+  }
+
+  /**
+   * Atomic compare-and-set: claim the four-view generation slot for a character.
+   * Returns true if this caller successfully transitioned the row out of an
+   * idle/completed/failed state into "generating". Returns false if another
+   * request already holds the slot (status is already "generating").
+   */
+  async claimCharacterFourViewGeneration(id: string, userId: string): Promise<{ ok: boolean; previousStatus?: string | null }> {
+    return await db.transaction(async (tx) => {
+      const [current] = await tx.select({ status: characterLibrary.fourViewStatus, userId: characterLibrary.userId })
+        .from(characterLibrary)
+        .where(eq(characterLibrary.id, id))
+        .for("update");
+      if (!current || current.userId !== userId) return { ok: false };
+      if (current.status === "generating") return { ok: false, previousStatus: current.status };
+      await tx.update(characterLibrary)
+        .set({ fourViewStatus: "generating", fourViewError: null, updatedAt: new Date() })
+        .where(eq(characterLibrary.id, id));
+      return { ok: true, previousStatus: current.status ?? null };
+    });
+  }
+
+  async releaseCharacterFourViewGeneration(id: string, restoreStatus: string | null): Promise<void> {
+    await db.update(characterLibrary)
+      .set({ fourViewStatus: restoreStatus ?? "idle", updatedAt: new Date() })
+      .where(eq(characterLibrary.id, id));
+  }
+
+  /**
+   * Atomic claim of the first/last keyframe slots for one scene of an episode.
+   * Uses a serializable transaction with row-level locking so two concurrent
+   * requests cannot both observe an idle status and both write "generating".
+   */
+  async claimSceneFrameGeneration(
+    episodeId: string,
+    sceneIdx: number,
+    userId: string,
+  ): Promise<{ ok: boolean; reason?: "not_found" | "in_flight" | "out_of_range"; previousFirstStatus?: string | null; previousLastStatus?: string | null }> {
+    return await db.transaction(async (tx) => {
+      const rows = await tx.execute(sql`
+        SELECT id, user_id, scenes
+        FROM ${dramaEpisodes}
+        WHERE id = ${episodeId}
+        FOR UPDATE
+      `);
+      const row: any = (rows as any).rows?.[0] ?? (rows as any)[0];
+      if (!row) return { ok: false, reason: "not_found" as const };
+      if (row.user_id !== userId) return { ok: false, reason: "not_found" as const };
+      let scenes: any[];
+      try { scenes = JSON.parse(row.scenes); } catch { return { ok: false, reason: "not_found" as const }; }
+      if (sceneIdx < 0 || sceneIdx >= scenes.length) return { ok: false, reason: "out_of_range" as const };
+      const sc = scenes[sceneIdx];
+      if (sc.firstFrameStatus === "generating" || sc.lastFrameStatus === "generating") {
+        return { ok: false, reason: "in_flight" as const };
+      }
+      const previousFirstStatus = sc.firstFrameStatus ?? null;
+      const previousLastStatus = sc.lastFrameStatus ?? null;
+      scenes[sceneIdx] = { ...sc, firstFrameStatus: "generating", lastFrameStatus: "generating" };
+      await tx.update(dramaEpisodes)
+        .set({ scenes: JSON.stringify(scenes) })
+        .where(eq(dramaEpisodes.id, episodeId));
+      return { ok: true, previousFirstStatus, previousLastStatus };
+    });
+  }
+
+  /**
+   * Revert the in-flight markers for one scene back to the previous values
+   * captured at claim time (preserves prior `completed`/`failed` states).
+   */
+  async releaseSceneFrameGeneration(
+    episodeId: string,
+    sceneIdx: number,
+    restoreFirst: string | null,
+    restoreLast: string | null,
+  ): Promise<void> {
+    await db.transaction(async (tx) => {
+      const rows = await tx.execute(sql`
+        SELECT scenes FROM ${dramaEpisodes} WHERE id = ${episodeId} FOR UPDATE
+      `);
+      const row: any = (rows as any).rows?.[0] ?? (rows as any)[0];
+      if (!row) return;
+      let scenes: any[];
+      try { scenes = JSON.parse(row.scenes); } catch { return; }
+      if (sceneIdx < 0 || sceneIdx >= scenes.length) return;
+      scenes[sceneIdx] = {
+        ...scenes[sceneIdx],
+        firstFrameStatus: restoreFirst ?? "idle",
+        lastFrameStatus: restoreLast ?? "idle",
+      };
+      await tx.update(dramaEpisodes)
+        .set({ scenes: JSON.stringify(scenes) })
+        .where(eq(dramaEpisodes.id, episodeId));
+    });
   }
 
   async fixStripeTransactionTypes(): Promise<number> {
