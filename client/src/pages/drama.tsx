@@ -293,6 +293,83 @@ function Modal({
   );
 }
 
+// ─── Chain-mode custom continuity reference uploader ─────────────────────────
+function ChainRefCustomUploader({
+  customUrl, onChange,
+}: {
+  customUrl?: string;
+  onChange: (url: string) => void;
+}) {
+  const { toast } = useToast();
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File | undefined) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const path = await uploadToObjectStorage(file);
+      onChange(path);
+      toast({ title: "已設定自訂銜接圖" });
+    } catch {
+      toast({ title: "上傳失敗", variant: "destructive" });
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-1">
+      <label className="text-[10px] text-[#64748b] uppercase tracking-wide">
+        自訂銜接圖（會優先於上方來源）
+      </label>
+      <div className="flex items-center gap-2">
+        {customUrl ? (
+          <>
+            <img
+              src={customUrl}
+              alt="自訂銜接圖"
+              className="w-10 h-10 object-cover rounded border border-[#10b981]/40"
+            />
+            <button
+              onClick={() => inputRef.current?.click()}
+              disabled={uploading}
+              className="text-[10px] text-[#0f766e] hover:text-[#115e59] underline"
+              data-testid="button-replace-chain-ref-custom"
+            >
+              {uploading ? "上傳中…" : "換一張"}
+            </button>
+            <button
+              onClick={() => onChange("")}
+              className="text-[10px] text-[#dc2626] hover:text-[#b91c1c] underline"
+              data-testid="button-clear-chain-ref-custom"
+            >
+              移除
+            </button>
+          </>
+        ) : (
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="text-[10px] px-2 py-1 rounded-md border border-dashed border-[#10b981]/50 text-[#0f766e] hover:bg-[#10b981]/10"
+            data-testid="button-upload-chain-ref-custom"
+          >
+            {uploading ? "上傳中…" : "＋ 上傳自訂銜接圖"}
+          </button>
+        )}
+      </div>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={e => handleFile(e.target.files?.[0])}
+      />
+    </div>
+  );
+}
+
 // ─── Image upload ────────────────────────────────────────────────────────────
 function ImageUploadButton({
   label, objectPaths, onAdd, onRemove, max = 4,
@@ -1800,8 +1877,45 @@ function EpisodeView({
                   ov === "off" ? false :
                   !!episode.chainMode;
                 const prev = serverScenes[selectedIdx - 1];
-                const prevContinuityUrl =
-                  prev?.lastFrameBunnyUrl || prev?.lastFrameUrl || prev?.bunnyUrl || prev?.imageUrl;
+                const prevLast = prev?.lastFrameBunnyUrl || prev?.lastFrameUrl;
+                const prevFirst = prev?.firstFrameBunnyUrl || prev?.firstFrameUrl;
+                const prevMain = prev?.bunnyUrl || prev?.imageUrl;
+                const fallbackUrl = prevLast || prevMain || null;
+
+                const refSource = (selectedScene.chainRefSource ?? "auto") as
+                  "auto" | "prevLast" | "prevFirst" | "prevMain" | "custom";
+                const customUrl = selectedScene.chainRefCustomUrl;
+
+                // Mirror the backend resolution logic so the preview matches
+                // exactly what processDramaEpisode / regenerate will pick.
+                let resolvedUrl: string | null = null;
+                let resolvedLabel = "";
+                if (customUrl) {
+                  resolvedUrl = customUrl;
+                  resolvedLabel = "自訂上傳圖";
+                } else if (refSource === "custom") {
+                  resolvedUrl = fallbackUrl;
+                  resolvedLabel = fallbackUrl
+                    ? "（尚未上傳自訂圖，暫用自動回退）"
+                    : "（尚未上傳自訂圖）";
+                } else if (refSource === "prevLast") {
+                  resolvedUrl = prevLast || fallbackUrl;
+                  resolvedLabel = prevLast ? `第 ${selectedIdx} 幕尾幀` : "（尾幀缺失，回退）";
+                } else if (refSource === "prevFirst") {
+                  resolvedUrl = prevFirst || fallbackUrl;
+                  resolvedLabel = prevFirst ? `第 ${selectedIdx} 幕首幀` : "（首幀缺失，回退）";
+                } else if (refSource === "prevMain") {
+                  resolvedUrl = prevMain || fallbackUrl;
+                  resolvedLabel = prevMain ? `第 ${selectedIdx} 幕主圖` : "（主圖缺失，回退）";
+                } else {
+                  resolvedUrl = fallbackUrl;
+                  resolvedLabel = prevLast
+                    ? `自動：第 ${selectedIdx} 幕尾幀`
+                    : prevMain
+                    ? `自動：第 ${selectedIdx} 幕主圖`
+                    : "";
+                }
+
                 return (
                   <div className="rounded-xl border border-[#e2e8f0] p-3 space-y-2.5 bg-[#f0fdf4]">
                     <div>
@@ -1810,7 +1924,7 @@ function EpisodeView({
                         {effective && <span className="ml-1 text-[10px] text-[#047857]">·啟用中</span>}
                       </p>
                       <p className="text-[10px] text-[#64748b] mt-0.5">
-                        以第 {selectedIdx} 幕的尾幀作為視覺參考，讓兩幕構圖延續
+                        指定一張參考圖，讓本幕構圖自然延續
                       </p>
                     </div>
 
@@ -1836,23 +1950,55 @@ function EpisodeView({
                     </div>
 
                     {effective && (
-                      prevContinuityUrl ? (
-                        <div className="flex items-center gap-2">
-                          <img
-                            src={prevContinuityUrl}
-                            alt="上一幕參考"
-                            className="w-12 h-20 object-cover rounded border border-[#10b981]/40 shrink-0"
-                          />
-                          <p className="text-[10px] text-[#475569]">
-                            參考第 {selectedIdx} 幕的{prev?.lastFrameBunnyUrl || prev?.lastFrameUrl ? "尾幀" : "主圖"}<br />
-                            <span className="text-[#94a3b8]">（重生本幕後構圖會接續）</span>
-                          </p>
+                      <>
+                        <div className="space-y-1">
+                          <label className="text-[10px] text-[#64748b] uppercase tracking-wide">
+                            銜接來源
+                          </label>
+                          <select
+                            value={refSource}
+                            onChange={e => updateScene(selectedIdx!, {
+                              chainRefSource: e.target.value as DramaScene["chainRefSource"],
+                            })}
+                            data-testid="select-chain-ref-source"
+                            className="w-full bg-white border border-[#cbd5e1] rounded-lg px-2 py-1 text-[11px] text-[#0f172a] focus:outline-none focus:border-[#10b981]"
+                          >
+                            <option value="auto">自動（尾幀 → 主圖）</option>
+                            <option value="prevLast">上一幕尾幀</option>
+                            <option value="prevFirst">上一幕首幀</option>
+                            <option value="prevMain">上一幕主圖</option>
+                            <option value="custom">自訂上傳圖</option>
+                          </select>
                         </div>
-                      ) : (
-                        <p className="text-[10px] text-[#ca8a04]">
-                          ⚠ 上一幕尚未生成圖片，重生時將沒有可用的銜接參考
-                        </p>
-                      )
+
+                        <ChainRefCustomUploader
+                          customUrl={customUrl}
+                          onChange={(url) => updateScene(selectedIdx!, {
+                            chainRefCustomUrl: url || undefined,
+                            // Auto-switch source to "custom" on upload so the
+                            // dropdown label reflects what's actually used.
+                            chainRefSource: url ? "custom" : (refSource === "custom" ? "auto" : refSource),
+                          })}
+                        />
+
+                        {resolvedUrl ? (
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={resolvedUrl}
+                              alt="銜接參考"
+                              className="w-12 h-20 object-cover rounded border border-[#10b981]/40 shrink-0"
+                            />
+                            <p className="text-[10px] text-[#475569]">
+                              {resolvedLabel}<br />
+                              <span className="text-[#94a3b8]">（重生本幕後構圖會接續）</span>
+                            </p>
+                          </div>
+                        ) : (
+                          <p className="text-[10px] text-[#ca8a04]">
+                            ⚠ 沒有可用的銜接參考圖，請上傳自訂圖或等上一幕生成完成
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 );

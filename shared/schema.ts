@@ -292,6 +292,14 @@ export type DramaScene = {
   videoPrompt?: string;
   /** Per-scene chain-mode override. "inherit" follows the episode-level toggle. */
   chainModeOverride?: "on" | "off" | "inherit";
+  /** Per-scene override for which image is fed in as the continuity reference.
+   *  "auto" (default) = previous scene's last frame → main image fallback chain.
+   *  "prevLast" / "prevFirst" / "prevMain" = explicitly pick a frame of the
+   *  previous scene. "custom" = user-uploaded `chainRefCustomUrl`. */
+  chainRefSource?: "auto" | "prevLast" | "prevFirst" | "prevMain" | "custom";
+  /** Optional user-uploaded continuity reference image (object-storage path
+   *  or CDN URL). When set, takes priority over `chainRefSource`. */
+  chainRefCustomUrl?: string;
   // Video
   videoUrl?: string;
   videoBunnyUrl?: string;
@@ -415,6 +423,8 @@ export const insertDramaEpisodeSchema = z.object({
     videoDuration: z.number().optional().default(5),
     videoResolution: z.enum(["720p", "1080p"]).optional().default("720p"),
     chainModeOverride: z.enum(["on", "off", "inherit"]).optional(),
+    chainRefSource: z.enum(["auto", "prevLast", "prevFirst", "prevMain", "custom"]).optional(),
+    chainRefCustomUrl: z.string().optional(),
   })).min(2).max(12),
   globalSeed: z.number().int().min(1000).max(999999).optional(),
   chainMode: z.boolean().optional(),

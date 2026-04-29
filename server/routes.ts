@@ -3639,12 +3639,31 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       // scene N's last frame), and the BytePlus ARK rate limits make parallel
       // batching risky. Conditional parallelism is intentionally out of scope
       // for the chain-mode feature.
-      const getSceneContinuityUrl = (sc: any): string | null => {
-        return sc?.lastFrameBunnyUrl
-          || sc?.lastFrameUrl
-          || sc?.bunnyUrl
-          || sc?.imageUrl
-          || null;
+      // Resolves the continuity reference image for `curr` based on its
+      // user-configured override. Priority: curr.chainRefCustomUrl >
+      // curr.chainRefSource (specific previous frame) > default fallback chain
+      // (prev last frame → main image).
+      const getSceneContinuityUrl = (prev: any, curr: any): string | null => {
+        const fallback =
+          prev?.lastFrameBunnyUrl
+            || prev?.lastFrameUrl
+            || prev?.bunnyUrl
+            || prev?.imageUrl
+            || null;
+        if (curr?.chainRefCustomUrl) return curr.chainRefCustomUrl;
+        const src = curr?.chainRefSource ?? "auto";
+        switch (src) {
+          case "prevLast":
+            return prev?.lastFrameBunnyUrl || prev?.lastFrameUrl || fallback;
+          case "prevFirst":
+            return prev?.firstFrameBunnyUrl || prev?.firstFrameUrl || fallback;
+          case "prevMain":
+            return prev?.bunnyUrl || prev?.imageUrl || fallback;
+          case "custom":
+          case "auto":
+          default:
+            return fallback;
+        }
       };
 
       // ─── Pre-load all global library refs referenced anywhere in this episode ──
@@ -3718,9 +3737,10 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
           // Chain Mode: pull previous scene's last frame (or main image fallback)
           // and place it FIRST so Seedream treats it as the strongest visual anchor.
+          // The user can override the source via chainRefSource / chainRefCustomUrl.
           let continuityRef: string | null = null;
           if (i > 0 && isSceneChainOn(scenes[i])) {
-            const prevUrl = getSceneContinuityUrl(scenes[i - 1]);
+            const prevUrl = getSceneContinuityUrl(scenes[i - 1], scenes[i]);
             if (prevUrl) {
               continuityRef = await loadAnyImageAsBase64(prevUrl, objectStorage);
             }
@@ -3897,10 +3917,32 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const episodeChainOn = !!episode.chainMode;
       const ov = scene?.chainModeOverride ?? "inherit";
       const sceneChainOn = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
+      // Resolve continuity source — same priority as processDramaEpisode:
+      // chainRefCustomUrl > chainRefSource > default fallback chain.
+      const resolveContinuityUrl = (prev: any, curr: any): string | null => {
+        const fallback =
+          prev?.lastFrameBunnyUrl
+            || prev?.lastFrameUrl
+            || prev?.bunnyUrl
+            || prev?.imageUrl
+            || null;
+        if (curr?.chainRefCustomUrl) return curr.chainRefCustomUrl;
+        const src = curr?.chainRefSource ?? "auto";
+        switch (src) {
+          case "prevLast":
+            return prev?.lastFrameBunnyUrl || prev?.lastFrameUrl || fallback;
+          case "prevFirst":
+            return prev?.firstFrameBunnyUrl || prev?.firstFrameUrl || fallback;
+          case "prevMain":
+            return prev?.bunnyUrl || prev?.imageUrl || fallback;
+          default:
+            return fallback;
+        }
+      };
       let continuityRef: string | null = null;
       if (sceneChainOn && sceneIdx > 0) {
         const prev = scenes[sceneIdx - 1];
-        const prevUrl = prev?.lastFrameBunnyUrl || prev?.lastFrameUrl || prev?.bunnyUrl || prev?.imageUrl;
+        const prevUrl = resolveContinuityUrl(prev, scene);
         if (prevUrl) {
           try {
             if (prevUrl.startsWith("/objects/") || prevUrl.startsWith("/object-entities/")) {

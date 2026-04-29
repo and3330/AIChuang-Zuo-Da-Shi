@@ -622,14 +622,35 @@ ${sceneChainOn ? `
           const useB = scene.useCharB !== false;
 
           // Chain Mode: prepend previous scene's last frame so the first frame
-          // of *this* scene visually picks up where scene N-1 ended.
+          // of *this* scene visually picks up where scene N-1 ended. Honors
+          // the per-scene chainRefCustomUrl / chainRefSource override.
           const episodeChainOn = !!episode.chainMode;
           const ov = scene?.chainModeOverride ?? "inherit";
           const sceneChainOn = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
+          const resolveContinuityUrl = (prev: any, curr: any): string | null => {
+            const fallback =
+              prev?.lastFrameBunnyUrl
+                || prev?.lastFrameUrl
+                || prev?.bunnyUrl
+                || prev?.imageUrl
+                || null;
+            if (curr?.chainRefCustomUrl) return curr.chainRefCustomUrl;
+            const src = curr?.chainRefSource ?? "auto";
+            switch (src) {
+              case "prevLast":
+                return prev?.lastFrameBunnyUrl || prev?.lastFrameUrl || fallback;
+              case "prevFirst":
+                return prev?.firstFrameBunnyUrl || prev?.firstFrameUrl || fallback;
+              case "prevMain":
+                return prev?.bunnyUrl || prev?.imageUrl || fallback;
+              default:
+                return fallback;
+            }
+          };
           let continuityRef: string | null = null;
           if (sceneChainOn && sceneIdx > 0) {
             const prev = scenes[sceneIdx - 1];
-            const prevUrl = prev?.lastFrameBunnyUrl || prev?.lastFrameUrl || prev?.bunnyUrl || prev?.imageUrl;
+            const prevUrl = resolveContinuityUrl(prev, scene);
             if (prevUrl) {
               try {
                 if (prevUrl.startsWith("/objects/") || prevUrl.startsWith("/object-entities/") || prevUrl.startsWith("data:")) {
