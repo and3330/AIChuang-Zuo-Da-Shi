@@ -1336,6 +1336,15 @@ function EpisodeView({
   const [animUseOmni, setAnimUseOmni] = useState(false);
   const [animUseFirstLast, setAnimUseFirstLast] = useState(false);
   const [showAIDialog, setShowAIDialog] = useState(false);
+  // Tracks whether *this* tab fired a chain-mode整集重生 batch — used so the
+  // progress badge stays visible all the way down to the very last scene
+  // (where only 1 in-flight remains and our heuristic would otherwise miss it).
+  const [chainBatchActive, setChainBatchActive] = useState(false);
+  // Two-phase clear: only allow `chainBatchActive` to be cleared *after* we have
+  // observed at least one scene 2..N flip to "generating". This prevents racing
+  // the first poll: the mutation can resolve before the very next refetch sees
+  // the server-side status updates we wrote.
+  const chainGeneratingObservedRef = useRef(false);
 
   useEffect(() => {
     if (episode) {
@@ -1420,6 +1429,43 @@ function EpisodeView({
     },
     onError: (e: any) => toast({ title: "AI 生成提示詞失敗", description: e.message, variant: "destructive" }),
   });
+
+  // Chain Mode: re-regenerate scenes 2..N sequentially using prev frame as ref.
+  // Used after enabling 連續模式 on an already-generated episode.
+  const regenerateAllChainMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/drama/episodes/${episodeId}/regenerate-all-chain`, {}).then(r => r.json()),
+    onMutate: () => {
+      chainGeneratingObservedRef.current = false;
+      setChainBatchActive(true);
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
+      toast({
+        title: `🔁 連續模式整集重生中`,
+        description: `將依序重生 ${data.sceneCount} 幕，共消耗 ${data.creditCost} 積分`,
+      });
+    },
+    onError: (e: any) => {
+      chainGeneratingObservedRef.current = false;
+      setChainBatchActive(false);
+      toast({ title: "整集重生失敗", description: e.message, variant: "destructive" });
+    },
+  });
+
+  // Clear the local chain-batch flag once *we have observed* the batch start
+  // and then later see no scenes 2..N still generating. Two-phase prevents the
+  // race where mutation resolves before the next 3s poll lands.
+  useEffect(() => {
+    if (!chainBatchActive || regenerateAllChainMutation.isPending || !episode) return;
+    const s: DramaScene[] = JSON.parse(episode.scenes || "[]");
+    const stillGenerating = s.slice(1).some(x => x.imageStatus === "generating");
+    if (stillGenerating) {
+      chainGeneratingObservedRef.current = true;
+      return;
+    }
+    if (chainGeneratingObservedRef.current) setChainBatchActive(false);
+  }, [episode, chainBatchActive, regenerateAllChainMutation.isPending]);
 
   const animateAllMutation = useMutation({
     mutationFn: ({ duration, resolution, useOmniMode }: any) =>
@@ -1545,6 +1591,64 @@ function EpisodeView({
             <span className={`absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full shadow transition-all ${episode.chainMode ? "left-3.5" : "left-0.5"}`} />
           </span>
         </button>
+
+        {/* One-click: re-apply chain mode to the whole episode */}
+        {episode.chainMode && serverScenes.length >= 2 && (() => {
+          const firstReady = serverScenes[0]?.imageStatus === "completed" && (serverScenes[0]?.bunnyUrl || serverScenes[0]?.imageUrl);
+          // Targets: scenes 2..N excluding ones already in flight
+          const targets = serverScenes.slice(1).filter(s => s.imageStatus !== "generating");
+          const inFlightAfterFirst = serverScenes.slice(1).filter(s => s.imageStatus === "generating").length;
+          const chainCost = targets.length * 3;
+          const insufficient = (user?.credits ?? 0) < chainCost;
+          const totalChainTargets = serverScenes.length - 1;
+          const completedAfterFirst = serverScenes.slice(1).filter(s => s.imageStatus === "completed").length;
+          // Batch in progress if: this tab fired the mutation AND any scene 2..N
+          // is still generating; or the mutation request itself is pending; or as
+          // a cross-tab/refresh fallback ≥2 of scenes 2..N are concurrently in
+          // flight (a single-scene regen would only ever have 1).
+          const isChainBatchRunning =
+            regenerateAllChainMutation.isPending ||
+            (chainBatchActive && inFlightAfterFirst > 0) ||
+            inFlightAfterFirst >= 2;
+          // Don't let users fire a second batch while any post-anchor scene is
+          // still generating — would silently double-charge them.
+          const blockNewBatch = isChainBatchRunning || inFlightAfterFirst > 0;
+
+          if (isChainBatchRunning) {
+            return (
+              <span
+                className="text-xs text-[#047857] bg-[#10b981]/10 border border-[#10b981]/40 px-3 py-1.5 rounded-lg shrink-0 animate-pulse"
+                data-testid="status-chain-regen-progress"
+              >
+                🔁 整集連續重生中 {completedAfterFirst}/{totalChainTargets}
+              </span>
+            );
+          }
+
+          if (!firstReady || targets.length === 0 || blockNewBatch) return null;
+
+          return (
+            <>
+              <span title="從第 2 幕起，依序以上一幕尾幀為參考重生整集，讓視覺自然銜接" className="shrink-0">
+                <DarkButton
+                  variant="secondary"
+                  onClick={() => {
+                    if (!confirm(`即將從第 2 幕開始依序重生 ${targets.length} 幕，每幕以上一幕的尾幀為參考，共消耗 ${chainCost} 積分。確定？`)) return;
+                    regenerateAllChainMutation.mutate();
+                  }}
+                  disabled={insufficient}
+                  style={{ background: "#10b98110", borderColor: "#10b98140", color: "#047857" }}
+                  data-testid="button-regenerate-all-chain"
+                >
+                  🔁 整集重生（連續）(-{chainCost})
+                </DarkButton>
+              </span>
+              {insufficient && (
+                <span className="text-xs text-[#ef4444] shrink-0">積分不足</span>
+              )}
+            </>
+          );
+        })()}
 
         <DarkButton variant="secondary" onClick={() => saveScenesMutation.mutate(localScenes)} disabled={saveScenesMutation.isPending}>
           {saveScenesMutation.isPending ? "儲存中..." : "💾 儲存"}

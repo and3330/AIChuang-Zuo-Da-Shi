@@ -3326,6 +3326,84 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     }
   });
 
+  // ─── Batch: Re-apply Chain Mode to whole episode ───────────────────────────
+  // Sequentially regenerates scenes 2..N so each one uses the previous (now
+  // freshly regenerated) scene's last frame as its continuity reference.
+  // Scene 1 stays as the anchor.
+  app.post("/api/drama/episodes/:episodeId/regenerate-all-chain", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+      if (!episode.chainMode) return res.status(400).json({ error: "請先開啟連續模式" });
+
+      const scenes: any[] = JSON.parse(episode.scenes);
+      if (scenes.length < 2) return res.status(400).json({ error: "至少需要 2 幕才能套用連續模式" });
+
+      // Scene 1 must already have a usable image — it is the anchor reference.
+      const first = scenes[0];
+      if (first.imageStatus !== "completed" || (!first.bunnyUrl && !first.imageUrl)) {
+        return res.status(400).json({ error: "請先完成第 1 幕的圖片生成（作為連續模式的起點）" });
+      }
+
+      // Reject the whole batch if *any* scene 2..N is already generating —
+      // partial 2..N runs would break deterministic chain continuity (a later
+      // scene could be regen'd before its predecessor finishes).
+      for (let i = 1; i < scenes.length; i++) {
+        if (scenes[i].imageStatus === "generating") {
+          return res.status(409).json({ error: `第 ${i + 1} 幕正在生成中，請等候完成後再啟動整集連續重生` });
+        }
+      }
+      // Targets are deterministic: every scene 2..N.
+      const targets: number[] = [];
+      for (let i = 1; i < scenes.length; i++) targets.push(i);
+
+      const perSceneCost = 3;
+      const totalCost = perSceneCost * targets.length;
+
+      const user = await storage.getUser(req.session.userId!);
+      if (!user || (user.credits ?? 0) < totalCost) {
+        return res.status(400).json({ error: `積分不足，需要 ${totalCost} 積分` });
+      }
+
+      // Mark all targets as generating + deduct credits up-front
+      let balance = user.credits ?? 0;
+      for (const i of targets) {
+        scenes[i].imageStatus = "generating";
+        delete scenes[i].imageError;
+        balance -= perSceneCost;
+        await storage.updateUserCredits(req.session.userId!, balance);
+        await storage.createCreditTransaction({
+          userId: req.session.userId!,
+          type: "consume",
+          amount: -perSceneCost,
+          balance,
+          description: `漫劇連續模式整集重生第 ${i + 1} 幕`,
+        });
+      }
+      await storage.updateDramaEpisode(req.params.episodeId, { scenes: JSON.stringify(scenes) });
+
+      // Strictly sequential — each scene N+1 reads scene N's freshly written
+      // last-frame / main image from storage as continuity reference.
+      (async () => {
+        for (const i of targets) {
+          try {
+            await regenerateDramaScene(
+              req.params.episodeId, episode.projectId, i,
+              objectStorageService, bunnyStorage
+            );
+          } catch (err) {
+            console.error(`[Drama chain regen-all] scene ${i} failed:`, err);
+          }
+        }
+        console.log(`[Drama chain regen-all] episode ${req.params.episodeId} done (${targets.length} scenes)`);
+      })().catch(console.error);
+
+      res.json({ ok: true, sceneCount: targets.length, creditCost: totalCost });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Replace Scene Image (free) ────────────────────────────────────────────
 
   app.post("/api/drama/episodes/:episodeId/replace-scene-image/:sceneIdx", requireAuth, async (req, res) => {
