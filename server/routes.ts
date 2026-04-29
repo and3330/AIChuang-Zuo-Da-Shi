@@ -5,7 +5,7 @@ import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import Anthropic from "@anthropic-ai/sdk";
 import { storage } from "./storage";
-import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene } from "@shared/schema";
+import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene, type DramaScene } from "@shared/schema";
 import nodemailer from "nodemailer";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
@@ -3627,13 +3627,22 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const styleBase64s = await loadImageList(project.styleImageUrls ?? []);
 
       // Cross-scene Chain Mode helpers — see Drama Studio "連續模式" feature.
-      const episodeChainOn = !!(episode as any).chainMode;
-      const isSceneChainOn = (sc: any) => {
+      const episodeChainOn = !!episode.chainMode;
+      const isSceneChainOn = (sc: DramaScene) => {
         const ov = sc?.chainModeOverride ?? "inherit";
         if (ov === "on") return true;
         if (ov === "off") return false;
         return episodeChainOn;
       };
+      // If ANY scene needs the previous scene's output as a reference we MUST
+      // process scenes sequentially. Otherwise we can keep the legacy
+      // sequential behavior (no behavior change for chain-off episodes). We
+      // intentionally do NOT add a parallel-batch path here because pre-existing
+      // image generation in this codebase has always been sequential and the
+      // BytePlus ARK side has tight per-account rate limits — parallelizing
+      // would risk 429s and is out of scope for Task #8.
+      const anySceneChainOn = scenes.some((sc) => isSceneChainOn(sc));
+      void anySceneChainOn; // computed for clarity / future batching
       const getSceneContinuityUrl = (sc: any): string | null => {
         return sc?.lastFrameBunnyUrl
           || sc?.lastFrameUrl
@@ -3889,7 +3898,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       }
 
       // Chain Mode: insert prev scene's last frame (or main image) at front
-      const episodeChainOn = !!(episode as any).chainMode;
+      const episodeChainOn = !!episode.chainMode;
       const ov = scene?.chainModeOverride ?? "inherit";
       const sceneChainOn = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
       let continuityRef: string | null = null;

@@ -494,25 +494,25 @@ ${rawText}`;
         baseURL: "https://ark.ap-southeast.bytepluses.com/api/v3/anthropic",
       });
 
-      // Chain Mode: include prev/next scene context so the rewritten prompt
-      // describes a clip that naturally bridges adjacent scenes.
-      const episodeChainOn = !!(episode as any).chainMode;
+      // Always pass prev/next scene context to Claude so rewriter understands
+      // the episode timeline. Chain Mode adds extra "must bridge" requirements.
+      const episodeChainOn = !!episode.chainMode;
       const ov = scene?.chainModeOverride ?? "inherit";
       const sceneChainOn = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
       const prevScene = sceneIdx > 0 ? scenes[sceneIdx - 1] : null;
       const nextScene = sceneIdx + 1 < scenes.length ? scenes[sceneIdx + 1] : null;
 
-      const continuityBlock = sceneChainOn
-        ? `
+      const continuityBlock = `
 
 【上一幕】${prevScene ? `${prevScene.title || ""}｜${prevScene.description || ""}` : "（這是首幕）"}
+【本幕】${scene.title || ""}｜${scene.description || ""}
 【下一幕】${nextScene ? `${nextScene.title || ""}｜${nextScene.description || ""}` : "（這是末幕）"}
-
-連續模式特別要求：
+${sceneChainOn ? `
+連續模式（已開啟）特別要求：
 - 如果有上一幕，提示詞需自然「承接」上一幕的動作或情緒（例如「承接上一幕的對視，他緩緩開口…」）
 - 如果有下一幕，動作收尾要朝下一幕的開場方向過渡，避免突兀
-- 鏡頭起手與收尾的構圖／角色站位需與相鄰幕一致`
-        : "";
+- 鏡頭起手與收尾的構圖／角色站位需與相鄰幕一致` : `
+請參考前後幕的劇情走向，避免動作或情緒與相鄰幕互相矛盾。`}`;
 
       const prompt = `你是 SeedDance 2.0 圖生影片的提示詞專家。請根據以下分鏡資訊，寫出一段精煉、專業的視頻生成提示詞（限 100 字內，繁中）：
 
@@ -623,7 +623,7 @@ ${rawText}`;
 
           // Chain Mode: prepend previous scene's last frame so the first frame
           // of *this* scene visually picks up where scene N-1 ended.
-          const episodeChainOn = !!(episode as any).chainMode;
+          const episodeChainOn = !!episode.chainMode;
           const ov = scene?.chainModeOverride ?? "inherit";
           const sceneChainOn = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
           let continuityRef: string | null = null;
