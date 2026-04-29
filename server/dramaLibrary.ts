@@ -494,11 +494,31 @@ ${rawText}`;
         baseURL: "https://ark.ap-southeast.bytepluses.com/api/v3/anthropic",
       });
 
-      const prompt = `你是 SeedDance 2.0 圖生影片的提示詞專家。請根據以下分鏡資訊，寫出一段精煉、專業的視頻生成提示詞（限 80 字內，繁中）：
+      // Chain Mode: include prev/next scene context so the rewritten prompt
+      // describes a clip that naturally bridges adjacent scenes.
+      const episodeChainOn = !!(episode as any).chainMode;
+      const ov = scene?.chainModeOverride ?? "inherit";
+      const sceneChainOn = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
+      const prevScene = sceneIdx > 0 ? scenes[sceneIdx - 1] : null;
+      const nextScene = sceneIdx + 1 < scenes.length ? scenes[sceneIdx + 1] : null;
 
-【場景描述】${scene.description ?? ""}
+      const continuityBlock = sceneChainOn
+        ? `
+
+【上一幕】${prevScene ? `${prevScene.title || ""}｜${prevScene.description || ""}` : "（這是首幕）"}
+【下一幕】${nextScene ? `${nextScene.title || ""}｜${nextScene.description || ""}` : "（這是末幕）"}
+
+連續模式特別要求：
+- 如果有上一幕，提示詞需自然「承接」上一幕的動作或情緒（例如「承接上一幕的對視，他緩緩開口…」）
+- 如果有下一幕，動作收尾要朝下一幕的開場方向過渡，避免突兀
+- 鏡頭起手與收尾的構圖／角色站位需與相鄰幕一致`
+        : "";
+
+      const prompt = `你是 SeedDance 2.0 圖生影片的提示詞專家。請根據以下分鏡資訊，寫出一段精煉、專業的視頻生成提示詞（限 100 字內，繁中）：
+
+【本幕場景描述】${scene.description ?? ""}
 【台詞】${scene.dialogue ?? "（無）"}
-【運鏡建議】${scene.cameraMovement ?? "（自由）"}
+【運鏡建議】${scene.cameraMovement ?? "（自由）"}${continuityBlock}
 
 要求：
 - 開頭直接寫主體動作（角色做什麼）
@@ -600,7 +620,36 @@ ${rawText}`;
           const styleBase64s = await Promise.all((project.styleImageUrls ?? []).map(loadAsBase64));
           const useA = scene.useCharA !== false;
           const useB = scene.useCharB !== false;
+
+          // Chain Mode: prepend previous scene's last frame so the first frame
+          // of *this* scene visually picks up where scene N-1 ended.
+          const episodeChainOn = !!(episode as any).chainMode;
+          const ov = scene?.chainModeOverride ?? "inherit";
+          const sceneChainOn = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
+          let continuityRef: string | null = null;
+          if (sceneChainOn && sceneIdx > 0) {
+            const prev = scenes[sceneIdx - 1];
+            const prevUrl = prev?.lastFrameBunnyUrl || prev?.lastFrameUrl || prev?.bunnyUrl || prev?.imageUrl;
+            if (prevUrl) {
+              try {
+                if (prevUrl.startsWith("/objects/") || prevUrl.startsWith("/object-entities/") || prevUrl.startsWith("data:")) {
+                  continuityRef = await loadAsBase64(prevUrl);
+                } else {
+                  const safe = assertAllowedRemoteUrl(prevUrl);
+                  const r = await fetch(safe.toString(), { redirect: "error" });
+                  if (r.ok) {
+                    const buf = Buffer.from(await r.arrayBuffer());
+                    continuityRef = `data:image/jpeg;base64,${buf.toString("base64")}`;
+                  }
+                }
+              } catch (e: any) {
+                console.warn(`[Frames] continuity ref failed: ${e.message}`);
+              }
+            }
+          }
+
           const allRefs = [
+            ...(continuityRef ? [continuityRef] : []),
             ...(useA ? charABase64s : []),
             ...(useB ? charBBase64s : []),
             ...styleBase64s,
@@ -608,7 +657,10 @@ ${rawText}`;
           const userFolder = user?.username || userId;
 
           const dialoguePart = scene.dialogue?.trim() ? `，台詞：「${scene.dialogue}」` : "";
-          const baseDesc = `${scene.description}${dialoguePart}`;
+          const continuityNote = continuityRef
+            ? "（第 1 張參考圖為上一幕的結尾畫面，請從此畫面自然延續構圖、角色站位、光線與氛圍）"
+            : "";
+          const baseDesc = `${scene.description}${dialoguePart}${continuityNote}`;
 
           const genOne = async (framePrompt: string, label: "first" | "last"): Promise<string | null> => {
             try {

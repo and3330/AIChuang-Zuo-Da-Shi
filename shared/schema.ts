@@ -290,6 +290,8 @@ export type DramaScene = {
   lastFrameStatus?: "pending" | "generating" | "completed" | "failed";
   /** AI-generated professional video prompt (overrides description if present) */
   videoPrompt?: string;
+  /** Per-scene chain-mode override. "inherit" follows the episode-level toggle. */
+  chainModeOverride?: "on" | "off" | "inherit";
   // Video
   videoUrl?: string;
   videoBunnyUrl?: string;
@@ -331,6 +333,10 @@ export const dramaEpisodes = pgTable("drama_episodes", {
   status: text("status").default("draft"),
   creditsUsed: integer("credits_used").default(0),
   errorMessage: text("error_message"),
+  /** Episode-level Chain Mode toggle: when on, scene N+1 receives scene N's
+   *  last frame (or main image fallback) as a Seedream reference, and Claude
+   *  video-prompt rewriting uses prev/next scenes as narrative context. */
+  chainMode: boolean("chain_mode").default(false),
   // Final compiled video (all scenes stitched + subtitles burned in)
   compiledVideoUrl: text("compiled_video_url"),
   compiledStatus: text("compiled_status").default("idle"), // idle | compiling | completed | failed
@@ -408,8 +414,10 @@ export const insertDramaEpisodeSchema = z.object({
     videoStatus: z.enum(["pending", "generating", "completed", "failed"]).optional(),
     videoDuration: z.number().optional().default(5),
     videoResolution: z.enum(["720p", "1080p"]).optional().default("720p"),
+    chainModeOverride: z.enum(["on", "off", "inherit"]).optional(),
   })).min(2).max(12),
   globalSeed: z.number().int().min(1000).max(999999).optional(),
+  chainMode: z.boolean().optional(),
 });
 
 export const updateDramaEpisodeSchema = insertDramaEpisodeSchema.partial().omit({ projectId: true });

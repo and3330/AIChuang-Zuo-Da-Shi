@@ -3626,6 +3626,22 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const characterBBase64s = await loadImageList(project.characterBUrls ?? []);
       const styleBase64s = await loadImageList(project.styleImageUrls ?? []);
 
+      // Cross-scene Chain Mode helpers — see Drama Studio "連續模式" feature.
+      const episodeChainOn = !!(episode as any).chainMode;
+      const isSceneChainOn = (sc: any) => {
+        const ov = sc?.chainModeOverride ?? "inherit";
+        if (ov === "on") return true;
+        if (ov === "off") return false;
+        return episodeChainOn;
+      };
+      const getSceneContinuityUrl = (sc: any): string | null => {
+        return sc?.lastFrameBunnyUrl
+          || sc?.lastFrameUrl
+          || sc?.bunnyUrl
+          || sc?.imageUrl
+          || null;
+      };
+
       // ─── Pre-load all global library refs referenced anywhere in this episode ──
       // For each character pick the front 4-view if available, otherwise its first
       // uploaded reference image. For each scene location pick the first ref image.
@@ -3695,12 +3711,33 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
           }
           if (libraryLocationRef) sceneRefList.unshift(libraryLocationRef);
 
-          const allRefs = [...charAList, ...charBList, ...libraryCharRefs, ...sceneRefList, ...styleBase64s];
+          // Chain Mode: pull previous scene's last frame (or main image fallback)
+          // and place it FIRST so Seedream treats it as the strongest visual anchor.
+          let continuityRef: string | null = null;
+          if (i > 0 && isSceneChainOn(scenes[i])) {
+            const prevUrl = getSceneContinuityUrl(scenes[i - 1]);
+            if (prevUrl) {
+              continuityRef = await loadAnyImageAsBase64(prevUrl, objectStorage);
+            }
+          }
+
+          const allRefs = [
+            ...(continuityRef ? [continuityRef] : []),
+            ...charAList,
+            ...charBList,
+            ...libraryCharRefs,
+            ...sceneRefList,
+            ...styleBase64s,
+          ];
 
           let requestBody: any;
           if (allRefs.length > 0) {
             const labelParts: string[] = [];
             let idx = 1;
+            if (continuityRef) {
+              labelParts.push(`第 ${idx} 張圖為上一幕的結尾畫面，本幕需從這個畫面自然延續構圖、角色站位、視線與光線`);
+              idx += 1;
+            }
             if (charAList.length > 0) {
               const end = idx + charAList.length - 1;
               labelParts.push(`第 ${idx}${charAList.length > 1 ? `-${end}` : ""} 張圖為角色 A 外貌，保持角色一致`);
@@ -3851,7 +3888,41 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         try { sceneRefList = [await loadRefImageAsBase64(scene.sceneRefImageUrl)]; } catch {}
       }
 
-      const allRefs = [...charAList, ...charBList, ...sceneRefList, ...styleList];
+      // Chain Mode: insert prev scene's last frame (or main image) at front
+      const episodeChainOn = !!(episode as any).chainMode;
+      const ov = scene?.chainModeOverride ?? "inherit";
+      const sceneChainOn = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
+      let continuityRef: string | null = null;
+      if (sceneChainOn && sceneIdx > 0) {
+        const prev = scenes[sceneIdx - 1];
+        const prevUrl = prev?.lastFrameBunnyUrl || prev?.lastFrameUrl || prev?.bunnyUrl || prev?.imageUrl;
+        if (prevUrl) {
+          try {
+            if (prevUrl.startsWith("/objects/") || prevUrl.startsWith("/object-entities/")) {
+              continuityRef = await loadRefImageAsBase64(prevUrl);
+            } else if (prevUrl.startsWith("data:")) {
+              continuityRef = prevUrl;
+            } else {
+              const safe = ssrfAssertAllowedRemoteUrl(prevUrl);
+              const r = await fetch(safe.toString(), { redirect: "error" });
+              if (r.ok) {
+                const buf = Buffer.from(await r.arrayBuffer());
+                continuityRef = `data:image/jpeg;base64,${buf.toString("base64")}`;
+              }
+            }
+          } catch (e: any) {
+            console.warn(`[Drama] regen continuity ref failed: ${e.message}`);
+          }
+        }
+      }
+
+      const allRefs = [
+        ...(continuityRef ? [continuityRef] : []),
+        ...charAList,
+        ...charBList,
+        ...sceneRefList,
+        ...styleList,
+      ];
       const dialoguePart = scene.dialogue?.trim() ? `，台詞：「${scene.dialogue}」` : "";
       const scenePrompt = `${scene.description}${dialoguePart}`;
       const useSeed = scene._tempSeed || episode.globalSeed;
@@ -3860,6 +3931,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       if (allRefs.length > 0) {
         const labelParts: string[] = [];
         let idx = 1;
+        if (continuityRef) { labelParts.push(`第 ${idx} 張圖為上一幕的結尾畫面，本幕需從這個畫面自然延續構圖、角色站位、視線與光線`); idx += 1; }
         if (charAList.length > 0) { labelParts.push(`第 ${idx}${charAList.length > 1 ? `-${idx + charAList.length - 1}` : ""} 張圖為角色 A 外貌，保持角色一致`); idx += charAList.length; }
         if (charBList.length > 0) { labelParts.push(`第 ${idx}${charBList.length > 1 ? `-${idx + charBList.length - 1}` : ""} 張圖為角色 B 外貌，保持角色一致`); idx += charBList.length; }
         if (sceneRefList.length > 0) { labelParts.push(`第 ${idx} 張圖為場景構圖參考`); idx += sceneRefList.length; }

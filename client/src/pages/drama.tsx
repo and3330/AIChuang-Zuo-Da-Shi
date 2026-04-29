@@ -947,10 +947,11 @@ function ImportScriptModal({
 
 // ─── Scene Flow Canvas (visual flow with SVG connections) ──────────────────────
 function SceneFlowCanvas({
-  scenes, serverScenes, selectedIdx, onSelect,
+  scenes, serverScenes, selectedIdx, onSelect, chainEffective,
 }: {
   scenes: DramaScene[]; serverScenes: DramaScene[]; selectedIdx: number | null;
   onSelect: (idx: number) => void;
+  chainEffective?: boolean[];
 }) {
   const CARD_W = 120;
   const CARD_H = 160;
@@ -1062,6 +1063,14 @@ function SceneFlowCanvas({
               )}
               {hasVideo && (
                 <text x={CARD_W - 17} y={CARD_H * 0.65 - 7} textAnchor="middle" fill="#fff" fontSize="8">▶ 影</text>
+              )}
+
+              {/* Chain Mode badge — scene picks up from prev scene's tail frame */}
+              {chainEffective?.[idx] && idx > 0 && (
+                <g>
+                  <rect x={CARD_W - 46} y={4} width={42} height={14} rx={3} fill="#10b981" />
+                  <text x={CARD_W - 25} y={14} textAnchor="middle" fill="#fff" fontSize="8">🔗 銜接 #{idx}</text>
+                </g>
               )}
 
               {/* Scene title */}
@@ -1267,6 +1276,19 @@ function EpisodeView({
     },
   });
 
+  // Episode-level Chain Mode (連續模式) — when on, scene N+1 uses scene N's
+  // last frame as a Seedream reference and Claude prompt rewriting receives
+  // prev/next scene context.
+  const setChainModeMutation = useMutation({
+    mutationFn: (chainMode: boolean) =>
+      apiRequest("PATCH", `/api/drama/episodes/${episodeId}`, { chainMode }).then(r => r.json()),
+    onSuccess: (_, chainMode) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
+      toast({ title: chainMode ? "🔗 連續模式已開啟" : "連續模式已關閉" });
+    },
+    onError: (e: any) => toast({ title: "設定失敗", description: e.message, variant: "destructive" }),
+  });
+
   const generateImagesMutation = useMutation({
     mutationFn: () =>
       apiRequest("POST", `/api/drama/episodes/${episodeId}/generate-images`, {}).then(r => r.json()),
@@ -1388,6 +1410,12 @@ function EpisodeView({
   const selectedScene = selectedIdx !== null ? localScenes[selectedIdx] : null;
   const selectedServerScene = selectedIdx !== null ? serverScenes[selectedIdx] : null;
 
+  // Per-scene effective chain mode: episode-level toggle OR per-scene override
+  const chainEffective: boolean[] = localScenes.map(s => {
+    const ov = s.chainModeOverride ?? "inherit";
+    return ov === "on" ? true : ov === "off" ? false : !!episode.chainMode;
+  });
+
   return (
     <div className="h-[calc(100vh-56px)] flex flex-col bg-[#f8fafc]">
 
@@ -1419,6 +1447,28 @@ function EpisodeView({
           style={{ background: "#6366f110", borderColor: "#6366f140", color: "#4f46e5" }}>
           🤖 AI 寫腳本
         </DarkButton>
+
+        {/* Episode-level Chain Mode toggle */}
+        <button
+          onClick={() => setChainModeMutation.mutate(!episode.chainMode)}
+          disabled={setChainModeMutation.isPending}
+          title={episode.chainMode
+            ? "連續模式開啟中：第 N+1 幕會自動以第 N 幕的尾幀為主參考，並在 AI 寫提示詞時帶入前後幕 context"
+            : "點擊開啟連續模式，讓相鄰幕之間視覺與敘事自然銜接"}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all shrink-0 ${
+            episode.chainMode
+              ? "bg-[#10b981]/10 border-[#10b981]/40 text-[#047857]"
+              : "bg-[#f8fafc] border-[#e2e8f0] text-[#64748b] hover:border-[#10b981]/40 hover:text-[#047857]"
+          } disabled:opacity-50`}
+          data-testid="toggle-chain-mode"
+        >
+          <span>🔗</span>
+          <span>連續模式</span>
+          <span className={`w-7 h-3.5 rounded-full relative transition-all ${episode.chainMode ? "bg-[#10b981]" : "bg-[#cbd5e1]"}`}>
+            <span className={`absolute top-0.5 w-2.5 h-2.5 bg-white rounded-full shadow transition-all ${episode.chainMode ? "left-3.5" : "left-0.5"}`} />
+          </span>
+        </button>
+
         <DarkButton variant="secondary" onClick={() => saveScenesMutation.mutate(localScenes)} disabled={saveScenesMutation.isPending}>
           {saveScenesMutation.isPending ? "儲存中..." : "💾 儲存"}
         </DarkButton>
@@ -1550,6 +1600,7 @@ function EpisodeView({
                 serverScenes={serverScenes}
                 selectedIdx={selectedIdx}
                 onSelect={idx => setSelectedIdx(selectedIdx === idx ? null : idx)}
+                chainEffective={chainEffective}
               />
 
               {/* Legend */}
@@ -1592,6 +1643,14 @@ function EpisodeView({
                       )}
                       <div className="absolute top-1.5 left-1.5 bg-[#0f172a]/85 text-white text-[10px] px-1.5 py-0.5 rounded-full">{scene.sceneNumber}</div>
                       {ss?.videoStatus === "completed" && <div className="absolute top-1.5 right-1.5 bg-[#a855f7]/80 text-white text-[10px] px-1.5 py-0.5 rounded-full">▶</div>}
+                      {chainEffective[idx] && idx > 0 && (
+                        <div
+                          className="absolute bottom-1.5 left-1.5 bg-[#10b981] text-white text-[10px] px-1.5 py-0.5 rounded-full font-medium shadow"
+                          title={`銜接第 ${idx} 幕的尾幀`}
+                        >
+                          🔗 銜接 #{idx}
+                        </div>
+                      )}
                     </div>
                     <div className="p-2 bg-[#ffffff]">
                       <p className="text-[10px] text-[#64748b] truncate">{scene.title}</p>
@@ -1732,6 +1791,72 @@ function EpisodeView({
                   rows={3}
                 />
               </div>
+
+              {/* Per-scene Chain Mode override (跨幕銜接) */}
+              {selectedIdx !== null && selectedIdx > 0 && (() => {
+                const ov = (selectedScene.chainModeOverride ?? "inherit") as "inherit" | "on" | "off";
+                const effective =
+                  ov === "on" ? true :
+                  ov === "off" ? false :
+                  !!episode.chainMode;
+                const prev = serverScenes[selectedIdx - 1];
+                const prevContinuityUrl =
+                  prev?.lastFrameBunnyUrl || prev?.lastFrameUrl || prev?.bunnyUrl || prev?.imageUrl;
+                return (
+                  <div className="rounded-xl border border-[#e2e8f0] p-3 space-y-2.5 bg-[#f0fdf4]">
+                    <div>
+                      <p className="text-xs font-semibold text-[#0f172a]">
+                        🔗 銜接上一幕
+                        {effective && <span className="ml-1 text-[10px] text-[#047857]">·啟用中</span>}
+                      </p>
+                      <p className="text-[10px] text-[#64748b] mt-0.5">
+                        以第 {selectedIdx} 幕的尾幀作為視覺參考，讓兩幕構圖延續
+                      </p>
+                    </div>
+
+                    <div className="flex gap-1 bg-white rounded-lg p-0.5 border border-[#e2e8f0]">
+                      {([
+                        { v: "inherit", label: `跟隨集設定（目前 ${episode.chainMode ? "開" : "關"}）` },
+                        { v: "on", label: "強制開" },
+                        { v: "off", label: "強制關" },
+                      ] as const).map(o => (
+                        <button
+                          key={o.v}
+                          onClick={() => updateScene(selectedIdx!, { chainModeOverride: o.v })}
+                          className={`flex-1 text-[10px] py-1 rounded-md transition-all ${
+                            ov === o.v
+                              ? "bg-[#10b981] text-white font-medium"
+                              : "text-[#64748b] hover:text-[#334155]"
+                          }`}
+                          data-testid={`chain-override-${o.v}`}
+                        >
+                          {o.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    {effective && (
+                      prevContinuityUrl ? (
+                        <div className="flex items-center gap-2">
+                          <img
+                            src={prevContinuityUrl}
+                            alt="上一幕參考"
+                            className="w-12 h-20 object-cover rounded border border-[#10b981]/40 shrink-0"
+                          />
+                          <p className="text-[10px] text-[#475569]">
+                            參考第 {selectedIdx} 幕的{prev?.lastFrameBunnyUrl || prev?.lastFrameUrl ? "尾幀" : "主圖"}<br />
+                            <span className="text-[#94a3b8]">（重生本幕後構圖會接續）</span>
+                          </p>
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-[#ca8a04]">
+                          ⚠ 上一幕尚未生成圖片，重生時將沒有可用的銜接參考
+                        </p>
+                      )
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* First / Last Frame Mode */}
               <div className="rounded-xl border border-[#e2e8f0] p-3 space-y-3 bg-[#f8fafc]">
