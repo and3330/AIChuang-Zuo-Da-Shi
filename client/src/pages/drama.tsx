@@ -1366,6 +1366,130 @@ function EpisodeView({
     }
   }, [episode]);
 
+  // ─── Refund toasts on regen failure ──────────────────────────────────────
+  // Backend auto-refunds 3 積分 only via regenerateDramaScene's catch (single
+  // regen + each scene of chain regen-all). /generate-images doesn't refund
+  // per-scene, so we track only scenes whose regen WE kicked off — preventing
+  // misleading "已退回" toasts. State machine: armed → active → resolved.
+  // Chain-batch failures are buffered and emitted as one summary toast.
+  type RegenTrack = "armed" | "active";
+  const regenTrackedRef = useRef<Map<number, RegenTrack>>(new Map());
+  const chainBatchActiveRef = useRef(false);
+  const chainBatchFailuresRef = useRef<number[]>([]);
+
+  const emitRefundToast = useCallback(
+    (sceneNumbers: number[]) => {
+      if (sceneNumbers.length === 0) return;
+      const perScene = 3;
+      if (sceneNumbers.length === 1) {
+        toast({
+          title: `第 ${sceneNumbers[0]} 幕重生失敗`,
+          description: `已自動退回 ${perScene} 積分`,
+        });
+      } else {
+        toast({
+          title: `${sceneNumbers.length} 幕重生失敗`,
+          description: `已自動退回 ${sceneNumbers.length * perScene} 積分（第 ${sceneNumbers.join("、")} 幕）`,
+        });
+      }
+    },
+    [toast],
+  );
+
+  const flushChainBatchFailures = useCallback(() => {
+    const failures = chainBatchFailuresRef.current;
+    chainBatchFailuresRef.current = [];
+    emitRefundToast(failures);
+  }, [emitRefundToast]);
+
+  useEffect(() => {
+    if (!episode) return;
+    const scenes: DramaScene[] = JSON.parse(episode.scenes || "[]");
+
+    const newlyFailed: number[] = [];
+    scenes.forEach((s, idx) => {
+      const trackState = regenTrackedRef.current.get(idx);
+      if (trackState === undefined) return;
+      const curStatus = s.imageStatus ?? "pending";
+
+      if (trackState === "armed") {
+        if (curStatus === "generating") {
+          // Backend picked up the regen; arm → active.
+          regenTrackedRef.current.set(idx, "active");
+        } else if (curStatus === "failed" || curStatus === "completed") {
+          // Fast resolve — backend ran the regen between our mutate call
+          // and the next poll, so we never observed the intermediate
+          // "generating" state. "failed" still counts as a refunded regen
+          // failure (the regenerateDramaScene catch always refunds), so
+          // toast it; "completed" just untracks silently.
+          if (curStatus === "failed") newlyFailed.push(idx + 1);
+          regenTrackedRef.current.delete(idx);
+        }
+        return;
+      }
+      if (trackState === "active" && curStatus !== "generating") {
+        if (curStatus === "failed") {
+          newlyFailed.push(idx + 1);
+        }
+        // Resolved (completed / failed / cancel-restored) — untrack.
+        regenTrackedRef.current.delete(idx);
+      }
+    });
+
+    // If all tracked regens for the active chain batch have already
+    // resolved (fast-resolve case where polling never saw any scene as
+    // "generating"), flush the buffer right now instead of waiting for
+    // chainBatchActive to flip — that flip is gated on
+    // chainGeneratingObservedRef which would never have been set.
+    const allTrackedResolved = regenTrackedRef.current.size === 0;
+
+    if (newlyFailed.length === 0) {
+      if (
+        chainBatchActiveRef.current &&
+        allTrackedResolved &&
+        chainBatchFailuresRef.current.length > 0
+      ) {
+        flushChainBatchFailures();
+      }
+      return;
+    }
+
+    // Refund already posted server-side — refresh the cached balance so the
+    // user immediately sees their credits return.
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+
+    if (chainBatchActiveRef.current) {
+      // Chain regen-all in flight — buffer.
+      chainBatchFailuresRef.current.push(...newlyFailed);
+      // Same fast-resolve guard: if this poll resolved the last tracked
+      // regen, flush right away rather than waiting for chainBatchActive.
+      if (allTrackedResolved) flushChainBatchFailures();
+      return;
+    }
+
+    // Standalone single-scene regen — toast immediately.
+    emitRefundToast(newlyFailed);
+  }, [episode, queryClient, emitRefundToast, flushChainBatchFailures]);
+
+  // Mirror `chainBatchActive` into a ref (so the polling effect above can
+  // read the latest value without itself re-running on each flip) and flush
+  // buffered failures when the batch transitions from active → inactive.
+  useEffect(() => {
+    const wasActive = chainBatchActiveRef.current;
+    chainBatchActiveRef.current = chainBatchActive;
+    if (wasActive && !chainBatchActive) {
+      flushChainBatchFailures();
+    }
+  }, [chainBatchActive, flushChainBatchFailures]);
+
+  // Flush any buffered failures on unmount so the user still sees the
+  // refund summary toast when navigating away mid-batch.
+  useEffect(() => {
+    return () => {
+      flushChainBatchFailures();
+    };
+  }, [flushChainBatchFailures]);
+
   const saveScenesMutation = useMutation({
     mutationFn: (scenes: DramaScene[]) =>
       apiRequest("PATCH", `/api/drama/episodes/${episodeId}`, { scenes }).then(r => r.json()),
@@ -1401,11 +1525,22 @@ function EpisodeView({
   const regenerateSceneMutation = useMutation({
     mutationFn: ({ sceneIdx, overrides }: { sceneIdx: number; overrides?: any }) =>
       apiRequest("POST", `/api/drama/episodes/${episodeId}/regenerate-scene/${sceneIdx}`, overrides || {}).then(r => r.json()),
+    onMutate: ({ sceneIdx }) => {
+      // Arm the refund-toast watcher for this scene index. It will fire if
+      // polling later sees the scene transition out of "generating" into
+      // "failed".
+      regenTrackedRef.current.set(sceneIdx, "armed");
+    },
     onSuccess: (_, { sceneIdx }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
       toast({ title: `第 ${sceneIdx + 1} 幕重新生成中` });
     },
-    onError: (e: any) => toast({ title: "生成失敗", description: e.message, variant: "destructive" }),
+    onError: (e: any, { sceneIdx }) => {
+      // Mutation never reached the server in a state that triggers a refund —
+      // drop the tracking entry so a future unrelated failure doesn't toast.
+      regenTrackedRef.current.delete(sceneIdx);
+      toast({ title: "生成失敗", description: e.message, variant: "destructive" });
+    },
   });
 
   const animateSceneMutation = useMutation({
@@ -1452,6 +1587,19 @@ function EpisodeView({
       chainGeneratingObservedRef.current = false;
       setChainCancelAcknowledged(false);
       setChainBatchActive(true);
+      // Arm refund-toast tracking for every scene the backend will retry.
+      // Mirrors the server-side target filter (scenes idx >= 1 whose
+      // imageStatus !== "generating") at /regenerate-all-chain.
+      if (episode) {
+        try {
+          const s: DramaScene[] = JSON.parse(episode.scenes || "[]");
+          s.forEach((sc, idx) => {
+            if (idx >= 1 && sc.imageStatus !== "generating") {
+              regenTrackedRef.current.set(idx, "armed");
+            }
+          });
+        } catch { /* ignore parse errors */ }
+      }
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
@@ -1463,6 +1611,13 @@ function EpisodeView({
     onError: (e: any) => {
       chainGeneratingObservedRef.current = false;
       setChainBatchActive(false);
+      // Server rejected the batch — drop any "armed" entries we just added
+      // so an unrelated future failure (e.g. a /generate-images per-scene
+      // fail) doesn't trigger a refund toast.
+      for (const [k, v] of Array.from(regenTrackedRef.current.entries())) {
+        if (v === "armed") regenTrackedRef.current.delete(k);
+      }
+      chainBatchFailuresRef.current = [];
       toast({ title: "整集重生失敗", description: e.message, variant: "destructive" });
     },
   });
@@ -1515,7 +1670,13 @@ function EpisodeView({
       setChainBatchActive(false);
       setChainCancelAcknowledged(true);
       queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      // Cancellation reverts un-started scenes to their pre-batch status
+      // (which can be "failed") and refunds in one batch. Suppress the
+      // per-scene refund-toast tracking so we don't double-message — the
+      // cancel toast below already covers refund expectations.
+      regenTrackedRef.current.clear();
+      chainBatchFailuresRef.current = [];
       toast({
         title: "🛑 已送出中止請求",
         description: "目前這幕跑完後就會停下，剩餘積分會自動退回",
