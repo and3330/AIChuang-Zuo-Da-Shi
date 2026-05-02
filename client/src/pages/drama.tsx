@@ -1346,6 +1346,15 @@ function EpisodeView({
   // the first poll: the mutation can resolve before the very next refetch sees
   // the server-side status updates we wrote.
   const chainGeneratingObservedRef = useRef(false);
+  // Local "cancel acknowledged" flag set the instant the cancel mutation
+  // resolves. Server marks all 2..N targets as `generating` up front so the
+  // `inFlightAfterFirst >= 2` cross-tab heuristic would otherwise keep the
+  // progress pill / cancel button on screen until each remaining scene's
+  // status is restored (only happens after the in-flight scene wraps up).
+  // While this flag is set, the chain-batch UI stays hidden regardless of
+  // the raw `generating` counts — we trust the server already has the cancel
+  // request and will refund + restore status. Reset on next batch start.
+  const [chainCancelAcknowledged, setChainCancelAcknowledged] = useState(false);
   // Compile crossfade (ms) between adjacent scenes — sent to /compile.
   // Slider exposes 0 / 200 / 400 / 800 ms (default 400 = subtle fade).
   const [compileCrossfadeMs, setCompileCrossfadeMs] = useState<number>(400);
@@ -1441,6 +1450,7 @@ function EpisodeView({
       apiRequest("POST", `/api/drama/episodes/${episodeId}/regenerate-all-chain`, {}).then(r => r.json()),
     onMutate: () => {
       chainGeneratingObservedRef.current = false;
+      setChainCancelAcknowledged(false);
       setChainBatchActive(true);
     },
     onSuccess: (data) => {
@@ -1471,6 +1481,19 @@ function EpisodeView({
     if (chainGeneratingObservedRef.current) setChainBatchActive(false);
   }, [episode, chainBatchActive, regenerateAllChainMutation.isPending]);
 
+  // Auto-clear `chainCancelAcknowledged` once the server-side cleanup has
+  // settled (no scene 2..N still generating *and* the cancel flag is cleared
+  // on the episode). Without this, `blockNewBatch` would stay true forever
+  // after a cancel, preventing the user from firing the next 整集重生 batch.
+  useEffect(() => {
+    if (!chainCancelAcknowledged || !episode) return;
+    const s: DramaScene[] = JSON.parse(episode.scenes || "[]");
+    const stillGenerating = s.slice(1).some(x => x.imageStatus === "generating");
+    if (!stillGenerating && !episode.chainRegenCancelRequested) {
+      setChainCancelAcknowledged(false);
+    }
+  }, [episode, chainCancelAcknowledged]);
+
   // Cancel an in-flight chain regen-all batch. The current scene finishes,
   // remaining un-started scenes are skipped, and their pre-deducted credits
   // are refunded server-side.
@@ -1478,6 +1501,19 @@ function EpisodeView({
     mutationFn: () =>
       apiRequest("POST", `/api/drama/episodes/${episodeId}/cancel-chain-regen`, {}).then(r => r.json()),
     onSuccess: () => {
+      // Trust the backend: it has either already refunded skipped scenes (and
+      // restored their pre-batch imageStatus) or will do so once the in-flight
+      // scene wraps up. Suppress the chain-batch UI immediately so the page
+      // exits the "整集連續重生中 / 中止中…" state without waiting for the
+      // next 3s poll. We can't rely solely on `chainBatchActive` because the
+      // server marks every 2..N target as `generating` up front — those flags
+      // only get rolled back once the in-flight scene finishes, so the
+      // `inFlightAfterFirst >= 2` cross-tab heuristic would keep the pill on
+      // screen for episodes with 3+ scenes. `chainCancelAcknowledged` short-
+      // circuits that heuristic until the next batch starts.
+      chainGeneratingObservedRef.current = false;
+      setChainBatchActive(false);
+      setChainCancelAcknowledged(true);
       queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
       toast({
@@ -1624,17 +1660,28 @@ function EpisodeView({
           const insufficient = (user?.credits ?? 0) < chainCost;
           const totalChainTargets = serverScenes.length - 1;
           const completedAfterFirst = serverScenes.slice(1).filter(s => s.imageStatus === "completed").length;
+          // Cancel was acknowledged either locally (this tab just fired and
+          // got 200 back) or via the persisted server flag (any other tab /
+          // refresh). While true, we hide the chain-batch UI immediately even
+          // though scenes 2..N are still marked `generating` server-side —
+          // they only roll back after the in-flight scene wraps up.
+          const cancelInProgress =
+            chainCancelAcknowledged || !!episode.chainRegenCancelRequested;
           // Batch in progress if: this tab fired the mutation AND any scene 2..N
           // is still generating; or the mutation request itself is pending; or as
           // a cross-tab/refresh fallback ≥2 of scenes 2..N are concurrently in
           // flight (a single-scene regen would only ever have 1).
           const isChainBatchRunning =
-            regenerateAllChainMutation.isPending ||
-            (chainBatchActive && inFlightAfterFirst > 0) ||
-            inFlightAfterFirst >= 2;
+            !cancelInProgress &&
+            (regenerateAllChainMutation.isPending ||
+              (chainBatchActive && inFlightAfterFirst > 0) ||
+              inFlightAfterFirst >= 2);
           // Don't let users fire a second batch while any post-anchor scene is
-          // still generating — would silently double-charge them.
-          const blockNewBatch = isChainBatchRunning || inFlightAfterFirst > 0;
+          // still generating — would silently double-charge them. We keep this
+          // active during cancel cleanup too so the "🔁 整集重生" button doesn't
+          // pop back in while remaining scenes are being rolled back.
+          const blockNewBatch =
+            isChainBatchRunning || inFlightAfterFirst > 0 || cancelInProgress;
 
           if (isChainBatchRunning) {
             const cancelRequested = !!episode.chainRegenCancelRequested;
