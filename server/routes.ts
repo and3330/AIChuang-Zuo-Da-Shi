@@ -2702,15 +2702,32 @@ Requirements:
       console.log(`✅ Scene ${sceneIdx + 1} regenerated for story ${storyId}`);
     } catch (error: any) {
       console.error(`❌ Scene ${sceneIdx + 1} regeneration failed:`, error.message);
+      let storyForRefund: Awaited<ReturnType<typeof storage.getStoryGeneration>> | undefined;
       try {
-        const story = await storage.getStoryGeneration(storyId);
-        if (story) {
-          const scenes: StoryScene[] = JSON.parse(story.scenes);
+        storyForRefund = await storage.getStoryGeneration(storyId);
+        if (storyForRefund) {
+          const scenes: StoryScene[] = JSON.parse(storyForRefund.scenes);
           scenes[sceneIdx].status = "failed";
           await storage.updateStoryGeneration(storyId, { scenes: JSON.stringify(scenes) });
         }
-        await storage.atomicAddCredits(story?.userId || "", 3, `退款：故事第 ${sceneIdx + 1} 幕重新生成失敗`);
-      } catch { /* ignore refund error */ }
+      } catch (statusErr) {
+        console.error("Failed to mark story scene as failed:", statusErr);
+      }
+      // Refund credits on story scene regeneration failure
+      try {
+        const story2 = storyForRefund ?? await storage.getStoryGeneration(storyId);
+        if (story2) {
+          const creditCost = 3;
+          await storage.atomicAddCredits(
+            story2.userId,
+            creditCost,
+            `故事「${story2.title}」第 ${sceneIdx + 1} 幕重生失敗退款`,
+          );
+          console.log(`✅ Refunded ${creditCost} credits for failed story scene ${sceneIdx + 1} regen`);
+        }
+      } catch (refundErr) {
+        console.error("Failed to refund story scene regen credits:", refundErr);
+      }
     }
   }
 
