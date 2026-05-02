@@ -4278,7 +4278,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     bunny: BunnyStorageService
   ) {
     try {
-      const { generateSeedDanceVideo, urlToBase64 } = await import("./seedDanceV2");
+      const { generateSeedDanceVideo, urlToBase64, buildDramaOmniReferenceImages } = await import("./seedDanceV2");
       const episode = await storage.getDramaEpisode(episodeId);
       if (!episode) return;
       const project = await storage.getDramaProject(projectId);
@@ -4308,22 +4308,16 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const isOmni = useFirstLast || (opts.useOmniMode ?? false);
 
       // Build reference images for omni mode: character A → character B → scene ref
-      const referenceImages: { url: string }[] = [];
+      // Logic extracted to seedDanceV2.buildDramaOmniReferenceImages so it can
+      // be unit-tested in isolation (see scripts/verify-seeddance-omni.ts).
+      const referenceImages: { url: string }[] = isOmni
+        ? await buildDramaOmniReferenceImages({
+            project,
+            scene,
+            loadImage: urlToBase64,
+          })
+        : [];
       if (isOmni) {
-        const charAUrl = (project.characterAUrls ?? [])[0];
-        if (charAUrl) {
-          try { referenceImages.push({ url: await urlToBase64(charAUrl) }); }
-          catch (e) { console.warn("[Drama] Failed to load charA image:", e); }
-        }
-        const charBUrl = (project.characterBUrls ?? [])[0];
-        if (charBUrl) {
-          try { referenceImages.push({ url: await urlToBase64(charBUrl) }); }
-          catch (e) { console.warn("[Drama] Failed to load charB image:", e); }
-        }
-        if (scene.sceneRefImageUrl) {
-          try { referenceImages.push({ url: await urlToBase64(scene.sceneRefImageUrl) }); }
-          catch (e) { console.warn("[Drama] Failed to load scene ref image:", e); }
-        }
         console.log(`[Drama] Omni mode: ${referenceImages.length} extra reference images, first/last=${useFirstLast}`);
       }
 

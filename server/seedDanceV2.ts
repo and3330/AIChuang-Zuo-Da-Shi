@@ -21,11 +21,44 @@ import { enhanceVideoPrompt } from "./promptEnhancer";
 export const SEEDDANCE_STANDARD_ENDPOINT =
   process.env.ARK_VIDEO_MODEL || "ep-20250813120833-g4mpb";
 
-export const SEEDDANCE_OMNI_ENDPOINT =
-  process.env.ARK_VIDEO_OMNI_MODEL || "ep-20260428161232-4znch";
+/**
+ * Omni endpoint MUST come from ARK_VIDEO_OMNI_MODEL — there is no built-in
+ * fallback. When the env var is unset, attempting to use omni mode (multi-image
+ * reference, first/last-frame interpolation) throws a clear configuration error
+ * at request time so misconfigurations fail fast instead of silently routing
+ * to a stale default.
+ */
+export const SEEDDANCE_OMNI_ENDPOINT: string | undefined =
+  process.env.ARK_VIDEO_OMNI_MODEL;
+
+export const OMNI_ENDPOINT_FROM_ENV = !!SEEDDANCE_OMNI_ENDPOINT;
 
 export const VIDEO_API_BASE =
   "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
+
+if (OMNI_ENDPOINT_FROM_ENV) {
+  console.log(
+    `[SeedDance] standard=${SEEDDANCE_STANDARD_ENDPOINT} | omni=${SEEDDANCE_OMNI_ENDPOINT} (from ARK_VIDEO_OMNI_MODEL)`
+  );
+} else {
+  console.warn(
+    `[SeedDance] ⚠️ ARK_VIDEO_OMNI_MODEL is not set — omni mode (multi-image reference / first-last-frame) will throw at request time. Set the env var to enable 全能模式.`
+  );
+}
+
+/**
+ * Returns the omni endpoint or throws if it's not configured.
+ * Called by generateSeedDanceVideo() right before submitting an omni request.
+ */
+export function requireOmniEndpoint(): string {
+  if (!SEEDDANCE_OMNI_ENDPOINT) {
+    throw new Error(
+      "SeedDance omni mode requires ARK_VIDEO_OMNI_MODEL to be set. " +
+      "Configure the endpoint in Replit Secrets / environment variables."
+    );
+  }
+  return SEEDDANCE_OMNI_ENDPOINT;
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -112,6 +145,61 @@ export async function bufferToBase64(buf: Buffer): Promise<string> {
   return `data:image/jpeg;base64,${normalised.toString("base64")}`;
 }
 
+// ─── Drama reference image builder ───────────────────────────────────────────
+
+/**
+ * Inputs for building omni-mode reference images for a Drama scene.
+ * The shape mirrors the relevant subset of `dramaProjects` and the per-scene
+ * blob stored in `dramaEpisodes.scenes`, so route handlers can pass them
+ * straight in without copying logic.
+ */
+export interface DramaOmniRefInput {
+  project: {
+    characterAUrls?: string[] | null;
+    characterBUrls?: string[] | null;
+  };
+  scene: {
+    sceneRefImageUrl?: string | null;
+  };
+  /** Loader that converts a remote URL to a base64 data-URL. */
+  loadImage: (url: string) => Promise<string>;
+}
+
+/**
+ * Build the ordered reference-image list passed to SeedDance omni mode for a
+ * Drama scene: character A → character B → scene reference.
+ *
+ * Each load is wrapped in a try/catch so a single missing/failed asset does
+ * not abort the whole animation request — failures are logged and skipped.
+ *
+ * Extracted out of `animateDramaScene()` so the routing logic is unit-testable
+ * (see scripts/verify-seeddance-omni.ts).
+ */
+export async function buildDramaOmniReferenceImages(
+  input: DramaOmniRefInput
+): Promise<SeedDanceImageRef[]> {
+  const refs: SeedDanceImageRef[] = [];
+
+  const charAUrl = (input.project.characterAUrls ?? [])[0];
+  if (charAUrl) {
+    try { refs.push({ url: await input.loadImage(charAUrl) }); }
+    catch (e) { console.warn("[Drama] Failed to load charA image:", e); }
+  }
+
+  const charBUrl = (input.project.characterBUrls ?? [])[0];
+  if (charBUrl) {
+    try { refs.push({ url: await input.loadImage(charBUrl) }); }
+    catch (e) { console.warn("[Drama] Failed to load charB image:", e); }
+  }
+
+  if (input.scene.sceneRefImageUrl) {
+    try { refs.push({ url: await input.loadImage(input.scene.sceneRefImageUrl) }); }
+    catch (e) { console.warn("[Drama] Failed to load scene ref image:", e); }
+  }
+
+  return refs;
+}
+
 // ─── Core client ─────────────────────────────────────────────────────────────
 
 export async function generateSeedDanceVideo(
@@ -122,7 +210,9 @@ export async function generateSeedDanceVideo(
 
   const useFirstLast = !!(req.firstFrame && req.lastFrame);
   const isOmni = useFirstLast || (req.useOmniMode ?? false);
-  const model = isOmni ? SEEDDANCE_OMNI_ENDPOINT : SEEDDANCE_STANDARD_ENDPOINT;
+  // Omni endpoint resolution throws if ARK_VIDEO_OMNI_MODEL is unset — fail
+  // fast instead of silently falling back to a stale default.
+  const model = isOmni ? requireOmniEndpoint() : SEEDDANCE_STANDARD_ENDPOINT;
 
   // 強制套用 NSFW 提示詞增強器（防呆：即使呼叫端忘了包，也保證 API 收到的是增強版）
   // enhanceVideoPrompt 是 idempotent — 已包過的 prompt 不會被重複包
