@@ -3582,6 +3582,11 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         return res.status(400).json({ error: `積分不足，需要 ${totalCost} 積分` });
       }
 
+      // Snapshot each target's pre-batch videoStatus so we can restore it on
+      // cancel (without this, cancelled scenes stay stuck on `generating`).
+      const preStatusByIdx: Record<number, string> = {};
+      for (const i of targets) preStatusByIdx[i] = scenes[i].videoStatus ?? "pending";
+
       // Mark all targets as generating + deduct credits up-front (refund per-scene on failure)
       let balance = user.credits ?? 0;
       for (const i of targets) {
@@ -3599,25 +3604,124 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
           description: `漫劇動畫第 ${i + 1} 幕（${duration}秒 ${resolution}，批次）`,
         });
       }
-      await storage.updateDramaEpisode(req.params.episodeId, { scenes: JSON.stringify(scenes) });
+      // Reset any stale cancel flag from a previous batch before kicking off,
+      // and mark the batch as in-progress (authoritative signal for the cancel
+      // endpoint + UI; distinguishes a real batch from concurrent per-scene
+      // animations).
+      await storage.updateDramaEpisode(req.params.episodeId, {
+        scenes: JSON.stringify(scenes),
+        animateAllInProgress: true,
+        animateAllCancelRequested: false,
+      });
 
-      // Sequential background processing (avoid overwhelming the API)
+      const userId = req.session.userId!;
+      const episodeId = req.params.episodeId;
+
+      // Sequential background processing (avoid overwhelming the API).
+      // Between scenes we re-fetch the episode to honor a user-issued cancel
+      // request: the in-flight scene finishes, but remaining un-started scenes
+      // are skipped and their pre-deducted credits refunded.
+      // Wrapped in try/finally so animateAllInProgress is always cleared,
+      // even on unexpected errors — otherwise a stale flag would keep the
+      // cancel UI showing forever and block the next batch.
       (async () => {
-        for (const i of targets) {
-          try {
-            await animateDramaScene(
-              req.params.episodeId, episode.projectId, i,
-              { duration, resolution, useOmniMode, generateAudio },
-              objectStorageService, bunnyStorage
-            );
-          } catch (err) {
-            console.error(`[Drama batch animate] scene ${i} failed:`, err);
+        const skipped: number[] = [];
+        try {
+          let cancelled = false;
+          for (let t = 0; t < targets.length; t++) {
+            const i = targets[t];
+            if (!cancelled) {
+              const fresh = await storage.getDramaEpisode(episodeId);
+              if (fresh?.animateAllCancelRequested) {
+                cancelled = true;
+              }
+            }
+            if (cancelled) {
+              skipped.push(i);
+              continue;
+            }
+            try {
+              await animateDramaScene(
+                episodeId, episode.projectId, i,
+                { duration, resolution, useOmniMode, generateAudio },
+                objectStorageService, bunnyStorage
+              );
+            } catch (err) {
+              console.error(`[Drama batch animate] scene ${i} failed:`, err);
+            }
           }
+
+          if (skipped.length > 0) {
+            // Refund credits for every scene we never started + restore their
+            // pre-batch videoStatus.
+            try {
+              const u = await storage.getUser(userId);
+              let bal = u?.credits ?? 0;
+              for (const i of skipped) {
+                bal += perSceneCost;
+                await storage.updateUserCredits(userId, bal);
+                await storage.createCreditTransaction({
+                  userId,
+                  type: "refund",
+                  amount: perSceneCost,
+                  balance: bal,
+                  description: `漫劇整集動畫批次中止退款（第 ${i + 1} 幕）`,
+                });
+              }
+              const ep2 = await storage.getDramaEpisode(episodeId);
+              if (ep2) {
+                const sc: any[] = JSON.parse(ep2.scenes);
+                for (const i of skipped) {
+                  if (sc[i]) {
+                    sc[i].videoStatus = preStatusByIdx[i] === "generating" ? "pending" : (preStatusByIdx[i] ?? "pending");
+                    delete sc[i].videoError;
+                  }
+                }
+                await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(sc) });
+              }
+              console.log(`[Drama batch animate] episode ${episodeId} cancelled — refunded ${skipped.length} scenes (${skipped.length * perSceneCost} credits)`);
+            } catch (refundErr) {
+              console.error(`[Drama batch animate] refund failed:`, refundErr);
+            }
+          } else {
+            console.log(`[Drama batch animate] episode ${episodeId} done (${targets.length} scenes)`);
+          }
+        } finally {
+          // Always clear both flags so the next batch starts fresh and the
+          // cancel UI doesn't get stuck on after a crash.
+          await storage.updateDramaEpisode(episodeId, {
+            animateAllInProgress: false,
+            animateAllCancelRequested: false,
+          }).catch(() => {});
         }
-        console.log(`[Drama batch animate] episode ${req.params.episodeId} done (${targets.length} scenes)`);
       })().catch(console.error);
 
       res.json({ ok: true, sceneCount: targets.length, creditCost: totalCost });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Cancel an in-flight animate-all batch ────────────────────────────────
+  // Sets animateAllCancelRequested=true so the background loop skips remaining
+  // un-started scenes after the current one finishes; refund happens there.
+  // Only operates when an actual /animate-all batch is running — never when
+  // the user just happens to have multiple per-scene animations in flight,
+  // since those are not driven by the cancellable loop and have no refund
+  // path. Authority is the persisted `animateAllInProgress` flag.
+  app.post("/api/drama/episodes/:episodeId/cancel-animate-all", requireAuth, async (req, res) => {
+    try {
+      const episode = await storage.getDramaEpisode(req.params.episodeId);
+      if (!episode || episode.userId !== req.session.userId!) return res.status(404).json({ error: "找不到集數" });
+
+      if (!episode.animateAllInProgress) {
+        // Nothing to cancel: no /animate-all loop is currently running. Treat
+        // as success so a stale UI click is harmless.
+        return res.json({ ok: true, alreadyDone: true });
+      }
+
+      await storage.updateDramaEpisode(req.params.episodeId, { animateAllCancelRequested: true });
+      res.json({ ok: true });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
     }

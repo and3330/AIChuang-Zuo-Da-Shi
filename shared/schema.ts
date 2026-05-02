@@ -350,6 +350,18 @@ export const dramaEpisodes = pgTable("drama_episodes", {
    *  pre-deducted credits refunded. Reset to false at the start of every new
    *  regenerate-all-chain run. */
   chainRegenCancelRequested: boolean("chain_regen_cancel_requested").default(false),
+  /** True while an /animate-all batch background loop is actively running on
+   *  this episode. Used as the authoritative signal for both the cancel
+   *  endpoint and the UI's progress badge — distinguishes a real batch from
+   *  multiple ad-hoc per-scene animate calls (which can also leave several
+   *  scenes in videoStatus=generating concurrently). Set true when the batch
+   *  is dispatched, cleared when the loop ends (or is cancelled). */
+  animateAllInProgress: boolean("animate_all_in_progress").default(false),
+  /** When true, the in-flight animate-all batch loop should stop after the
+   *  current scene's video finishes; remaining un-started scenes get their
+   *  pre-deducted credits refunded. Reset to false at the start of every new
+   *  animate-all run, and only meaningful when animateAllInProgress is true. */
+  animateAllCancelRequested: boolean("animate_all_cancel_requested").default(false),
   // Final compiled video (all scenes stitched + subtitles burned in)
   compiledVideoUrl: text("compiled_video_url"),
   compiledStatus: text("compiled_status").default("idle"), // idle | compiling | completed | failed

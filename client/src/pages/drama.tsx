@@ -1355,6 +1355,10 @@ function EpisodeView({
   // the raw `generating` counts — we trust the server already has the cancel
   // request and will refund + restore status. Reset on next batch start.
   const [chainCancelAcknowledged, setChainCancelAcknowledged] = useState(false);
+  // Same two-phase pattern for the animate-all batch — keeps the progress
+  // badge / cancel button visible from dispatch through the very last scene.
+  const [animateBatchActive, setAnimateBatchActive] = useState(false);
+  const animateGeneratingObservedRef = useRef(false);
   // Compile crossfade (ms) between adjacent scenes — sent to /compile.
   // Slider exposes 0 / 200 / 400 / 800 ms (default 400 = subtle fade).
   const [compileCrossfadeMs, setCompileCrossfadeMs] = useState<number>(400);
@@ -1688,11 +1692,60 @@ function EpisodeView({
   const animateAllMutation = useMutation({
     mutationFn: ({ duration, resolution, useOmniMode }: any) =>
       apiRequest("POST", `/api/drama/episodes/${episodeId}/animate-all`, { duration, resolution, useOmniMode, generateAudio: true }).then(r => r.json()),
+    onMutate: () => {
+      animateGeneratingObservedRef.current = false;
+      setAnimateBatchActive(true);
+    },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
       toast({ title: `🎬 開始批次生成 ${data.sceneCount} 幕影片`, description: `共消耗 ${data.creditCost} 積分，請耐心等候` });
     },
-    onError: (e: any) => toast({ title: "批次生成失敗", description: e.message, variant: "destructive" }),
+    onError: (e: any) => {
+      animateGeneratingObservedRef.current = false;
+      setAnimateBatchActive(false);
+      toast({ title: "批次生成失敗", description: e.message, variant: "destructive" });
+    },
+  });
+
+  // Mirror of chainBatchActive clear logic — only drop the local flag once we
+  // have observed the batch start (some scene flipped to videoStatus=generating)
+  // and then later see no scenes still generating videos.
+  useEffect(() => {
+    if (!animateBatchActive || animateAllMutation.isPending || !episode) return;
+    const s: DramaScene[] = JSON.parse(episode.scenes || "[]");
+    const stillGenerating = s.some(x => x.videoStatus === "generating");
+    if (stillGenerating) {
+      animateGeneratingObservedRef.current = true;
+      return;
+    }
+    if (animateGeneratingObservedRef.current) setAnimateBatchActive(false);
+  }, [episode, animateBatchActive, animateAllMutation.isPending]);
+
+  // Cancel an in-flight animate-all batch. The current scene's video finishes,
+  // remaining un-started scenes are skipped, and their pre-deducted credits
+  // are refunded server-side.
+  const cancelAnimateAllMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", `/api/drama/episodes/${episodeId}/cancel-animate-all`, {}).then(r => r.json()),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/user"] });
+      // Server returns alreadyDone:true when no /animate-all loop is actually
+      // running (e.g. batch already finished, or stale UI click). Don't claim
+      // a refund was queued in that case — there is nothing to cancel.
+      if (data?.alreadyDone) {
+        toast({
+          title: "批次已結束",
+          description: "目前沒有正在進行的整集動畫批次，無需中止",
+        });
+        return;
+      }
+      toast({
+        title: "🛑 已送出中止請求",
+        description: "目前這幕跑完後就會停下，剩餘積分會自動退回",
+      });
+    },
+    onError: (e: any) => toast({ title: "中止失敗", description: e.message, variant: "destructive" }),
   });
 
   const compileMutation = useMutation({
@@ -1917,7 +1970,52 @@ function EpisodeView({
         {(() => {
           const animatable = serverScenes.filter(s => s.imageStatus === "completed" && s.bunnyUrl && !(s.videoStatus === "completed" && s.videoBunnyUrl) && s.videoStatus !== "generating").length;
           const generatingCount = serverScenes.filter(s => s.videoStatus === "generating").length;
+          const totalVideoTargets = serverScenes.filter(s => s.imageStatus === "completed" && s.bunnyUrl).length;
+          const completedVideos = serverScenes.filter(s => s.videoStatus === "completed" && s.videoBunnyUrl).length;
           const batchCost = animatable * 5 * 8; // 5s @ 720p
+          // Authoritative: server-persisted `animateAllInProgress` flag, set
+          // when /animate-all dispatches and cleared when the loop ends. This
+          // intentionally does NOT fall back to "≥2 scenes generating" — that
+          // heuristic would falsely fire when users start multiple ordinary
+          // per-scene animations in parallel, and the cancel endpoint cannot
+          // refund those (they aren't driven by the cancellable batch loop).
+          // Local `animateBatchActive` covers the brief window between the
+          // POST resolving and the next poll observing the flag.
+          const isAnimateBatchRunning =
+            animateAllMutation.isPending ||
+            !!episode.animateAllInProgress ||
+            (animateBatchActive && generatingCount > 0);
+
+          if (isAnimateBatchRunning) {
+            const cancelRequested = !!episode.animateAllCancelRequested;
+            return (
+              <div className="flex items-center gap-2 shrink-0">
+                <span
+                  className="text-xs text-[#0369a1] bg-[#0ea5e9]/10 border border-[#0ea5e9]/40 px-3 py-1.5 rounded-lg animate-pulse"
+                  data-testid="status-animate-all-progress"
+                >
+                  🎬 整集動畫生成中 {completedVideos}/{totalVideoTargets}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (cancelAnimateAllMutation.isPending || cancelRequested) return;
+                    if (!confirm("中止後，目前這幕影片跑完就會停下，剩下未開始的幕不再執行，已扣積分會退回。確定中止？")) return;
+                    cancelAnimateAllMutation.mutate();
+                  }}
+                  disabled={cancelAnimateAllMutation.isPending || cancelRequested}
+                  title={cancelRequested
+                    ? "已送出中止請求，等目前這幕跑完就會停"
+                    : "中止整集動畫批次：跑完當前這幕後停下，未開始的幕積分會退回"}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border bg-[#fef2f2] border-[#fecaca] text-[#b91c1c] hover:bg-[#fee2e2] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  data-testid="button-cancel-animate-all"
+                >
+                  {cancelRequested ? "⏳ 中止中…" : "🛑 中止"}
+                </button>
+              </div>
+            );
+          }
+
           return animatable > 0 ? (
             <DarkButton
               onClick={() => {
@@ -1929,8 +2027,6 @@ function EpisodeView({
             >
               {animateAllMutation.isPending ? "⏳ 派發中..." : `🎬 一鍵生成全部影片 (-${batchCost})`}
             </DarkButton>
-          ) : generatingCount > 0 ? (
-            <span className="text-xs text-[#0ea5e9] animate-pulse shrink-0">● {generatingCount} 幕影片生成中</span>
           ) : null;
         })()}
 
