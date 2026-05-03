@@ -60,6 +60,10 @@ export const videoGenerations = pgTable("video_generations", {
   type: text("type").notNull().default("image-to-video"),
   originalImageUrl: text("original_image_url"),
   additionalImageUrls: text("additional_image_urls").array(),
+  /** Optional reference audio (object-storage path or HTTP URL). When set,
+   *  the request is routed through the SeedDance 2.0 omni endpoint with a
+   *  role:"reference_audio" content part. */
+  referenceAudioUrl: text("reference_audio_url"),
   generatedVideoUrl: text("generated_video_url"),
   bunnyVideoUrl: text("bunny_video_url"),
   prompt: text("prompt").notNull(),
@@ -185,7 +189,8 @@ export const insertBatchImageToImageSchema = z.object({
 export const insertImageToVideoSchema = z.object({
   type: z.literal("image-to-video"),
   originalImageUrl: z.string(),
-  additionalImageUrls: z.array(z.string()).optional(),
+  additionalImageUrls: z.array(z.string()).max(3).optional(),
+  referenceAudioUrl: z.string().optional(),
   prompt: z.string(),
   duration: z.number().min(2).max(12).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),

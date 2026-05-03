@@ -9,6 +9,12 @@ import { Progress } from "@/components/ui/progress";
 interface UnifiedUploaderProps {
   maxNumberOfFiles?: number;
   maxFileSize?: number;
+  /** MIME types allowed (e.g. ["image/jpeg","image/png"] or ["audio/mpeg","audio/wav"]).
+   *  Defaults to image-only to preserve existing call-sites. */
+  acceptedFileTypes?: string[];
+  /** Human-readable label for the accepted formats (e.g. "JPG、PNG" / "MP3、WAV").
+   *  Defaults match acceptedFileTypes when provided, otherwise "JPG、PNG". */
+  acceptedFormatsLabel?: string;
   onGetUploadParameters: () => Promise<{
     method: "PUT";
     url: string;
@@ -38,12 +44,18 @@ interface UnifiedUploaderProps {
 export function UnifiedUploader({
   maxNumberOfFiles = 1,
   maxFileSize = 10485760, // 10MB default
+  acceptedFileTypes = ["image/jpeg", "image/png"],
+  acceptedFormatsLabel,
   onGetUploadParameters,
   onComplete,
   onError,
   className = "",
   children,
 }: UnifiedUploaderProps) {
+  const formatsLabel = acceptedFormatsLabel
+    ?? acceptedFileTypes
+      .map(t => t.split("/")[1]?.toUpperCase() || t)
+      .join("、");
   const [isDragOver, setIsDragOver] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -58,7 +70,7 @@ export function UnifiedUploader({
       restrictions: {
         maxNumberOfFiles,
         maxFileSize,
-        allowedFileTypes: ["image/jpeg", "image/png"],
+        allowedFileTypes: acceptedFileTypes,
       },
       autoProceed: true,
     })
@@ -99,8 +111,8 @@ export function UnifiedUploader({
 
   const validateFile = useCallback((file: File): { valid: boolean; error?: string } => {
     // Check file type
-    if (!["image/jpeg", "image/png"].includes(file.type)) {
-      return { valid: false, error: "僅支援 JPG 和 PNG 檔案格式" };
+    if (!acceptedFileTypes.includes(file.type)) {
+      return { valid: false, error: `僅支援 ${formatsLabel} 檔案格式` };
     }
 
     // Check file size
@@ -110,7 +122,7 @@ export function UnifiedUploader({
     }
 
     return { valid: true };
-  }, [maxFileSize]);
+  }, [maxFileSize, acceptedFileTypes, formatsLabel]);
 
   const handleFileSelection = useCallback((files: FileList | File[]) => {
     const fileArray = Array.from(files).slice(0, maxNumberOfFiles);
@@ -271,7 +283,7 @@ export function UnifiedUploader({
           {/* File Constraints */}
           {!isUploading && (
             <p className="text-xs text-gray-400">
-              支援 JPG、PNG 格式，最大 {Math.round(maxFileSize / (1024 * 1024))}MB
+              支援 {formatsLabel} 格式，最大 {Math.round(maxFileSize / (1024 * 1024))}MB
             </p>
           )}
         </div>
@@ -281,7 +293,7 @@ export function UnifiedUploader({
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png"
+        accept={acceptedFileTypes.join(",")}
         className="hidden"
         multiple={maxNumberOfFiles > 1}
         onChange={handleFileInputChange}

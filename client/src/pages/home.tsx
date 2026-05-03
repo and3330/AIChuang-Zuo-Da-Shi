@@ -74,6 +74,12 @@ export default function Home() {
   const [videoDuration, setVideoDuration] = useState(5);
   const [cameraFixed, setCameraFixed] = useState(false);
   const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  // Reference materials for image-to-video (omni mode): up to 3 extra images
+  // (角色/風格/構圖) and an optional reference audio (driver track / 配音 / BGM
+  // sample). When any of these is present the request goes to the SeedDance
+  // 2.0 omni endpoint; otherwise the standard endpoint is used as before.
+  const [videoReferenceImages, setVideoReferenceImages] = useState<{ url: string; path: string }[]>([]);
+  const [videoReferenceAudio, setVideoReferenceAudio] = useState<{ path: string; name: string } | null>(null);
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
 
@@ -745,6 +751,12 @@ export default function Home() {
         aspectRatio: videoAspectRatio,
         resolution: videoResolution,
       };
+      if (videoReferenceImages.length > 0) {
+        videoData.additionalImageUrls = videoReferenceImages.map(r => r.path);
+      }
+      if (videoReferenceAudio) {
+        videoData.referenceAudioUrl = videoReferenceAudio.path;
+      }
       videoGenerateMutation.mutate(videoData);
     }
   };
@@ -761,6 +773,41 @@ export default function Home() {
     setBatchGenerations([]);
     setAdditionalImages([]);
     setIsMultiImageMode(false);
+    setVideoReferenceImages([]);
+    setVideoReferenceAudio(null);
+  };
+
+  const handleVideoRefImageUploadComplete = async (
+    result: UploadResult<Record<string, unknown>, Record<string, unknown>>,
+  ) => {
+    if (!result.successful || result.successful.length === 0) return;
+    try {
+      const added: { url: string; path: string }[] = [];
+      for (const f of result.successful) {
+        const resp = await apiRequest("PUT", "/api/objects/set-path", { imageURL: f.uploadURL });
+        const data = await resp.json();
+        added.push({ url: data.objectPath, path: data.objectPath });
+      }
+      setVideoReferenceImages(prev => [...prev, ...added].slice(0, 3));
+      toast({ title: "參考圖片上傳成功", description: `已新增 ${added.length} 張參考圖片。` });
+    } catch {
+      toast({ title: "上傳錯誤", description: "處理上傳圖片失敗。", variant: "destructive" });
+    }
+  };
+
+  const handleVideoRefAudioUploadComplete = async (
+    result: UploadResult<Record<string, unknown>, Record<string, unknown>>,
+  ) => {
+    const f = result.successful?.[0];
+    if (!f) return;
+    try {
+      const resp = await apiRequest("PUT", "/api/objects/set-path", { imageURL: f.uploadURL });
+      const data = await resp.json();
+      setVideoReferenceAudio({ path: data.objectPath, name: f.name || "參考音訊" });
+      toast({ title: "參考音訊上傳成功", description: f.name || "" });
+    } catch {
+      toast({ title: "上傳錯誤", description: "處理上傳音訊失敗。", variant: "destructive" });
+    }
   };
 
   const handleAdditionalUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
@@ -1669,6 +1716,100 @@ export default function Home() {
                         className="w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                       />
                       <p className="text-xs text-gray-400 mt-1">描述您希望圖片如何變成動態影片 ・先①AI優化讓描述更豐富，再②Claude優化轉為英文專業格式</p>
+                    </div>
+
+                    {/* ── 參考素材 (omni mode) ─────────────────────────── */}
+                    <div className="border border-purple-200 bg-purple-50/40 rounded-xl p-4 space-y-4">
+                      <div className="flex items-start gap-2">
+                        <i className="fas fa-layer-group text-purple-500 mt-0.5"></i>
+                        <div className="flex-1">
+                          <div className="text-sm font-semibold text-gray-800">參考素材（選填，全能模式）</div>
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            最多 3 張參考圖（角色 / 風格 / 構圖）＋ 1 段參考音訊（配音 / BGM / 節奏）。任一項上傳後會自動切到 SeedDance 2.0 全能模式。
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* 參考圖片 (up to 3) */}
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                          <i className="fas fa-images text-purple-500"></i>
+                          參考圖片 <span className="text-gray-400">（{videoReferenceImages.length}/3）</span>
+                        </Label>
+                        {videoReferenceImages.length > 0 && (
+                          <div className="grid grid-cols-3 gap-2">
+                            {videoReferenceImages.map((img, idx) => (
+                              <div key={idx} className="relative group">
+                                <img src={img.url} alt={`ref-${idx}`} className="w-full h-20 object-cover rounded border border-purple-200" />
+                                <button
+                                  type="button"
+                                  onClick={() => setVideoReferenceImages(prev => prev.filter((_, i) => i !== idx))}
+                                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
+                                  aria-label="移除參考圖"
+                                >
+                                  <i className="fas fa-times text-[10px]"></i>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {videoReferenceImages.length < 3 && (
+                          <UnifiedUploader
+                            maxNumberOfFiles={3 - videoReferenceImages.length}
+                            maxFileSize={10485760}
+                            onGetUploadParameters={handleGetUploadParameters}
+                            onComplete={handleVideoRefImageUploadComplete}
+                            onError={handleUploadError}
+                            className="w-full"
+                          >
+                            上傳參考圖片
+                          </UnifiedUploader>
+                        )}
+                      </div>
+
+                      {/* 參考音訊 */}
+                      <div className="space-y-2">
+                        <Label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                          <i className="fas fa-music text-purple-500"></i>
+                          參考音訊 <span className="text-gray-400">（選填，最大 20MB）</span>
+                        </Label>
+                        {videoReferenceAudio ? (
+                          <div className="flex items-center justify-between gap-3 px-3 py-2 bg-white border border-purple-200 rounded-lg">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <i className="fas fa-file-audio text-purple-500"></i>
+                              <span className="text-sm text-gray-700 truncate">{videoReferenceAudio.name}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setVideoReferenceAudio(null)}
+                              className="text-red-500 hover:text-red-700 text-xs flex items-center gap-1 shrink-0"
+                            >
+                              <i className="fas fa-times"></i>移除
+                            </button>
+                          </div>
+                        ) : (
+                          <UnifiedUploader
+                            maxNumberOfFiles={1}
+                            maxFileSize={20 * 1024 * 1024}
+                            acceptedFileTypes={["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a", "audio/ogg"]}
+                            acceptedFormatsLabel="MP3、WAV、M4A、OGG"
+                            onGetUploadParameters={handleGetUploadParameters}
+                            onComplete={handleVideoRefAudioUploadComplete}
+                            onError={handleUploadError}
+                            className="w-full"
+                          >
+                            上傳參考音訊
+                          </UnifiedUploader>
+                        )}
+                      </div>
+
+                      {(videoReferenceImages.length > 0 || videoReferenceAudio) && (
+                        <div className="text-xs text-purple-700 bg-purple-100/70 rounded px-2 py-1.5 flex items-center gap-1.5">
+                          <i className="fas fa-bolt"></i>
+                          已啟用全能模式：將以主要圖片 + {videoReferenceImages.length} 張參考圖
+                          {videoReferenceAudio ? " + 參考音訊" : ""} 生成影片。
+                        </div>
+                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

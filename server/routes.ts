@@ -1222,6 +1222,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         return res.status(404).json({ error: "用户不存在" });
       }
 
+      // Validate first so a malformed request (e.g. >3 reference images, bad
+      // audio URL, missing main image) cannot consume credits.
+      const videoType = req.body.type || "image-to-video";
+      const validatedData = videoType === "text-to-video"
+        ? insertTextToVideoSchema.parse(req.body)
+        : insertImageToVideoSchema.parse(req.body);
+
       const duration = Math.max(4, Math.min(12, req.body.duration || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
       const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 8 : 15;
@@ -1245,10 +1252,6 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         description: `视频生成消耗 ${creditsNeeded} 积分`,
       });
 
-      const videoType = req.body.type || "image-to-video";
-      const validatedData = videoType === "text-to-video" 
-        ? insertTextToVideoSchema.parse(req.body)
-        : insertImageToVideoSchema.parse(req.body);
       const generation = await storage.createVideoGeneration({ ...validatedData, userId });
 
       processVideoGeneration(generation.id, objectStorageService).catch(console.error);
@@ -1365,19 +1368,126 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         const imageDataUri = await loadImageAsBase64(generation.originalImageUrl);
         contentItems.push({
           type: "image_url",
-          image_url: { url: imageDataUri }
+          image_url: { url: imageDataUri },
+          // role:"reference_image" is only meaningful in omni mode; the
+          // standard endpoint ignores it. Tagging is harmless either way.
+          role: "reference_image",
         });
       }
 
+      // Extra reference images (omni mode). Loaded sequentially so a single
+      // failed reference logs clearly without aborting the whole job.
+      const additionalRefs = generation.additionalImageUrls || [];
+      for (const refPath of additionalRefs) {
+        try {
+          const refDataUri = await loadImageAsBase64(refPath);
+          contentItems.push({
+            type: "image_url",
+            image_url: { url: refDataUri },
+            role: "reference_image",
+          });
+          console.log(`✅ Added reference image: ${refPath}`);
+        } catch (e: any) {
+          console.warn(`⚠️ Skipping reference image ${refPath}: ${e?.message}`);
+        }
+      }
+
+      // Optional reference audio (omni mode). NOTE: we do NOT swallow errors
+      // here — if the user attached audio, they expect it to drive the
+      // soundtrack; silently dropping it would also flip useOmni back to
+      // standard mode and produce a totally different (and unpaid-for) result.
+      let audioAttached = false;
+      const REFERENCE_AUDIO_MAX_BYTES = 25 * 1024 * 1024; // 25MB hard cap
+      const guessAudioMime = (p: string): string => {
+        const ext = p.split("?")[0].split(".").pop()?.toLowerCase() || "mp3";
+        return ext === "wav" ? "audio/wav"
+          : ext === "m4a" ? "audio/mp4"
+          : ext === "ogg" ? "audio/ogg"
+          : "audio/mpeg";
+      };
+      const streamToCappedBuffer = async (
+        stream: NodeJS.ReadableStream,
+        cap: number,
+        label: string,
+      ): Promise<Buffer> => {
+        const chunks: Buffer[] = [];
+        let total = 0;
+        for await (const chunk of stream) {
+          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as any);
+          total += buf.length;
+          if (total > cap) {
+            throw new Error(`${label} 超過 ${Math.round(cap / 1024 / 1024)}MB 上限`);
+          }
+          chunks.push(buf);
+        }
+        return Buffer.concat(chunks);
+      };
+      if (generation.referenceAudioUrl) {
+        const audioPath = generation.referenceAudioUrl;
+        let audioBuffer: Buffer;
+        let mime = guessAudioMime(audioPath);
+        if (/^https?:\/\//i.test(audioPath)) {
+          // SSRF-guard remote URL fetches; reject redirects to keep the
+          // resolved IP equal to the asserted one.
+          ssrfAssertAllowedRemoteUrl(audioPath);
+          const resp = await fetch(audioPath, { redirect: "error" as any });
+          if (!resp.ok || !resp.body) {
+            throw new Error(`下載參考音訊失敗：HTTP ${resp.status}`);
+          }
+          const cl = Number(resp.headers.get("content-length") || 0);
+          if (cl && cl > REFERENCE_AUDIO_MAX_BYTES) {
+            throw new Error(`參考音訊超過 ${REFERENCE_AUDIO_MAX_BYTES / 1024 / 1024}MB 上限`);
+          }
+          const ct = resp.headers.get("content-type")?.split(";")[0]?.trim();
+          if (ct && /^audio\//i.test(ct)) mime = ct;
+          audioBuffer = await streamToCappedBuffer(
+            resp.body as any,
+            REFERENCE_AUDIO_MAX_BYTES,
+            "參考音訊",
+          );
+        } else {
+          const objectFile = await objectStorageService.getObjectEntityFile(audioPath);
+          audioBuffer = await streamToCappedBuffer(
+            objectFile.createReadStream(),
+            REFERENCE_AUDIO_MAX_BYTES,
+            "參考音訊",
+          );
+        }
+        const audioDataUri = `data:${mime};base64,${audioBuffer.toString("base64")}`;
+        contentItems.push({
+          type: "audio_url",
+          audio_url: { url: audioDataUri },
+          role: "reference_audio",
+        });
+        audioAttached = true;
+        console.log(
+          `✅ Added reference audio: ${generation.referenceAudioUrl} ` +
+          `(${(audioBuffer.length / 1024).toFixed(1)} KB, ${mime})`,
+        );
+      }
+
+      // Route through the omni endpoint whenever extra references / audio
+      // are present. Falls back to the standard endpoint for vanilla single-
+      // image (or text-only) jobs to preserve previous behaviour & cost.
+      const useOmni = additionalRefs.length > 0 || audioAttached;
+      const { SEEDDANCE_OMNI_ENDPOINT } = await import("./seedDanceV2");
+      if (useOmni && !SEEDDANCE_OMNI_ENDPOINT) {
+        throw new Error("全能模式未啟用：請在環境變數設定 ARK_VIDEO_OMNI_MODEL 後再使用參考圖/參考音訊功能。");
+      }
+      const modelId = useOmni ? SEEDDANCE_OMNI_ENDPOINT! : VIDEO_MODEL;
 
       const aspectRatio = generation.aspectRatio || "16:9";
       const requestBody: any = {
-        model: VIDEO_MODEL,
+        model: modelId,
         content: contentItems,
         duration: generation.duration || 5,
         ratio: aspectRatio,
         watermark: false,
       };
+      // Omni endpoint defaults generate_audio=true so that a reference audio
+      // can actually drive the soundtrack; standard mode keeps existing
+      // silent-video behaviour unless the caller explicitly opts in later.
+      if (useOmni) requestBody.generate_audio = true;
 
       console.log(`Creating video generation task...`);
       console.log(`Prompt: ${promptText} | duration: ${requestBody.duration}s | ratio: ${aspectRatio}`);
