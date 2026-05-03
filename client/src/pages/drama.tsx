@@ -7,6 +7,9 @@ import { NavigationHeader } from "./account";
 import { useUser } from "@/App";
 import type { DramaProject, DramaEpisode, DramaScene, CharacterLibraryItem, FourViewUrls } from "@shared/schema";
 import { Slider } from "@/components/ui/slider";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerFooter, DrawerClose } from "@/components/ui/drawer";
 
 const nid = () => Math.random().toString(36).slice(2, 10);
 
@@ -1310,6 +1313,7 @@ function EpisodeView({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { user } = useUser();
+  const isMobile = useIsMobile();
 
   const { data: episode, isLoading } = useQuery<DramaEpisode>({
     queryKey: ["/api/drama/episodes", episodeId],
@@ -1362,6 +1366,52 @@ function EpisodeView({
   // Compile crossfade (ms) between adjacent scenes — sent to /compile.
   // Slider exposes 0 / 200 / 400 / 800 ms (default 400 = subtle fade).
   const [compileCrossfadeMs, setCompileCrossfadeMs] = useState<number>(400);
+
+  // Mobile UX: long-press action sheet & inspector sheet
+  const [actionSheetIdx, setActionSheetIdx] = useState<number | null>(null);
+  const [mobileInspectorOpen, setMobileInspectorOpen] = useState(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressStartRef = useRef<{ x: number; y: number } | null>(null);
+  const longPressFiredRef = useRef(false);
+  const cancelLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+  useEffect(() => () => cancelLongPress(), []);
+  const makeLongPressHandlers = (idx: number) => ({
+    onTouchStart: (e: React.TouchEvent) => {
+      const t = e.touches[0];
+      longPressStartRef.current = { x: t.clientX, y: t.clientY };
+      longPressFiredRef.current = false;
+      cancelLongPress();
+      longPressTimerRef.current = setTimeout(() => {
+        longPressFiredRef.current = true;
+        if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+          navigator.vibrate(20);
+        }
+        setActionSheetIdx(idx);
+      }, 550);
+    },
+    onTouchMove: (e: React.TouchEvent) => {
+      const s = longPressStartRef.current;
+      if (!s) return;
+      const t = e.touches[0];
+      if (Math.abs(t.clientX - s.x) > 10 || Math.abs(t.clientY - s.y) > 10) {
+        cancelLongPress();
+      }
+    },
+    onTouchEnd: cancelLongPress,
+    onTouchCancel: cancelLongPress,
+    onContextMenu: (e: React.MouseEvent) => {
+      // Right-click also opens action sheet on touch devices that surface it
+      if (isMobile) {
+        e.preventDefault();
+        setActionSheetIdx(idx);
+      }
+    },
+  });
 
   useEffect(() => {
     if (episode) {
@@ -1811,8 +1861,264 @@ function EpisodeView({
     return ov === "on" ? true : ov === "off" ? false : !!episode.chainMode;
   });
 
+  // ─── Mobile Layout (single-column + horizontal swipe + bottom sheets) ───
+  const renderMobileLayout = () => {
+    const totalScenes = localScenes.length;
+    const imgDone = serverScenes.filter(s => s.imageStatus === "completed").length;
+    const imgGen = serverScenes.filter(s => s.imageStatus === "generating").length;
+    const imgFail = serverScenes.filter(s => s.imageStatus === "failed").length;
+    const vidTotal = serverScenes.filter(s => s.imageStatus === "completed").length;
+    const vidDone = serverScenes.filter(s => s.videoStatus === "completed").length;
+    const vidGen = serverScenes.filter(s => s.videoStatus === "generating").length;
+    const isCompiling = episode.compiledStatus === "compiling";
+    const imgPct = totalScenes > 0 ? Math.round((imgDone / totalScenes) * 100) : 0;
+    const vidPct = vidTotal > 0 ? Math.round((vidDone / vidTotal) * 100) : 0;
+    const anyBusy = imgGen > 0 || vidGen > 0 || isCompiling || episode.status === "generating";
+
+    return (
+      <>
+        {/* Mobile Top Bar */}
+        <div className="flex items-center gap-2 px-3 h-12 bg-white border-b border-[#e2e8f0] shrink-0">
+          <button onClick={onBack} className="text-[#64748b] text-sm shrink-0 px-1" data-testid="mobile-back">←</button>
+          <div className="flex-1 min-w-0">
+            <p className="text-[10px] text-[#94a3b8] truncate leading-tight">{project?.title}</p>
+            <p className="text-sm font-medium text-[#0f172a] truncate leading-tight">{episode.title}</p>
+          </div>
+          <button
+            onClick={() => saveScenesMutation.mutate(localScenes)}
+            disabled={saveScenesMutation.isPending}
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-[#f1f5f9] text-[#334155] disabled:opacity-50 shrink-0"
+            data-testid="mobile-save"
+          >
+            {saveScenesMutation.isPending ? "…" : "💾"}
+          </button>
+          <button
+            onClick={() => setShowAIDialog(true)}
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-[#6366f1]/10 text-[#4f46e5] shrink-0"
+            data-testid="mobile-ai-script"
+          >
+            🤖
+          </button>
+        </div>
+
+        {/* Mobile Progress Bar */}
+        <div className="bg-white border-b border-[#e2e8f0] px-4 py-2.5 space-y-2 shrink-0">
+          <div>
+            <div className="flex items-center justify-between text-[11px] mb-1">
+              <span className="text-[#475569] font-medium">
+                🎨 圖片 {imgDone}/{totalScenes}
+                {imgGen > 0 && <span className="ml-1.5 text-[#ca8a04] animate-pulse">● {imgGen} 生成中</span>}
+                {imgFail > 0 && <span className="ml-1.5 text-[#ef4444]">● {imgFail} 失敗</span>}
+              </span>
+              <span className="text-[#94a3b8]">{imgPct}%</span>
+            </div>
+            <div className="h-1.5 bg-[#f1f5f9] rounded-full overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] transition-all"
+                style={{ width: `${imgPct}%` }}
+              />
+            </div>
+          </div>
+          {vidTotal > 0 && (
+            <div>
+              <div className="flex items-center justify-between text-[11px] mb-1">
+                <span className="text-[#475569] font-medium">
+                  🎬 影片 {vidDone}/{vidTotal}
+                  {vidGen > 0 && <span className="ml-1.5 text-[#0ea5e9] animate-pulse">● {vidGen} 渲染中</span>}
+                </span>
+                <span className="text-[#94a3b8]">{vidPct}%</span>
+              </div>
+              <div className="h-1.5 bg-[#f1f5f9] rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-[#0ea5e9] to-[#a855f7] transition-all"
+                  style={{ width: `${vidPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+          {isCompiling && (
+            <div className="flex items-center gap-2 text-[11px] text-[#7c3aed]">
+              <Spinner color="#7c3aed" />
+              <span className="animate-pulse">影片合併中…</span>
+            </div>
+          )}
+        </div>
+
+        {/* Mobile Scene Strip — horizontally swipeable, snap-x */}
+        <div className="flex-1 overflow-y-hidden bg-[#f8fafc] relative">
+          <div
+            className="h-full overflow-x-auto overflow-y-hidden flex gap-4 px-5 py-4 snap-x snap-mandatory scroll-smooth"
+            style={{ WebkitOverflowScrolling: "touch" }}
+            data-testid="mobile-scene-strip"
+          >
+            {localScenes.map((scene, idx) => {
+              const ss = serverScenes[idx];
+              const imgUrl = ss ? getSceneImageUrl(ss) : null;
+              const vidUrl = ss ? getSceneVideoUrl(ss) : null;
+              const statusColor =
+                ss?.imageStatus === "completed" ? "#22c55e" :
+                ss?.imageStatus === "generating" ? "#ca8a04" :
+                ss?.imageStatus === "failed" ? "#ef4444" : "#cbd5e1";
+              const statusLabel =
+                ss?.imageStatus === "completed" ? "完成" :
+                ss?.imageStatus === "generating" ? "生成中" :
+                ss?.imageStatus === "failed" ? "失敗" : "待生成";
+              return (
+                <div
+                  key={scene.id}
+                  className="snap-center shrink-0 w-[78vw] max-w-[340px] flex flex-col"
+                  data-testid={`mobile-scene-card-${idx}`}
+                >
+                  <div
+                    {...makeLongPressHandlers(idx)}
+                    onClick={() => {
+                      if (longPressFiredRef.current) {
+                        longPressFiredRef.current = false;
+                        return;
+                      }
+                      setSelectedIdx(idx);
+                      setMobileInspectorOpen(true);
+                    }}
+                    className="relative aspect-[9/16] rounded-2xl overflow-hidden bg-white border-2 shadow-sm active:scale-[0.98] transition-transform select-none"
+                    style={{ borderColor: statusColor, touchAction: "pan-x" }}
+                  >
+                    {imgUrl ? (
+                      <img src={imgUrl} alt={scene.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
+                    ) : (
+                      <div className="w-full h-full flex flex-col items-center justify-center bg-[#f8fafc]">
+                        {ss?.imageStatus === "generating" ? (
+                          <><Spinner color="#ca8a04" /><span className="text-xs text-[#ca8a04] mt-2">生成中</span></>
+                        ) : ss?.imageStatus === "failed" ? (
+                          <span className="text-xs text-[#ef4444]">⚠ 生成失敗</span>
+                        ) : (
+                          <><span className="text-5xl mb-2">🎬</span><span className="text-xs text-[#94a3b8]">尚未生成</span></>
+                        )}
+                      </div>
+                    )}
+
+                    {/* top-left scene number badge */}
+                    <div className="absolute top-2 left-2 bg-[#0f172a]/85 text-white text-xs px-2 py-0.5 rounded-full font-medium">
+                      {scene.sceneNumber}
+                    </div>
+                    {/* status pill */}
+                    <div
+                      className="absolute top-2 right-2 text-[10px] px-2 py-0.5 rounded-full font-medium text-white"
+                      style={{ background: statusColor }}
+                    >
+                      {statusLabel}
+                    </div>
+                    {/* video badge */}
+                    {vidUrl && (
+                      <div className="absolute bottom-12 right-2 bg-[#a855f7]/90 text-white text-[10px] px-2 py-0.5 rounded-full">
+                        ▶ 影片
+                      </div>
+                    )}
+                    {/* chain badge */}
+                    {chainEffective[idx] && idx > 0 && (
+                      <div className="absolute bottom-12 left-2 bg-[#10b981] text-white text-[10px] px-2 py-0.5 rounded-full font-medium">
+                        🔗 銜接 #{idx}
+                      </div>
+                    )}
+                    {/* dark overlay for text */}
+                    <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/75 to-transparent p-3 pointer-events-none">
+                      <p className="text-white text-sm font-semibold truncate">{scene.title}</p>
+                      <p className="text-white/70 text-[11px] line-clamp-2">{scene.description || "（尚未填寫描述）"}</p>
+                    </div>
+                  </div>
+
+                  {/* Hint text */}
+                  <p className="text-center text-[10px] text-[#94a3b8] mt-2">
+                    輕點編輯 · 長按開啟操作
+                  </p>
+                </div>
+              );
+            })}
+
+            {/* Add scene card */}
+            {localScenes.length < 12 && (
+              <div className="snap-center shrink-0 w-[78vw] max-w-[340px] flex flex-col">
+                <button
+                  onClick={addScene}
+                  className="aspect-[9/16] rounded-2xl border-2 border-dashed border-[#cbd5e1] bg-white/60 flex flex-col items-center justify-center text-[#94a3b8] active:scale-[0.98] transition-transform"
+                  data-testid="mobile-add-scene"
+                >
+                  <span className="text-5xl mb-2">＋</span>
+                  <span className="text-sm font-medium">新增幕</span>
+                  <span className="text-[10px] mt-1">最多 12 幕</span>
+                </button>
+                <p className="text-center text-[10px] text-[#94a3b8] mt-2">滑動瀏覽分鏡</p>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Mobile Bottom Action Bar */}
+        <div className="bg-white border-t border-[#e2e8f0] px-3 py-2 shrink-0 flex items-center gap-2">
+          <div className="text-[10px] text-[#94a3b8] flex-1 leading-tight">
+            積分 <span className="font-semibold text-[#334155]">{user?.credits ?? 0}</span>
+            <br />
+            待生成 {pendingCount} 幕
+          </div>
+          {(() => {
+            // Animate-all if all images done
+            const animatable = serverScenes.filter(s => s.imageStatus === "completed" && s.bunnyUrl && !(s.videoStatus === "completed" && s.videoBunnyUrl) && s.videoStatus !== "generating").length;
+            const allVidsDone = serverScenes.length > 0 && serverScenes.every(s => s.videoBunnyUrl || s.videoUrl);
+            const showCompile = allVidsDone && !isCompiling;
+            if (showCompile) {
+              return (
+                <button
+                  onClick={() => compileMutation.mutate(compileCrossfadeMs)}
+                  disabled={compileMutation.isPending}
+                  className="px-3 py-2 rounded-lg bg-[#10b981] text-white text-xs font-semibold shrink-0 disabled:opacity-50"
+                  data-testid="mobile-compile"
+                >
+                  🎞️ 合併影片
+                </button>
+              );
+            }
+            if (pendingCount === 0 && animatable > 0) {
+              const batchCost = animatable * 5 * 8;
+              return (
+                <button
+                  onClick={() => {
+                    if (!confirm(`為 ${animatable} 幕生成影片（5秒 720P + AI 音效），共消耗 ${batchCost} 積分？`)) return;
+                    animateAllMutation.mutate({ duration: 5, resolution: "720p", useOmniMode: false });
+                  }}
+                  disabled={animateAllMutation.isPending || (user?.credits ?? 0) < batchCost}
+                  className="px-3 py-2 rounded-lg bg-[#0ea5e9] text-white text-xs font-semibold shrink-0 disabled:opacity-50"
+                  data-testid="mobile-animate-all"
+                >
+                  🎬 生成影片 (-{batchCost})
+                </button>
+              );
+            }
+            return (
+              <button
+                onClick={handleGenerateImages}
+                disabled={!hasEnoughCredits || generateImagesMutation.isPending || pendingCount === 0}
+                className="px-3 py-2 rounded-lg bg-[#6366f1] text-white text-xs font-semibold shrink-0 disabled:opacity-50"
+                data-testid="mobile-generate-images"
+              >
+                {generateImagesMutation.isPending ? "⏳…" : `🎨 生成圖片 (-${creditCost})`}
+              </button>
+            );
+          })()}
+        </div>
+
+        {/* Tiny status strip */}
+        {anyBusy && (
+          <div className="bg-[#fef3c7] border-t border-[#fde68a] px-3 py-1 text-[10px] text-[#92400e] text-center shrink-0 animate-pulse">
+            ⟳ 背景處理中，可繼續滑動瀏覽
+          </div>
+        )}
+      </>
+    );
+  };
+
   return (
     <div className="h-[calc(100vh-56px)] flex flex-col bg-[#f8fafc]">
+
+      {isMobile ? renderMobileLayout() : (<>
 
       {/* ── Top Bar ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 px-4 h-12 bg-[#ffffff] border-b border-[#e2e8f0] shrink-0">
@@ -2646,6 +2952,8 @@ function EpisodeView({
         </span>
       </div>
 
+      </>)}
+
       {/* Animate Dialog */}
       <Modal open={!!animateDialog} onClose={() => setAnimateDialog(null)} title="🎬 生成動畫影片">
         {animateDialog && (
@@ -2780,6 +3088,210 @@ function EpisodeView({
           saveScenesMutation.mutate(merged);
         }}
       />
+
+      {/* Mobile-mode replace-image file input (always mounted when mobile) */}
+      {isMobile && (
+        <input ref={replaceFileRef} type="file" accept="image/*" className="hidden"
+          onChange={async e => {
+            const file = e.target.files?.[0];
+            if (!file || selectedIdx === null) return;
+            const path = await uploadToObjectStorage(file);
+            replaceImageMutation.mutate({ sceneIdx: selectedIdx, objectPath: path });
+            if (e.target) e.target.value = "";
+          }} />
+      )}
+
+      {/* ── Mobile: Long-Press Action Drawer ─────────────────────────────── */}
+      {isMobile && (() => {
+        const idx = actionSheetIdx;
+        const open = idx !== null;
+        const scene = idx !== null ? localScenes[idx] : null;
+        const ss = idx !== null ? serverScenes[idx] : null;
+        const closeSheet = () => setActionSheetIdx(null);
+        return (
+          <Drawer open={open} onOpenChange={(o) => { if (!o) closeSheet(); }}>
+            <DrawerContent className="bg-white">
+              {scene && (
+                <>
+                  <DrawerHeader>
+                    <DrawerTitle className="text-left flex items-center gap-2">
+                      <span className="bg-[#0f172a] text-white text-xs px-2 py-0.5 rounded-full">{scene.sceneNumber}</span>
+                      <span className="truncate">{scene.title}</span>
+                    </DrawerTitle>
+                    <p className="text-[11px] text-[#94a3b8] text-left line-clamp-2">{scene.description || "（尚未填寫描述）"}</p>
+                  </DrawerHeader>
+                  <div className="px-4 pb-2 space-y-2">
+                    <button
+                      onClick={() => { closeSheet(); setSelectedIdx(idx!); setMobileInspectorOpen(true); }}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#f1f5f9] hover:bg-[#e2e8f0] text-[#0f172a] text-sm font-medium transition-colors"
+                      data-testid="action-edit-scene"
+                    >
+                      <span className="text-lg">✏️</span><span>編輯場景內容</span>
+                    </button>
+
+                    {(ss?.imageStatus === "completed" || ss?.imageStatus === "failed") && (
+                      <button
+                        onClick={() => {
+                          if (regenerateSceneMutation.isPending) return;
+                          regenerateSceneMutation.mutate({ sceneIdx: idx! });
+                          closeSheet();
+                        }}
+                        disabled={regenerateSceneMutation.isPending || (user?.credits ?? 0) < 3}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#6366f1]/10 text-[#4f46e5] text-sm font-medium disabled:opacity-50"
+                        data-testid="action-regenerate"
+                      >
+                        <span className="text-lg">🔄</span><span>重新生成圖片 (-3 積分)</span>
+                      </button>
+                    )}
+
+                    {ss?.imageStatus === "completed" && ss?.videoStatus !== "completed" && ss?.videoStatus !== "generating" && (
+                      <button
+                        onClick={() => {
+                          const hasFrames = !!(ss?.firstFrameUrl && ss?.lastFrameUrl);
+                          setAnimUseFirstLast(!!scene.useFirstLastFrame && hasFrames);
+                          setAnimateDialog({ sceneIdx: idx! });
+                          closeSheet();
+                        }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#7c3aed]/10 text-[#7c3aed] text-sm font-medium"
+                        data-testid="action-animate"
+                      >
+                        <span className="text-lg">🎬</span><span>生成動畫影片</span>
+                      </button>
+                    )}
+
+                    {ss?.imageStatus === "completed" && (
+                      <button
+                        onClick={() => { closeSheet(); setSelectedIdx(idx!); replaceFileRef.current?.click(); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#0ea5e9]/10 text-[#0369a1] text-sm font-medium"
+                        data-testid="action-replace"
+                      >
+                        <span className="text-lg">🖼</span><span>替換圖片</span>
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        if (!confirm(`確定刪除第 ${scene.sceneNumber} 幕？`)) return;
+                        removeScene(idx!);
+                        closeSheet();
+                      }}
+                      disabled={localScenes.length <= 2}
+                      className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#ef4444]/10 text-[#ef4444] text-sm font-medium disabled:opacity-50"
+                      data-testid="action-delete"
+                    >
+                      <span className="text-lg">✕</span><span>刪除此幕</span>
+                    </button>
+                  </div>
+                  <DrawerFooter className="pt-2">
+                    <DrawerClose asChild>
+                      <button className="w-full py-2.5 rounded-xl text-[#64748b] text-sm" data-testid="action-cancel">
+                        取消
+                      </button>
+                    </DrawerClose>
+                  </DrawerFooter>
+                </>
+              )}
+            </DrawerContent>
+          </Drawer>
+        );
+      })()}
+
+      {/* ── Mobile: Inspector Sheet (slim editor) ────────────────────────── */}
+      {isMobile && (
+        <Sheet
+          open={mobileInspectorOpen && selectedScene !== null}
+          onOpenChange={(o) => { setMobileInspectorOpen(o); if (!o) setSelectedIdx(null); }}
+        >
+          <SheetContent side="bottom" className="h-[88vh] p-0 flex flex-col rounded-t-2xl">
+            {selectedScene && (
+              <>
+                <SheetHeader className="px-4 py-3 border-b border-[#e2e8f0] shrink-0">
+                  <SheetTitle className="text-left flex items-center gap-2">
+                    <span className="text-xs text-[#6366f1] font-mono">SCENE {(selectedIdx ?? 0) + 1}</span>
+                    <span className="text-sm">場景屬性</span>
+                  </SheetTitle>
+                </SheetHeader>
+                <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  {selectedServerScene && getSceneImageUrl(selectedServerScene) && (
+                    <div className="rounded-xl overflow-hidden border border-[#e2e8f0]">
+                      <img src={getSceneImageUrl(selectedServerScene)!} alt="scene" className="w-full object-cover" />
+                    </div>
+                  )}
+                  {selectedServerScene && getSceneVideoUrl(selectedServerScene) && (
+                    <div className="rounded-xl overflow-hidden border border-[#e2e8f0]">
+                      <video src={getSceneVideoUrl(selectedServerScene)!} controls className="w-full" />
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">幕名稱</label>
+                    <DarkInput value={selectedScene.title} onChange={v => updateScene(selectedIdx!, { title: v })} placeholder="幕名稱" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">場景描述</label>
+                    <DarkTextarea value={selectedScene.description} onChange={v => updateScene(selectedIdx!, { description: v })} placeholder="描述場景內容..." rows={4} />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">台詞（選填）</label>
+                    <DarkInput value={selectedScene.dialogue || ""} onChange={v => updateScene(selectedIdx!, { dialogue: v })} placeholder="人物台詞" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">攝影機運鏡</label>
+                    <DarkSelect
+                      value={selectedScene.cameraMovement || "none"}
+                      onChange={v => updateScene(selectedIdx!, { cameraMovement: v === "none" ? "" : v })}
+                      options={CAMERA_MOVEMENTS}
+                    />
+                  </div>
+                  {((project?.characterAUrls ?? []).length > 0 || (project?.characterBUrls ?? []).length > 0) && (
+                    <div>
+                      <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">角色出場</label>
+                      <div className="flex gap-2">
+                        {(project?.characterAUrls ?? []).length > 0 && (
+                          <button onClick={() => updateScene(selectedIdx!, { useCharA: !selectedScene.useCharA })}
+                            className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharA ? "bg-[#6366f1]/10 border-[#6366f1]/40 text-[#4f46e5]" : "border-[#cbd5e1] text-[#94a3b8]"}`}>
+                            角色A {selectedScene.useCharA ? "✓" : "×"}
+                          </button>
+                        )}
+                        {(project?.characterBUrls ?? []).length > 0 && (
+                          <button onClick={() => updateScene(selectedIdx!, { useCharB: !selectedScene.useCharB })}
+                            className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharB ? "bg-[#f59e0b]/10 border-[#f59e0b]/40 text-[#d97706]" : "border-[#cbd5e1] text-[#94a3b8]"}`}>
+                            角色B {selectedScene.useCharB ? "✓" : "×"}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                  <div className="border-t border-[#e2e8f0] pt-3 space-y-2">
+                    <p className="text-[10px] text-[#64748b] uppercase tracking-wide">動作</p>
+                    <button
+                      onClick={() => { setMobileInspectorOpen(false); setActionSheetIdx(selectedIdx); }}
+                      className="w-full py-2.5 rounded-xl bg-[#f1f5f9] text-[#0f172a] text-sm font-medium"
+                    >
+                      ⚡ 開啟操作選單（重生／替換／刪除）
+                    </button>
+                  </div>
+                </div>
+                <div className="border-t border-[#e2e8f0] p-3 shrink-0 flex gap-2">
+                  <button
+                    onClick={() => { saveScenesMutation.mutate(localScenes); setMobileInspectorOpen(false); }}
+                    disabled={saveScenesMutation.isPending}
+                    className="flex-1 py-2.5 rounded-xl bg-[#6366f1] text-white text-sm font-semibold disabled:opacity-50"
+                    data-testid="mobile-inspector-save"
+                  >
+                    {saveScenesMutation.isPending ? "儲存中…" : "💾 儲存變更"}
+                  </button>
+                  <button
+                    onClick={() => setMobileInspectorOpen(false)}
+                    className="px-4 py-2.5 rounded-xl bg-[#f1f5f9] text-[#64748b] text-sm"
+                  >
+                    關閉
+                  </button>
+                </div>
+              </>
+            )}
+          </SheetContent>
+        </Sheet>
+      )}
 
       <style>{`
         @keyframes dash { to { stroke-dashoffset: -20; } }
