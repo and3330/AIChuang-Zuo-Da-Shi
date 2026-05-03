@@ -4,7 +4,10 @@ import connectPgSimple from "connect-pg-simple";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { storage } from "./storage";
-import { startTelegramBot } from "./telegramBot";
+// Telegram bot disabled — was causing 409 polling conflicts when prod and
+// dev both polled the same bot token. Re-enable by restoring this import
+// and the startTelegramBot() call in server.listen below.
+// import { startTelegramBot } from "./telegramBot";
 
 const app = express();
 app.set("trust proxy", 1);
@@ -129,6 +132,6 @@ app.use((req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
-    startTelegramBot();
+    // startTelegramBot();
   });
 })();
