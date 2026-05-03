@@ -494,6 +494,10 @@ export class DatabaseStorage implements IStorage {
       type: insertGeneration.type,
       originalImageUrl: "originalImageUrl" in insertGeneration ? insertGeneration.originalImageUrl : null,
       additionalImageUrls: "additionalImageUrls" in insertGeneration ? (insertGeneration.additionalImageUrls ?? []) : [],
+      // Persist reference audio for BOTH image-to-video and text-to-video
+      // omni paths. Without this, the field is dropped at the DB layer and
+      // processVideoGeneration never sees it (omni audio silently disabled).
+      referenceAudioUrl: (insertGeneration as any).referenceAudioUrl ?? null,
       prompt: insertGeneration.prompt,
       duration,
       cameraFixed: insertGeneration.cameraFixed ?? false,

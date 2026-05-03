@@ -469,6 +469,29 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
     });
   });
 
+  // Lightweight personal video history feed for the home.tsx "我的影片"
+  // sheet. Returns the caller's most recent video generations with Bunny
+  // CDN URLs normalized so the frontend can render thumbnails / players
+  // without an extra round trip.
+  app.get("/api/my-videos", async (req, res) => {
+    if (!req.session.userId) {
+      return res.status(401).json({ error: "未登入" });
+    }
+    try {
+      const raw = await storage.getUserVideoGenerations(req.session.userId);
+      const videoGenerations = raw.slice(0, 50).map(g => {
+        const r: any = { ...g };
+        r.bunnyVideoUrl = fixBunnyCdnUrl(r.bunnyVideoUrl) as string;
+        if (r.bunnyVideoUrl) r.generatedVideoUrl = r.bunnyVideoUrl;
+        return r;
+      });
+      res.json({ videoGenerations });
+    } catch (error) {
+      console.error("Error fetching my videos:", error);
+      res.status(500).json({ error: "獲取影片列表失敗" });
+    }
+  });
+
   // ===== CREDIT ROUTES =====
 
   app.post("/api/credits/topup", requireAuth, async (req, res) => {

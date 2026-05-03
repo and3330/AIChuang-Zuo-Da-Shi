@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/use-seo";
 import type { UploadResult } from "@uppy/core";
@@ -80,6 +81,16 @@ export default function Home() {
   // 2.0 omni endpoint; otherwise the standard endpoint is used as before.
   const [videoReferenceImages, setVideoReferenceImages] = useState<{ url: string; path: string }[]>([]);
   const [videoReferenceAudio, setVideoReferenceAudio] = useState<{ path: string; name: string } | null>(null);
+  // Text-to-video reference audio (BGM / 配音). Symmetric with the
+  // image-to-video equivalent so users on the pure text path can still drive
+  // the soundtrack via the omni endpoint.
+  const [textToVideoRefAudio, setTextToVideoRefAudio] = useState<{ path: string; name: string } | null>(null);
+  // Elapsed-time tick for the active video poll. Populated by an effect
+  // below so the progress card can show "已生成 32s" instead of just a
+  // spinner during the 1–3 minute SeedDance run.
+  const [videoElapsedSec, setVideoElapsedSec] = useState(0);
+  // "我的影片" history sheet open state.
+  const [myVideosOpen, setMyVideosOpen] = useState(false);
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
 
@@ -208,6 +219,32 @@ export default function Home() {
       const gen = query.state.data as VideoGeneration | undefined;
       return (gen?.status === "pending" || gen?.status === "processing") ? 3000 : false;
     },
+  });
+
+  // Tick once per second while a video is in flight so the progress card
+  // can show a live "已生成 32s" stopwatch. We anchor the start time to
+  // when currentVideoGenerationId is FIRST set (not on every status
+  // transition) so the counter doesn't reset when pending → processing.
+  useEffect(() => {
+    if (!currentVideoGenerationId) {
+      setVideoElapsedSec(0);
+      return;
+    }
+    const startedAt = Date.now();
+    setVideoElapsedSec(0);
+    const t = window.setInterval(() => {
+      setVideoElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [currentVideoGenerationId]);
+  // Fetch the user's recent videos for the "我的影片" history sheet.
+  // Only enabled when the sheet is opened so it does not hammer the API
+  // for visitors who never use the feature.
+  type MyVideosResponse = { videoGenerations: VideoGeneration[] };
+  const { data: meVideosData, isLoading: meVideosLoading } = useQuery<MyVideosResponse>({
+    queryKey: ["/api/my-videos"],
+    enabled: myVideosOpen,
+    staleTime: 30_000,
   });
 
   const { data: storyGeneration } = useQuery<StoryGeneration>({
@@ -725,14 +762,18 @@ export default function Home() {
         toast({ title: "缺少描述", description: "請輸入影片內容描述。", variant: "destructive" });
         return;
       }
-      videoGenerateMutation.mutate({
+      const t2vData: any = {
         type: "text-to-video",
         prompt: videoPrompt.trim(),
         duration: videoDuration,
         cameraFixed,
         aspectRatio: videoAspectRatio,
         resolution: videoResolution,
-      });
+      };
+      if (textToVideoRefAudio) {
+        t2vData.referenceAudioUrl = textToVideoRefAudio.path;
+      }
+      videoGenerateMutation.mutate(t2vData);
     } else if (mode === "image-to-video") {
       if (!uploadedImagePath) {
         toast({ title: "缺少圖片", description: "請先上傳圖片。", variant: "destructive" });
@@ -775,6 +816,7 @@ export default function Home() {
     setIsMultiImageMode(false);
     setVideoReferenceImages([]);
     setVideoReferenceAudio(null);
+    setTextToVideoRefAudio(null);
   };
 
   const handleVideoRefImageUploadComplete = async (
@@ -795,20 +837,22 @@ export default function Home() {
     }
   };
 
-  const handleVideoRefAudioUploadComplete = async (
-    result: UploadResult<Record<string, unknown>, Record<string, unknown>>,
-  ) => {
+  const makeAudioUploadHandler = (
+    setter: (v: { path: string; name: string }) => void,
+  ) => async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
     const f = result.successful?.[0];
     if (!f) return;
     try {
       const resp = await apiRequest("PUT", "/api/objects/set-path", { imageURL: f.uploadURL });
       const data = await resp.json();
-      setVideoReferenceAudio({ path: data.objectPath, name: f.name || "參考音訊" });
+      setter({ path: data.objectPath, name: f.name || "參考音訊" });
       toast({ title: "參考音訊上傳成功", description: f.name || "" });
     } catch {
       toast({ title: "上傳錯誤", description: "處理上傳音訊失敗。", variant: "destructive" });
     }
   };
+  const handleVideoRefAudioUploadComplete = makeAudioUploadHandler(setVideoReferenceAudio);
+  const handleTextToVideoRefAudioUploadComplete = makeAudioUploadHandler(setTextToVideoRefAudio);
 
   const handleAdditionalUploadComplete = async (result: UploadResult<Record<string, unknown>, Record<string, unknown>>) => {
     if (result.successful && result.successful[0]) {
@@ -916,9 +960,104 @@ export default function Home() {
   const isVideoMode = mode === "image-to-video" || mode === "text-to-video";
   const isStoryMode = mode === "story";
 
+  // ── 我的影片 history sheet ─────────────────────────────────────────
+  const myVideosSheet = (
+    <Sheet open={myVideosOpen} onOpenChange={setMyVideosOpen}>
+      <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle className="flex items-center gap-2">
+            <i className="fas fa-film text-purple-500"></i>我的影片
+          </SheetTitle>
+        </SheetHeader>
+        <div className="mt-4 space-y-3">
+          {meVideosLoading && (
+            <div className="text-center py-10 text-gray-500 text-sm">
+              <i className="fas fa-spinner fa-spin mr-2"></i>載入中...
+            </div>
+          )}
+          {!meVideosLoading && (meVideosData?.videoGenerations?.length ?? 0) === 0 && (
+            <div className="text-center py-10 text-gray-500 text-sm">
+              還沒有影片，趕快開始生成吧！
+            </div>
+          )}
+          {meVideosData?.videoGenerations?.slice(0, 30).map((v) => (
+            <div
+              key={v.id}
+              className="border border-gray-200 rounded-lg p-3 bg-white space-y-2"
+            >
+              <div className="flex items-center justify-between gap-2 text-xs">
+                <span className="px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
+                  {v.type === "text-to-video" ? "文字生影片" : "圖片生影片"}
+                </span>
+                <span
+                  className={
+                    v.status === "completed"
+                      ? "text-green-600"
+                      : v.status === "failed"
+                      ? "text-red-600"
+                      : "text-amber-600"
+                  }
+                >
+                  {v.status === "completed"
+                    ? "✅ 完成"
+                    : v.status === "failed"
+                    ? "❌ 失敗"
+                    : "⏳ 處理中"}
+                </span>
+              </div>
+              {v.generatedVideoUrl && v.status === "completed" ? (
+                <video
+                  controls
+                  className="w-full rounded bg-gray-900 max-h-56"
+                  src={v.generatedVideoUrl}
+                  preload="metadata"
+                />
+              ) : v.originalImageUrl ? (
+                <img
+                  src={v.originalImageUrl}
+                  alt="source"
+                  className="w-full max-h-40 object-cover rounded bg-gray-100"
+                />
+              ) : null}
+              <p className="text-xs text-gray-700 line-clamp-2">{v.prompt}</p>
+              <div className="flex items-center justify-between text-[11px] text-gray-500">
+                <span>
+                  {v.duration || 5}s · {v.resolution === "720p" ? "720P" : "1080P"} ·{" "}
+                  {v.creditsUsed ?? Math.round((v.duration || 5) * (v.resolution === "720p" ? 8 : 15))} 積分
+                </span>
+                {v.generatedVideoUrl && v.status === "completed" && (
+                  <a
+                    href={v.generatedVideoUrl}
+                    download={`video-${v.id}.mp4`}
+                    className="text-purple-600 hover:text-purple-800"
+                  >
+                    <i className="fas fa-download mr-1"></i>下載
+                  </a>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+
   return (
     <div className="bg-gray-50 min-h-screen font-inter">
       <NavigationHeader />
+      {myVideosSheet}
+      {/* 我的影片 floating button — only shown for logged-in users on
+          video modes, so visitors don't see a useless button. */}
+      {user && isVideoMode && (
+        <button
+          type="button"
+          onClick={() => setMyVideosOpen(true)}
+          className="fixed bottom-4 right-4 z-30 px-4 py-2.5 rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-lg flex items-center gap-2 text-sm"
+          data-testid="button-my-videos"
+        >
+          <i className="fas fa-film"></i>我的影片
+        </button>
+      )}
 
       <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white py-2 overflow-hidden">
         <div className="animate-marquee whitespace-nowrap text-sm font-medium">
@@ -1545,6 +1684,48 @@ export default function Home() {
                   </div>
                 </div>
 
+                {/* 參考音訊 (omni mode for text-to-video) */}
+                <div className="border border-purple-200 bg-purple-50/40 rounded-xl p-4 space-y-2">
+                  <Label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
+                    <i className="fas fa-music text-purple-500"></i>
+                    參考音訊 <span className="text-gray-400">（選填，BGM / 配音，最大 25MB）</span>
+                  </Label>
+                  {textToVideoRefAudio ? (
+                    <div className="flex items-center justify-between gap-3 px-3 py-2 bg-white border border-purple-200 rounded-lg">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <i className="fas fa-file-audio text-purple-500"></i>
+                        <span className="text-sm text-gray-700 truncate">{textToVideoRefAudio.name}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setTextToVideoRefAudio(null)}
+                        className="text-red-500 hover:text-red-700 text-xs flex items-center gap-1 shrink-0"
+                      >
+                        <i className="fas fa-times"></i>移除
+                      </button>
+                    </div>
+                  ) : (
+                    <UnifiedUploader
+                      maxNumberOfFiles={1}
+                      maxFileSize={25 * 1024 * 1024}
+                      acceptedFileTypes={["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a", "audio/ogg"]}
+                      acceptedFormatsLabel="MP3、WAV、M4A、OGG"
+                      onGetUploadParameters={handleGetUploadParameters}
+                      onComplete={handleTextToVideoRefAudioUploadComplete}
+                      onError={handleUploadError}
+                      className="w-full"
+                    >
+                      上傳參考音訊
+                    </UnifiedUploader>
+                  )}
+                  {textToVideoRefAudio && (
+                    <div className="text-xs text-purple-700 bg-purple-100/70 rounded px-2 py-1.5 flex items-center gap-1.5">
+                      <i className="fas fa-bolt"></i>
+                      已啟用全能模式：將以您的參考音訊作為影片配樂/配音生成。
+                    </div>
+                  )}
+                </div>
+
                 <div>
                   <Label className="text-sm font-medium text-gray-700">影片解析度</Label>
                   <div className="mt-1.5 grid grid-cols-2 gap-2">
@@ -1737,7 +1918,7 @@ export default function Home() {
                           參考圖片 <span className="text-gray-400">（{videoReferenceImages.length}/3）</span>
                         </Label>
                         {videoReferenceImages.length > 0 && (
-                          <div className="grid grid-cols-3 gap-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                             {videoReferenceImages.map((img, idx) => (
                               <div key={idx} className="relative group">
                                 <img src={img.url} alt={`ref-${idx}`} className="w-full h-20 object-cover rounded border border-purple-200" />
@@ -2622,8 +2803,22 @@ export default function Home() {
                   <p className="text-gray-500 text-sm">
                     {isVideoMode ? "影片生成需要 1-3 分鐘，請耐心等待..." : "這可能需要一些時間..."}
                   </p>
+                  {isVideoMode && videoElapsedSec > 0 && (
+                    <p className="text-purple-700 text-sm font-medium">
+                      <i className="fas fa-stopwatch mr-1"></i>
+                      已生成 {Math.floor(videoElapsedSec / 60)}:{String(videoElapsedSec % 60).padStart(2, "0")}
+                      <span className="text-gray-400 ml-2">（一般 60–180 秒）</span>
+                    </p>
+                  )}
                   <div className="w-full bg-gray-200 rounded-full h-1.5 max-w-sm mx-auto">
-                    <div className={`${isVideoMode ? "bg-purple-500" : "bg-blue-500"} h-1.5 rounded-full animate-pulse`} style={{width: "45%"}} />
+                    <div
+                      className={`${isVideoMode ? "bg-purple-500" : "bg-blue-500"} h-1.5 rounded-full transition-all`}
+                      style={{
+                        width: isVideoMode
+                          ? `${Math.min(95, 10 + (videoElapsedSec / 180) * 85)}%`
+                          : "45%",
+                      }}
+                    />
                   </div>
                 </div>
               </CardContent>

@@ -201,6 +201,10 @@ export const insertImageToVideoSchema = z.object({
 export const insertTextToVideoSchema = z.object({
   type: z.literal("text-to-video"),
   prompt: z.string(),
+  /** Optional reference audio (object-storage path or HTTP URL). When set,
+   *  text-to-video also routes through the SeedDance 2.0 omni endpoint with
+   *  generate_audio=true so the supplied audio drives the soundtrack. */
+  referenceAudioUrl: z.string().optional(),
   duration: z.number().min(2).max(12).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),
   aspectRatio: z.enum(["16:9", "9:16", "1:1"]).optional().default("16:9"),
