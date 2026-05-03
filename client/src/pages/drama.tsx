@@ -968,12 +968,12 @@ function ImportScriptModal({
     <Modal open={open} onClose={onClose} title="📄 從劇本匯入">
       <div className="space-y-4">
         <p className="text-xs text-[#64748b]">
-          上傳故事原文（TXT/DOCX）或直接貼入文字，AI 會自動拆集、抽出主要角色（會自動加到角色庫）並產生分鏡。
+          上傳故事原文（TXT / DOCX / PDF）或直接貼入文字，AI 會自動拆集、抽出主要角色（會自動加到角色庫）並產生分鏡。
         </p>
 
         <div>
-          <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">劇本檔案（TXT / DOCX）</label>
-          <input ref={fileRef} type="file" accept=".txt,.docx" className="hidden"
+          <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">劇本檔案（TXT / DOCX / PDF）</label>
+          <input ref={fileRef} type="file" accept=".txt,.docx,.pdf" className="hidden"
             onChange={e => handleFile(e.target.files?.[0] ?? null)} />
           <button onClick={() => fileRef.current?.click()}
             className="w-full p-3 rounded-lg border-2 border-dashed border-[#cbd5e1] hover:border-[#6366f1] text-sm text-[#64748b] hover:text-[#4f46e5] transition-all"
@@ -1983,7 +1983,7 @@ function EpisodeView({
                     style={{ borderColor: statusColor, touchAction: "pan-x" }}
                   >
                     {imgUrl ? (
-                      <img src={imgUrl} alt={scene.title} className="w-full h-full object-cover pointer-events-none" draggable={false} />
+                      <img src={imgUrl} alt={scene.title} loading="lazy" decoding="async" className="w-full h-full object-cover pointer-events-none" draggable={false} />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-[#f8fafc]">
                         {ss?.imageStatus === "generating" ? (
@@ -2506,7 +2506,7 @@ function EpisodeView({
                     style={{ borderColor: isSelected ? "#6366f1" : statusColor, boxShadow: isSelected ? "0 0 16px rgba(99,102,241,0.3)" : "none" }}>
                     <div className="aspect-[9/16] bg-[#f8fafc] relative">
                       {imgUrl ? (
-                        <img src={imgUrl} alt={scene.title} className="w-full h-full object-cover" />
+                        <img src={imgUrl} alt={scene.title} loading="lazy" decoding="async" className="w-full h-full object-cover" />
                       ) : (
                         <div className="w-full h-full flex flex-col items-center justify-center">
                           {ss?.imageStatus === "generating" ? (
@@ -2765,6 +2765,37 @@ function EpisodeView({
                             <option value="prevMain">上一幕主圖</option>
                             <option value="custom">自訂上傳圖</option>
                           </select>
+                          {/* Bulk apply: copy this refSource + chainModeOverride
+                              to every other scene from #2 onwards. Saves users
+                              from clicking through every幕 to set the same
+                              continuity behaviour. */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (refSource === "custom") {
+                                toast({
+                                  title: "無法批次套用「自訂上傳圖」",
+                                  description: "自訂圖每幕不同，請改選其他來源再套用。",
+                                  variant: "destructive",
+                                });
+                                return;
+                              }
+                              const targetCount = Math.max(0, localScenes.length - 1);
+                              if (targetCount === 0) return;
+                              if (!confirm(`將目前的銜接設定（來源：${refSource}、模式：${ov}）套用至全部 ${targetCount} 幕？`)) return;
+                              setLocalScenes(prev => prev.map((s, i) =>
+                                i === 0
+                                  ? s
+                                  : { ...s, chainRefSource: refSource as DramaScene["chainRefSource"], chainModeOverride: ov as DramaScene["chainModeOverride"] }
+                              ));
+                              toast({ title: `✅ 已套用至 ${targetCount} 幕，記得按「💾 儲存」` });
+                            }}
+                            className="w-full mt-1 text-[10px] py-1 rounded-md border border-[#10b981]/40 text-[#047857] bg-[#10b981]/5 hover:bg-[#10b981]/10 transition-colors"
+                            data-testid="button-apply-chain-to-all"
+                            title="把目前這幕的銜接來源與模式套用到其他每一幕"
+                          >
+                            ⤵ 套用至全部幕（{Math.max(0, localScenes.length - 1)} 幕）
+                          </button>
                         </div>
 
                         <ChainRefCustomUploader

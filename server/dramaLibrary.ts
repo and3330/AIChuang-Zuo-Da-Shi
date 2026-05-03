@@ -330,12 +330,31 @@ export function registerDramaLibraryRoutes(
             error: `檔案太大（${(buffer.length / 1024 / 1024).toFixed(1)} MB），上限 2 MB，請分段上傳。`
           });
         }
-        if (fileName?.toLowerCase().endsWith(".docx")) {
+        const lowerName = fileName?.toLowerCase() ?? "";
+        if (lowerName.endsWith(".docx")) {
           try {
             const result = await mammoth.extractRawText({ buffer });
             rawText = result.value.trim();
           } catch (parseErr: any) {
             return res.status(400).json({ error: `DOCX 解析失敗：${parseErr.message || "檔案可能損毀"}` });
+          }
+        } else if (lowerName.endsWith(".pdf")) {
+          // pdf-parse-fork is the maintained ESM-friendly fork of pdf-parse;
+          // it returns { text } for the whole document. Wrap in try so a
+          // password-protected or scanned-image PDF doesn't 500.
+          try {
+            // @ts-ignore — pdf-parse-fork has no bundled .d.ts; we cast result to any.
+            const pdfMod: any = await import("pdf-parse-fork");
+            const pdfParse = pdfMod.default || pdfMod;
+            const result = await pdfParse(buffer);
+            rawText = (result?.text || "").trim();
+            if (!rawText) {
+              return res.status(400).json({
+                error: "PDF 內容無法擷取（可能是掃描檔或加密檔），請改用 TXT/DOCX。"
+              });
+            }
+          } catch (parseErr: any) {
+            return res.status(400).json({ error: `PDF 解析失敗：${parseErr.message || "檔案可能損毀"}` });
           }
         } else {
           rawText = buffer.toString("utf-8").trim();

@@ -1,6 +1,6 @@
 import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, type StoryGeneration, type InsertStoryGeneration, type StoryScene, type DramaProject, type DramaEpisode, type InsertDramaProject, type InsertDramaEpisode, type CharacterLibraryItem, type SceneLibraryItem, type InsertCharacterLibrary, type InsertSceneLibrary, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages, storyGenerations, dramaProjects, dramaEpisodes, characterLibrary, sceneLibrary } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql, and, gt, like } from "drizzle-orm";
+import { eq, desc, sql, and, gt, gte, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
 
 export interface IStorage {
@@ -27,6 +27,11 @@ export interface IStorage {
   getAllImageGenerations(): Promise<ImageGeneration[]>;
   getUserImageGenerations(userId: string): Promise<ImageGeneration[]>;
   getUserStats(userId: string): Promise<{ totalGenerations: number; totalCost: number; totalCreditsUsed: number }>;
+  /** Daily generation counters for rate limiting. Counts rows whose
+   *  createdAt >= start of UTC day. Used by the per-user 50 imgs / 10
+   *  videos daily cap (admins bypassed). */
+  getUserDailyImageCount(userId: string): Promise<number>;
+  getUserDailyVideoCount(userId: string): Promise<number>;
 
   createVideoGeneration(generation: (InsertImageToVideo | InsertTextToVideo) & { userId: string }): Promise<VideoGeneration>;
   getVideoGeneration(id: string): Promise<VideoGeneration | undefined>;
@@ -535,6 +540,44 @@ export class DatabaseStorage implements IStorage {
 
   async getUserVideoGenerations(userId: string): Promise<VideoGeneration[]> {
     return db.select().from(videoGenerations).where(eq(videoGenerations.userId, userId)).orderBy(desc(videoGenerations.createdAt));
+  }
+
+  async getUserDailyImageCount(userId: string): Promise<number> {
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    // Sum actual image units (not row count) so a single sequential row
+    // with maxImages=10 counts as 10 against the daily cap. Falls back to
+    // generated_image_urls length if maxImages is null, then to 1.
+    const rows = await db
+      .select({
+        c: sql<number>`COALESCE(SUM(GREATEST(
+          COALESCE(${imageGenerations.maxImages}, COALESCE(array_length(${imageGenerations.generatedImageUrls}, 1), 1)),
+          1
+        )), 0)::int`,
+      })
+      .from(imageGenerations)
+      .where(
+        and(
+          eq(imageGenerations.userId, userId),
+          gte(imageGenerations.createdAt, startOfDay),
+        ),
+      );
+    return rows[0]?.c ?? 0;
+  }
+
+  async getUserDailyVideoCount(userId: string): Promise<number> {
+    const startOfDay = new Date();
+    startOfDay.setUTCHours(0, 0, 0, 0);
+    const rows = await db
+      .select({ c: sql<number>`count(*)::int` })
+      .from(videoGenerations)
+      .where(
+        and(
+          eq(videoGenerations.userId, userId),
+          gte(videoGenerations.createdAt, startOfDay),
+        ),
+      );
+    return rows[0]?.c ?? 0;
   }
 
   async getStats(): Promise<{

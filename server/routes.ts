@@ -757,6 +757,33 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         return res.status(404).json({ error: "用户不存在" });
       }
 
+      // Daily abuse cap (admins bypass). Counts rows the user has already
+      // started today (UTC), regardless of status, to also throttle bursts
+      // that haven't completed yet. Tuned generous for normal heavy use.
+      if (!user.isAdmin) {
+        const DAILY_IMAGE_LIMIT = 50;
+        const todayCount = await storage.getUserDailyImageCount(userId);
+        // Sanitize: clamp requestedCount to a positive integer in [1, limit]
+        // so a malformed/string maxImages from raw body can't bypass or
+        // distort the cap. Falls back to 1 for unknown shapes.
+        const rawRequested = Array.isArray(req.body.prompts)
+          ? req.body.prompts.length
+          : (req.body.sequentialGeneration && req.body.maxImages)
+            ? Number(req.body.maxImages)
+            : 1;
+        const requestedCount = Math.min(
+          DAILY_IMAGE_LIMIT,
+          Math.max(1, Number.isFinite(rawRequested) ? Math.floor(rawRequested) : 1),
+        );
+        if (todayCount + requestedCount > DAILY_IMAGE_LIMIT) {
+          return res.status(429).json({
+            error: `今日圖片生成次數已達上限（${DAILY_IMAGE_LIMIT} 張/日），請明天再試或聯繫客服提升額度。`,
+            limit: DAILY_IMAGE_LIMIT,
+            used: todayCount,
+          });
+        }
+      }
+
       let creditsNeeded: number;
       const WATERMARK_REMOVAL_COST = 5;
       const hasWatermark = req.body.watermark !== false;
@@ -1243,6 +1270,21 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const user = await storage.getUser(userId);
       if (!user) {
         return res.status(404).json({ error: "用户不存在" });
+      }
+
+      // Daily abuse cap (admins bypass). Mirrors the image endpoint cap;
+      // videos are far more expensive (15 credits/sec at 1080P) so the
+      // cap is tighter even though credits already constrain spend.
+      if (!user.isAdmin) {
+        const DAILY_VIDEO_LIMIT = 10;
+        const todayCount = await storage.getUserDailyVideoCount(userId);
+        if (todayCount >= DAILY_VIDEO_LIMIT) {
+          return res.status(429).json({
+            error: `今日影片生成次數已達上限（${DAILY_VIDEO_LIMIT} 支/日），請明天再試或聯繫客服提升額度。`,
+            limit: DAILY_VIDEO_LIMIT,
+            used: todayCount,
+          });
+        }
       }
 
       // Validate first so a malformed request (e.g. >3 reference images, bad

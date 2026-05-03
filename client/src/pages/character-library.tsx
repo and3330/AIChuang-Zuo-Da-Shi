@@ -253,6 +253,10 @@ function CharacterFormModal({ character, onClose }: { character?: CharacterLibra
 
 export default function CharacterLibraryPage() {
   const [showCreate, setShowCreate] = useState(false);
+  // Lightweight client-side search across name + description + styleHint.
+  // We avoid a tags column for now to skip a schema migration; users can
+  // type their own keywords into description and they'll be matched here.
+  const [search, setSearch] = useState("");
 
   const { data: characters = [], isLoading } = useQuery<CharacterLibraryItem[]>({
     queryKey: ["/api/character-library"],
@@ -261,6 +265,16 @@ export default function CharacterLibraryPage() {
       return list?.some(c => c.fourViewStatus === "generating") ? 3000 : false;
     },
   });
+
+  const visibleCharacters = (() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return characters;
+    return characters.filter(c =>
+      (c.name || "").toLowerCase().includes(q)
+      || (c.description || "").toLowerCase().includes(q)
+      || (c.styleHint || "").toLowerCase().includes(q)
+    );
+  })();
 
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col">
@@ -285,6 +299,24 @@ export default function CharacterLibraryPage() {
           </button>
         </div>
 
+        {characters.length > 0 && (
+          <div className="mb-4">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="🔍 搜尋角色（名稱／描述／風格）"
+              className="w-full md:w-80 px-3 py-2 rounded-lg border border-[#cbd5e1] bg-white text-sm focus:outline-none focus:border-[#6366f1]"
+              data-testid="input-character-search"
+            />
+            {search && (
+              <span className="ml-3 text-xs text-[#64748b]">
+                找到 {visibleCharacters.length} / {characters.length}
+              </span>
+            )}
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex items-center justify-center h-40">
             <div className="w-8 h-8 rounded-full border-2 border-t-transparent border-[#6366f1] animate-spin" />
@@ -301,7 +333,13 @@ export default function CharacterLibraryPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {characters.map(c => <CharacterCard key={c.id} character={c} />)}
+            {visibleCharacters.length === 0 ? (
+              <div className="col-span-full text-center text-sm text-[#64748b] py-12 bg-white rounded-2xl border border-dashed border-[#cbd5e1]">
+                沒有符合「{search}」的角色
+              </div>
+            ) : (
+              visibleCharacters.map(c => <CharacterCard key={c.id} character={c} />)
+            )}
           </div>
         )}
 

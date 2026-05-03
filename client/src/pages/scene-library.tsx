@@ -183,8 +183,17 @@ function SceneFormModal({
 
 export default function SceneLibraryPage() {
   const [showCreate, setShowCreate] = useState(false);
+  const [search, setSearch] = useState("");
   const scenesQuery = useQuery<SceneLibraryItem[]>({ queryKey: ["/api/scene-library"] });
   const scenes = scenesQuery.data ?? [];
+  const visibleScenes = (() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return scenes;
+    return scenes.filter(s =>
+      (s.name || "").toLowerCase().includes(q)
+      || (s.description || "").toLowerCase().includes(q)
+    );
+  })();
 
   return (
     <div className="min-h-screen bg-[#f8fafc]">
@@ -212,6 +221,24 @@ export default function SceneLibraryPage() {
           </div>
         </div>
 
+        {scenes.length > 0 && (
+          <div className="mb-4">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="🔍 搜尋場景（名稱／描述）"
+              className="w-full md:w-80 px-3 py-2 rounded-lg border border-[#cbd5e1] bg-white text-sm focus:outline-none focus:border-[#6366f1]"
+              data-testid="input-scene-search"
+            />
+            {search && (
+              <span className="ml-3 text-xs text-[#64748b]">
+                找到 {visibleScenes.length} / {scenes.length}
+              </span>
+            )}
+          </div>
+        )}
+
         {scenesQuery.isLoading ? (
           <p className="text-center text-[#94a3b8] py-8">載入中…</p>
         ) : scenes.length === 0 ? (
@@ -223,7 +250,13 @@ export default function SceneLibraryPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {scenes.map(s => <SceneCard key={s.id} scene={s} />)}
+            {visibleScenes.length === 0 ? (
+              <div className="col-span-full text-center text-sm text-[#64748b] py-12 bg-white rounded-2xl border border-dashed border-[#cbd5e1]">
+                沒有符合「{search}」的場景
+              </div>
+            ) : (
+              visibleScenes.map(s => <SceneCard key={s.id} scene={s} />)
+            )}
           </div>
         )}
 
