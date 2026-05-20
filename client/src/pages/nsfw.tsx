@@ -110,6 +110,16 @@ export default function NsfwPage() {
   const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("9:16");
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("720p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState("");
+  // Video model picker. "seeddance" = default BytePlus SeedDance 2.0 (8/15
+  // credits/s, has built-in NSFW filter). GMI ids hit /api/video-generations
+  // with provider:"gmi" — pricing cheaper (6/10) and審查寬鬆。
+  // Keep in sync with server/gmiProvider.ts GMI_VIDEO_MODELS.
+  const VIDEO_MODELS = [
+    { id: "seeddance",  label: "SeedDance 2.0 (BytePlus · 預設)", desc: "穩定快速，但有 NSFW 過濾",          provider: "byteplus" as const, per720: 8, per1080: 15 },
+    { id: "wan2.7-i2v", label: "Wan 2.7 i2v (阿里 · 寬鬆)",         desc: "阿里 Wan 2.7 開源、審查寬鬆",       provider: "gmi"      as const, per720: 6, per1080: 10 },
+  ];
+  const [selectedVideoModel, setSelectedVideoModel] = useState<string>("seeddance");
+  const selectedVideoMeta = VIDEO_MODELS.find(m => m.id === selectedVideoModel) ?? VIDEO_MODELS[0];
   // Model selection. "byteplus" = default Seedream 5.0 (with watermark toggle,
   // supports text + image-to-image). Other ids route through GMI Cloud and
   // hit /api/image-generations with provider:"gmi". GMI models are text-only
@@ -299,6 +309,9 @@ export default function NsfwPage() {
     if (mode === "image-to-video") {
       // Reset prior image polling so the result card flips cleanly to video.
       setCurrentGenerationId("");
+      const videoProviderFields = selectedVideoMeta.provider === "gmi"
+        ? { provider: "gmi", model: selectedVideoMeta.id }
+        : {};
       videoGenerateMutation.mutate({
         type: "image-to-video",
         originalImageUrl: uploadedImagePath,
@@ -307,6 +320,7 @@ export default function NsfwPage() {
         cameraFixed: false,
         aspectRatio: videoAspectRatio,
         resolution: videoResolution,
+        ...videoProviderFields,
       });
       return;
     }
@@ -342,8 +356,8 @@ export default function NsfwPage() {
   const imageCost = selectedModelMeta.provider === "gmi"
     ? selectedModelMeta.credits
     : (watermark ? 3 : 8);
-  // Video cost mirrors server: 8 credits/sec @ 720p, 15 credits/sec @ 1080p.
-  const videoCreditsPerSec = videoResolution === "720p" ? 8 : 15;
+  // Video cost — depends on selected model. SeedDance = 8/15, Wan i2v = 6/10.
+  const videoCreditsPerSec = videoResolution === "720p" ? selectedVideoMeta.per720 : selectedVideoMeta.per1080;
   const videoCost = Math.round(videoDuration * videoCreditsPerSec);
   const cost = mode === "image-to-video" ? videoCost : imageCost;
   const isImageBusy = generateMutation.isPending || (currentGenerationId && (generation?.status === "pending" || generation?.status === "processing"));
@@ -660,6 +674,19 @@ export default function NsfwPage() {
                   // since most NSFW reference imagery is portrait. Duration
                   // is clamped on the server too (2-12s).
                   <div className="mt-4 space-y-3">
+                    <div>
+                      <Label className="text-xs text-gray-700">AI 影片模型</Label>
+                      <select
+                        value={selectedVideoModel}
+                        onChange={(e) => setSelectedVideoModel(e.target.value)}
+                        className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                      >
+                        {VIDEO_MODELS.map(m => (
+                          <option key={m.id} value={m.id}>{m.label}</option>
+                        ))}
+                      </select>
+                      <p className="text-[11px] text-gray-500 mt-1">{selectedVideoMeta.desc}</p>
+                    </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div>
                         <Label className="text-xs text-gray-700">時長</Label>
@@ -693,13 +720,13 @@ export default function NsfwPage() {
                           onChange={(e) => setVideoResolution(e.target.value as any)}
                           className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
                         >
-                          <option value="720p">720P（8 積分/秒）</option>
-                          <option value="1080p">1080P（15 積分/秒）</option>
+                          <option value="720p">720P（{selectedVideoMeta.per720} 積分/秒）</option>
+                          <option value="1080p">1080P（{selectedVideoMeta.per1080} 積分/秒）</option>
                         </select>
                       </div>
                     </div>
                     <p className="text-xs text-purple-700 bg-purple-50 px-3 py-2 rounded-lg">
-                      🎬 使用 SeedDance 2.0；本次預估扣費 <b>{videoCost} 積分</b>（{videoDuration} 秒 × {videoCreditsPerSec} 積分/秒）。每日上限 10 支影片。
+                      🎬 使用 <b>{selectedVideoMeta.label}</b>；本次預估扣費 <b>{videoCost} 積分</b>（{videoDuration} 秒 × {videoCreditsPerSec} 積分/秒）。每日上限 10 支影片。
                     </p>
                   </div>
                 )}

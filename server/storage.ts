@@ -492,7 +492,14 @@ export class DatabaseStorage implements IStorage {
     const duration = insertGeneration.duration ?? 5;
     const resolution = insertGeneration.resolution ?? "1080p";
     const aspectRatio = insertGeneration.aspectRatio ?? "16:9";
-    const creditsPerSecond = resolution === "720p" ? 8 : 15;
+    // Provider-aware pricing. GMI Wan i2v is cheaper than SeedDance.
+    // Keep these tables in sync with server/gmiProvider.ts GMI_VIDEO_MODELS
+    // and the /api/video-generations route handler.
+    const provider = (insertGeneration as any).provider === "gmi" ? "gmi" : "byteplus";
+    const model = (insertGeneration as any).model ?? null;
+    const creditsPerSecond = provider === "gmi"
+      ? (resolution === "720p" ? 6 : 10)
+      : (resolution === "720p" ? 8 : 15);
 
     const fps = 24;
     let width: number, height: number;
@@ -525,6 +532,8 @@ export class DatabaseStorage implements IStorage {
       status: "pending",
       cost: Math.round(videoCost * 10000) / 10000,
       creditsUsed: Math.round(duration * creditsPerSecond),
+      provider,
+      model,
     }).returning();
     return row;
   }

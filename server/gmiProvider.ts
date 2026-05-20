@@ -257,6 +257,125 @@ function extractFirstImageUrl(outcome: any): string | undefined {
   return undefined;
 }
 
+/* ---------- video models (NSFW image-to-video) ---------- */
+
+export type GmiVideoBuildArgs = {
+  /** Already-encoded data URI or public HTTPS URL of the source frame. */
+  imageDataOrUrl: string;
+  prompt: string;
+  /** App-level aspect ratio. Wan i2v derives output orientation from input
+   *  image anyway, but we pass `size` when the API accepts it. */
+  aspectRatio?: "16:9" | "9:16" | "1:1";
+  /** Clip length in seconds. Wan typically supports 5 or 8; we clamp. */
+  seconds?: number;
+  resolution?: "720p" | "1080p";
+};
+
+export type GmiVideoModelConfig = {
+  id: string;
+  label: string;
+  description: string;
+  creditsPerSecond720p: number;
+  creditsPerSecond1080p: number;
+  /** Whole-minute upper bound on polling — Wan i2v can take 3-8 min. */
+  pollTimeoutMs: number;
+  buildPayload: (args: GmiVideoBuildArgs) => Record<string, any>;
+};
+
+function aspectToWanVideoSize(aspect: "16:9" | "9:16" | "1:1" | undefined, res: "720p" | "1080p" | undefined): string {
+  // Wan video uses W*H (asterisk) format. 720p = short side 720, 1080p = 1080.
+  const short = res === "1080p" ? 1080 : 720;
+  const long = res === "1080p" ? 1920 : 1280;
+  if (aspect === "9:16") return `${short}*${long}`;
+  if (aspect === "1:1") return `${short}*${short}`;
+  return `${long}*${short}`; // default 16:9
+}
+
+export const GMI_VIDEO_MODELS: Record<string, GmiVideoModelConfig> = {
+  "wan2.7-i2v": {
+    id: "wan2.7-i2v",
+    label: "Wan 2.7 i2v (阿里 · 寬鬆)",
+    description: "阿里 Wan 2.7 開源圖生影片，預設審查寬鬆",
+    creditsPerSecond720p: 6,
+    creditsPerSecond1080p: 10,
+    pollTimeoutMs: 12 * 60 * 1000, // 12 min
+    buildPayload: ({ imageDataOrUrl, prompt, aspectRatio, seconds, resolution }) => {
+      // Wan i2v on the request-queue accepts either a public image URL or a
+      // base64 data URI in `image`. `prompt` (alias of `text`) drives motion.
+      // `size` is optional; if omitted the output matches the source frame's
+      // aspect ratio. We pass it for predictability when the user picked one.
+      const clamped = Math.max(3, Math.min(10, Math.round(seconds || 5)));
+      return {
+        image: imageDataOrUrl,
+        prompt,
+        size: aspectToWanVideoSize(aspectRatio, resolution),
+        seconds: clamped,
+      };
+    },
+  },
+};
+
+export const GMI_VIDEO_MODEL_LIST = Object.values(GMI_VIDEO_MODELS).map((c) => ({
+  id: c.id,
+  label: c.label,
+  description: c.description,
+  creditsPerSecond720p: c.creditsPerSecond720p,
+  creditsPerSecond1080p: c.creditsPerSecond1080p,
+}));
+
+/** Pull a single video URL out of GMI's `outcome`. Same shape variance as
+ *  images; tries common Wan / generic Aliyun field names. */
+function extractFirstVideoUrl(outcome: any): string | undefined {
+  if (!outcome) return undefined;
+  if (typeof outcome === "string" && /^https?:\/\//.test(outcome)) return outcome;
+  if (typeof outcome !== "object") return undefined;
+
+  if (typeof outcome.video_url === "string") return outcome.video_url;
+  if (outcome.video_url && typeof outcome.video_url.url === "string") return outcome.video_url.url;
+  if (typeof outcome.url === "string" && /\.mp4(\?|$)/i.test(outcome.url)) return outcome.url;
+  if (typeof outcome.video === "string" && /^https?:\/\//.test(outcome.video)) return outcome.video;
+
+  for (const key of ["videos", "video_urls", "data", "result", "results", "outputs"]) {
+    const arr = outcome[key];
+    if (Array.isArray(arr) && arr.length > 0) {
+      const first = arr[0];
+      if (typeof first === "string" && /^https?:\/\//.test(first)) return first;
+      if (first && typeof first === "object") {
+        const nested =
+          first.video_url || first.url || first.video ||
+          (first.video_url && first.video_url.url);
+        if (typeof nested === "string") return nested;
+      }
+    }
+  }
+
+  if (outcome.output) return extractFirstVideoUrl(outcome.output);
+  return undefined;
+}
+
+/** End-to-end helper: submit, poll, return final video URL. Caller is
+ *  responsible for downloading and re-hosting on Bunny CDN. */
+export async function gmiGenerateVideo(args: {
+  modelId: string;
+  imageDataOrUrl: string;
+  prompt: string;
+  aspectRatio?: "16:9" | "9:16" | "1:1";
+  seconds?: number;
+  resolution?: "720p" | "1080p";
+}): Promise<{ videoUrl: string; modelId: string }> {
+  const cfg = GMI_VIDEO_MODELS[args.modelId];
+  if (!cfg) throw new Error(`未支援的 GMI 影片模型：${args.modelId}`);
+  const payload = cfg.buildPayload(args);
+  const requestId = await gmiSubmitJob(cfg.id, payload);
+  console.log(`[GMI] submitted video ${cfg.id} request ${requestId}, payload keys:`, Object.keys(payload));
+  const done = await gmiPollUntilDone(requestId, { timeoutMs: cfg.pollTimeoutMs, intervalMs: 5000 });
+  const url = extractFirstVideoUrl(done.outcome);
+  if (!url) {
+    throw new Error(`GMI 影片完成但無法擷取影片 URL：${JSON.stringify(done.outcome).slice(0, 400)}`);
+  }
+  return { videoUrl: url, modelId: cfg.id };
+}
+
 /** End-to-end helper: submit, poll, return final image URL + credit cost. */
 export async function gmiGenerateImage(args: {
   modelId: string;

@@ -82,6 +82,12 @@ export const videoGenerations = pgTable("video_generations", {
   processingTime: real("processing_time"),
   cost: real("cost").default(0.10),
   creditsUsed: integer("credits_used").default(10),
+  /** Provider routing: "byteplus" (SeedDance, default) or "gmi" (Wan 2.x i2v
+   *  via GMI Cloud). Drives the processVideoGeneration branch and pricing. */
+  provider: text("provider").default("byteplus"),
+  /** Provider-specific model id, e.g. "wan2.7-i2v" for GMI. NULL/empty for
+   *  default SeedDance which uses the global VIDEO_MODEL endpoint. */
+  model: text("model"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -208,6 +214,14 @@ export const insertImageToVideoSchema = z.object({
   cameraFixed: z.boolean().optional().default(false),
   aspectRatio: z.enum(["16:9", "9:16", "1:1"]).optional().default("16:9"),
   resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
+  /** "byteplus" (SeedDance 2.0, default) or "gmi" (Wan 2.x via GMI Cloud).
+   *  GMI route only supports image-to-video and the model id whitelist in
+   *  server/gmiProvider.ts; mis-routed requests are rejected with 400.
+   *  Kept truly optional (no .default) so internal callers — drama studio,
+   *  story animator — don't have to specify it. The route handler defaults
+   *  to "byteplus" when absent. */
+  provider: z.enum(["byteplus", "gmi"]).optional(),
+  model: z.string().optional(),
 });
 
 export const insertTextToVideoSchema = z.object({

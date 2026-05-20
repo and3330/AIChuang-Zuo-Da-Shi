@@ -1395,9 +1395,25 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         ? insertTextToVideoSchema.parse(req.body)
         : insertImageToVideoSchema.parse(req.body);
 
+      // Provider routing. GMI route is only valid for image-to-video and the
+      // model id must be in the GMI_VIDEO_MODELS whitelist. Pricing differs:
+      // GMI Wan i2v = 6 / 10 credits/s (720p / 1080p); SeedDance = 8 / 15.
+      const provider = (validatedData as any).provider === "gmi" ? "gmi" : "byteplus";
+      const modelId = (validatedData as any).model as string | undefined;
+      if (provider === "gmi") {
+        const { GMI_VIDEO_MODELS } = await import("./gmiProvider");
+        if (videoType !== "image-to-video") {
+          return res.status(400).json({ error: "GMI 影片模型目前僅支援『圖生影片』。" });
+        }
+        if (!modelId || !GMI_VIDEO_MODELS[modelId]) {
+          return res.status(400).json({ error: `不支援的 GMI 影片模型：${modelId ?? "(未指定)"}` });
+        }
+      }
       const duration = Math.max(4, Math.min(12, req.body.duration || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
-      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 8 : 15;
+      const VIDEO_CREDITS_PER_SECOND = provider === "gmi"
+        ? (resolution === "720p" ? 6 : 10)
+        : (resolution === "720p" ? 8 : 15);
       const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
 
       if ((user.credits || 0) < creditsNeeded) {
@@ -1418,7 +1434,12 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         description: `视频生成消耗 ${creditsNeeded} 积分`,
       });
 
-      const generation = await storage.createVideoGeneration({ ...validatedData, userId });
+      const generation = await storage.createVideoGeneration({
+        ...validatedData,
+        userId,
+        provider,
+        model: modelId,
+      } as any);
 
       processVideoGeneration(generation.id, objectStorageService).catch(console.error);
 
@@ -1468,16 +1489,74 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
   async function processVideoGeneration(generationId: string, objectStorageService: ObjectStorageService) {
     try {
       await storage.updateVideoGeneration(generationId, { status: "processing" });
-      
+
       const generation = await storage.getVideoGeneration(generationId);
       if (!generation) return;
 
       const videoUser = await storage.getUser(generation.userId);
       const userFolder = videoUser?.username || generation.userId;
 
+      // ---- GMI Cloud branch (NSFW Wan 2.x image-to-video) ----
+      if (generation.provider === "gmi") {
+        const startTimeGmi = Date.now();
+        try {
+          if (!generation.originalImageUrl) {
+            throw new Error("GMI 圖生影片需要原始圖片");
+          }
+          if (!generation.model) {
+            throw new Error("GMI 影片缺少 model 欄位");
+          }
+          // Reuse the SeedDance helper below — we extract it inline because
+          // it's only defined after this point in the function. Duplicate
+          // here is small enough; later refactor can dedupe.
+          const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
+          const chunks: Buffer[] = [];
+          for await (const chunk of objectFile.createReadStream()) {
+            chunks.push(Buffer.from(chunk));
+          }
+          const imageBuffer = Buffer.concat(chunks);
+          const imageDataUri = `data:image/jpeg;base64,${imageBuffer.toString("base64")}`;
+
+          const { gmiGenerateVideo } = await import("./gmiProvider");
+          const { videoUrl } = await gmiGenerateVideo({
+            modelId: generation.model,
+            imageDataOrUrl: imageDataUri,
+            prompt: generation.prompt,
+            aspectRatio: (generation.aspectRatio as any) || "9:16",
+            seconds: generation.duration || 5,
+            resolution: (generation.resolution as any) || "720p",
+          });
+          console.log(`✅ GMI video generation completed: ${videoUrl}`);
+
+          // Re-host on Bunny CDN so the original short-lived GMI URL doesn't
+          // 404 once their cache expires. Same pattern as SeedDance below.
+          const { assertPublicHttpsUrl, fetchImageWithLimits } = await import("./ssrfGuard");
+          assertPublicHttpsUrl(videoUrl);
+          let bunnyVideoUrl: string | undefined;
+          try {
+            bunnyVideoUrl = await bunnyStorage.uploadVideoFromUrl(videoUrl, userFolder, generationId);
+            console.log(`✅ GMI video re-hosted on Bunny: ${bunnyVideoUrl}`);
+          } catch (e) {
+            console.error("Bunny upload of GMI video failed (will keep original URL):", e);
+          }
+
+          const processingTime = (Date.now() - startTimeGmi) / 1000;
+          await storage.updateVideoGeneration(generationId, {
+            status: "completed",
+            generatedVideoUrl: videoUrl,
+            bunnyVideoUrl,
+            processingTime,
+          });
+          return;
+        } catch (e: any) {
+          console.error("GMI video generation failed:", e?.message || e);
+          throw e;
+        }
+      }
+
       const startTime = Date.now();
       const apiKey = process.env.ARK_API_KEY;
-      
+
       if (!apiKey) {
         throw new Error("ARK_API_KEY environment variable is not set");
       }
