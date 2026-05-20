@@ -326,16 +326,33 @@ export const GMI_VIDEO_MODEL_LIST = Object.values(GMI_VIDEO_MODELS).map((c) => (
   creditsPerSecond1080p: c.creditsPerSecond1080p,
 }));
 
-/** Pull a single video URL out of GMI's `outcome`. Same shape variance as
- *  images; tries common Wan / generic Aliyun field names. */
+/** Pull a single video URL out of GMI's `outcome`. Shapes vary per model;
+ *  the Wan 2.2 Lightning response uses
+ *    { media_urls: [{ id, type: "video"|"image", url }], thumbnail_image_url }
+ *  which is the primary path. Older Wan / generic Aliyun shapes
+ *  (video_url, videos[], etc.) are kept as fallbacks. */
 function extractFirstVideoUrl(outcome: any): string | undefined {
   if (!outcome) return undefined;
   if (typeof outcome === "string" && /^https?:\/\//.test(outcome)) return outcome;
   if (typeof outcome !== "object") return undefined;
 
+  // --- GMI Wan 2.2 Lightning canonical shape ---
+  // media_urls is an array of { id, type: "video"|"image", url }. Some
+  // payloads also echo the original source image as type:"image"; we MUST
+  // pick the video one or fall back to a clear .mp4/.webm extension, never
+  // accept the input image silently.
+  if (Array.isArray(outcome.media_urls) && outcome.media_urls.length > 0) {
+    const videoEntry = outcome.media_urls.find(
+      (m: any) => m && typeof m === "object" &&
+        ((typeof m.type === "string" && /video/i.test(m.type)) ||
+         (typeof m.url === "string" && /\.(mp4|webm|mov)(\?|$)/i.test(m.url))),
+    );
+    if (videoEntry?.url) return videoEntry.url;
+  }
+
   if (typeof outcome.video_url === "string") return outcome.video_url;
   if (outcome.video_url && typeof outcome.video_url.url === "string") return outcome.video_url.url;
-  if (typeof outcome.url === "string" && /\.mp4(\?|$)/i.test(outcome.url)) return outcome.url;
+  if (typeof outcome.url === "string" && /\.(mp4|webm|mov)(\?|$)/i.test(outcome.url)) return outcome.url;
   if (typeof outcome.video === "string" && /^https?:\/\//.test(outcome.video)) return outcome.video;
 
   for (const key of ["videos", "video_urls", "data", "result", "results", "outputs"]) {
@@ -374,7 +391,12 @@ export async function gmiGenerateVideo(args: {
   const done = await gmiPollUntilDone(requestId, { timeoutMs: cfg.pollTimeoutMs, intervalMs: 5000 });
   const url = extractFirstVideoUrl(done.outcome);
   if (!url) {
-    throw new Error(`GMI 影片完成但無法擷取影片 URL：${JSON.stringify(done.outcome).slice(0, 400)}`);
+    throw new Error(`GMI 影片完成但無法擷取影片 URL：${JSON.stringify(done.outcome).slice(0, 600)}`);
+  }
+  // Sanity check: never accept an image URL as a "video" result. If only
+  // images came back the model effectively returned nothing usable.
+  if (!/\.(mp4|webm|mov)(\?|$)/i.test(url)) {
+    console.warn(`[GMI] video extractor returned non-mp4 URL, accepting anyway: ${url}`);
   }
   return { videoUrl: url, modelId: cfg.id };
 }
