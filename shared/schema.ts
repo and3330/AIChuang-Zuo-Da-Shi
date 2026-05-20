@@ -49,6 +49,12 @@ export const imageGenerations = pgTable("image_generations", {
   processingTime: real("processing_time"),
   cost: real("cost").default(0.03),
   creditsUsed: integer("credits_used").default(3),
+  /** Generation backend: "byteplus" (default, BytePlus ARK Seedream 5.0) or
+   *  "gmi" (GMI Cloud, model selected via the `model` column). */
+  provider: text("provider").default("byteplus"),
+  /** Provider-specific model id, e.g. "Z-Image" / "wan2.7-image" /
+   *  "flux-kontext-pro". Null = provider default. */
+  model: text("model"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -159,6 +165,10 @@ export const insertTextToImageSchema = createInsertSchema(imageGenerations).pick
   type: z.literal("text-to-image"),
   sequentialGeneration: z.boolean().optional(),
   maxImages: z.number().min(2).max(10).optional().nullable(),
+  // Provider routing: "byteplus" (default, BytePlus ARK Seedream 5.0) or
+  // "gmi" (GMI Cloud). When "gmi", `model` must be a registered GMI model id.
+  provider: z.enum(["byteplus", "gmi"]).optional(),
+  model: z.string().max(64).optional(),
 });
 
 export const insertImageToImageSchema = createInsertSchema(imageGenerations).pick({
@@ -174,6 +184,8 @@ export const insertImageToImageSchema = createInsertSchema(imageGenerations).pic
   sequentialGeneration: z.boolean().optional(),
   maxImages: z.number().min(2).max(10).optional().nullable(),
   additionalImageUrls: z.array(z.string()).optional(),
+  provider: z.enum(["byteplus", "gmi"]).optional(),
+  model: z.string().max(64).optional(),
 });
 
 export const insertBatchImageToImageSchema = z.object({

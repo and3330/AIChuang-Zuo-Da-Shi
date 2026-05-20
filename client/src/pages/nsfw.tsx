@@ -101,6 +101,19 @@ export default function NsfwPage() {
   const [size, setSize] = useState("2K");
   const [guidanceScale, setGuidanceScale] = useState(5.5);
   const [seed, setSeed] = useState(21);
+  // Model selection. "byteplus" = default Seedream 5.0 (with watermark toggle,
+  // supports text + image-to-image). Other ids route through GMI Cloud and
+  // hit /api/image-generations with provider:"gmi". GMI models are text-only
+  // for now and bypass the watermark pipeline (no addWatermark()).
+  // Keep ids + labels + prices in sync with server/gmiProvider.ts.
+  const NSFW_MODELS = [
+    { id: "byteplus", label: "Seedream 5.0 (BytePlus · 預設)", desc: "穩定快速、可選浮水印與圖片編輯", credits: 3, provider: "byteplus" as const, supportsI2I: true },
+    { id: "Z-Image",          label: "Z-Image (阿里通義 · 寬鬆)",            desc: "中英文友好、無內建安全過濾",         credits: 3, provider: "gmi" as const, supportsI2I: false },
+    { id: "wan2.7-image",     label: "Wan 2.7 (阿里 · 開源寬鬆)",            desc: "Wan 2.7 開源、預設審查寬鬆",         credits: 4, provider: "gmi" as const, supportsI2I: false },
+    { id: "flux-kontext-pro", label: "FLUX Kontext Pro (Black Forest · 高細節)", desc: "細節最強、放寬安全等級 (=6)",     credits: 6, provider: "gmi" as const, supportsI2I: false },
+  ];
+  const [selectedModel, setSelectedModel] = useState<string>("byteplus");
+  const selectedModelMeta = NSFW_MODELS.find(m => m.id === selectedModel) ?? NSFW_MODELS[0];
   const [watermark, setWatermark] = useState(true);
   const [uploadedImagePath, setUploadedImagePath] = useState("");
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
@@ -222,11 +235,27 @@ export default function NsfwPage() {
       toast({ title: "缺少圖片", description: "圖片編輯模式請先上傳圖片。", variant: "destructive" });
       return;
     }
+    if (mode === "image-to-image" && !selectedModelMeta.supportsI2I) {
+      toast({
+        title: "此模型暫不支援圖片編輯",
+        description: `${selectedModelMeta.label} 目前僅支援文字生圖，請切換到 Seedream 或改用文字生圖模式。`,
+        variant: "destructive",
+      });
+      return;
+    }
+    // Common payload bits. For GMI models we send provider+model and skip
+    // the watermark flag — GMI doesn't watermark and our server intentionally
+    // ignores that toggle for GMI rows.
+    const providerFields =
+      selectedModelMeta.provider === "gmi"
+        ? { provider: "gmi", model: selectedModelMeta.id }
+        : {};
     if (mode === "text-to-image") {
       generateMutation.mutate({
         type: "text-to-image",
         prompt: prompt.trim(),
         guidanceScale, seed, watermark, size,
+        ...providerFields,
       });
     } else {
       generateMutation.mutate({
@@ -234,11 +263,17 @@ export default function NsfwPage() {
         originalImageUrl: uploadedImagePath,
         prompt: prompt.trim(),
         guidanceScale, seed, watermark, size,
+        ...providerFields,
       });
     }
   };
 
-  const cost = watermark ? 3 : 8;
+  // Per-image credit cost. Default Seedream still honours the watermark
+  // toggle (3 with / 8 without). GMI models charge a flat per-image rate
+  // from the registry above and ignore the watermark flag.
+  const cost = selectedModelMeta.provider === "gmi"
+    ? selectedModelMeta.credits
+    : (watermark ? 3 : 8);
   const isGenerating = generateMutation.isPending || (currentGenerationId && (generation?.status === "pending" || generation?.status === "processing"));
   const resultUrl = generation?.generatedImageUrl;
 
@@ -450,6 +485,39 @@ export default function NsfwPage() {
                     >
                       清空
                     </button>
+                  )}
+                </div>
+
+                {/* Model picker. Sits above the size/seed grid so it reads
+                    as the most important choice. Each option shows its
+                    per-image credit cost; GMI options are grouped with an
+                    optgroup so the default Seedream stays visually primary. */}
+                <div className="mt-4">
+                  <Label className="text-xs text-gray-700 flex items-center justify-between">
+                    <span>AI 模型</span>
+                    <span className="text-rose-600 font-semibold">{selectedModelMeta.credits} 積分／張</span>
+                  </Label>
+                  <select
+                    value={selectedModel}
+                    onChange={(e) => setSelectedModel(e.target.value)}
+                    className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                  >
+                    <optgroup label="BytePlus（預設）">
+                      {NSFW_MODELS.filter(m => m.provider === "byteplus").map(m => (
+                        <option key={m.id} value={m.id}>{m.label} — {m.credits} 積分</option>
+                      ))}
+                    </optgroup>
+                    <optgroup label="GMI Cloud（多家模型）">
+                      {NSFW_MODELS.filter(m => m.provider === "gmi").map(m => (
+                        <option key={m.id} value={m.id}>{m.label} — {m.credits} 積分</option>
+                      ))}
+                    </optgroup>
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">{selectedModelMeta.desc}</p>
+                  {selectedModelMeta.provider === "gmi" && !selectedModelMeta.supportsI2I && (
+                    <p className="text-xs text-amber-600 mt-1">
+                      ⚠️ 此模型僅支援文字生圖，圖片編輯請切回 Seedream。
+                    </p>
                   )}
                 </div>
 

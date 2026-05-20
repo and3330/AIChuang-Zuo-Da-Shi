@@ -12,7 +12,8 @@ import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
 import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
-import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl } from "./ssrfGuard";
+import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
+import { GMI_IMAGE_MODELS, GMI_IMAGE_MODEL_LIST, gmiGenerateImage } from "./gmiProvider";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -784,15 +785,58 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         }
       }
 
-      let creditsNeeded: number;
+      // ----- Validate FIRST, then deduct credits -----
+      // The previous order (deduct → parse) could charge users for malformed
+      // requests because zod errors raised after deduction were not refunded.
+      // Now we parse schemas up front, derive the true per-image cost from
+      // validated data, and only then move money. Batch and single paths are
+      // validated separately so each gets its proper schema.
+      const isBatch = Array.isArray(req.body.prompts);
+      let batchValidated: ReturnType<typeof insertBatchImageToImageSchema.parse> | null = null;
+      let singleValidated:
+        | ReturnType<typeof insertTextToImageSchema.parse>
+        | ReturnType<typeof insertImageToImageSchema.parse>
+        | null = null;
+      if (isBatch) {
+        batchValidated = insertBatchImageToImageSchema.parse(req.body);
+      } else {
+        const requestType = req.body.type || "image-to-image";
+        singleValidated = requestType === "text-to-image"
+          ? insertTextToImageSchema.parse(req.body)
+          : insertImageToImageSchema.parse(req.body);
+      }
+
+      // Provider routing. Only single requests can opt into GMI; batch is a
+      // BytePlus-only flow today. We also enforce server-side that GMI must
+      // be text-to-image (the registered models don't take an image input).
+      const requestedProvider = !isBatch && (singleValidated as any)?.provider === "gmi"
+        ? "gmi" as const
+        : "byteplus" as const;
+      const requestedModel: string = !isBatch
+        ? (typeof (singleValidated as any)?.model === "string" ? (singleValidated as any).model.trim() : "")
+        : "";
+      if (requestedProvider === "gmi") {
+        if ((singleValidated as any).type !== "text-to-image") {
+          return res.status(400).json({ error: "GMI 模型目前僅支援文字生圖，請改用 Seedream。" });
+        }
+        if (!GMI_IMAGE_MODELS[requestedModel]) {
+          return res.status(400).json({ error: `未支援的 GMI 模型：${requestedModel || "(空白)"}` });
+        }
+      }
+
+      // Per-image credit cost. GMI uses the registry price flat; BytePlus
+      // still honours the watermark removal premium.
       const WATERMARK_REMOVAL_COST = 5;
       const hasWatermark = req.body.watermark !== false;
-      const perImageCost = hasWatermark ? 3 : 3 + WATERMARK_REMOVAL_COST;
+      const perImageCost = requestedProvider === "gmi"
+        ? GMI_IMAGE_MODELS[requestedModel].creditsPerImage
+        : (hasWatermark ? 3 : 3 + WATERMARK_REMOVAL_COST);
 
-      if (req.body.prompts && Array.isArray(req.body.prompts)) {
-        creditsNeeded = perImageCost * req.body.prompts.length;
-      } else if (req.body.sequentialGeneration && req.body.maxImages && req.body.maxImages > 1) {
-        creditsNeeded = perImageCost * req.body.maxImages;
+      let creditsNeeded: number;
+      if (batchValidated) {
+        creditsNeeded = perImageCost * batchValidated.prompts.length;
+      } else if (singleValidated && (singleValidated as any).sequentialGeneration && (singleValidated as any).maxImages && (singleValidated as any).maxImages > 1) {
+        creditsNeeded = perImageCost * (singleValidated as any).maxImages;
       } else {
         creditsNeeded = perImageCost;
       }
@@ -807,7 +851,9 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       const newBalance = (user.credits || 0) - creditsNeeded;
       await storage.updateUserCredits(userId, newBalance);
-      const watermarkNote = hasWatermark ? "" : "（含去浮水印）";
+      const watermarkNote = requestedProvider === "gmi"
+        ? `（${requestedModel}）`
+        : (hasWatermark ? "" : "（含去浮水印）");
       await storage.createCreditTransaction({
         userId,
         type: "consume",
@@ -816,9 +862,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         description: `圖片生成消耗 ${creditsNeeded} 積分${watermarkNote}`,
       });
 
-      if (req.body.prompts && Array.isArray(req.body.prompts)) {
-        const validatedData = insertBatchImageToImageSchema.parse(req.body);
-        const generations = await storage.createBatchImageGenerations({ ...validatedData, userId });
+      if (batchValidated) {
+        const generations = await storage.createBatchImageGenerations({ ...batchValidated, userId });
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         generations.forEach(gen => {
@@ -832,16 +877,15 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           totalCost: generations.length * 0.05,
         });
       } else {
-        const requestType = req.body.type || "image-to-image";
-        let validatedData;
-
-        if (requestType === "text-to-image") {
-          validatedData = insertTextToImageSchema.parse(req.body);
-        } else {
-          validatedData = insertImageToImageSchema.parse(req.body);
-        }
-
-        const generation = await storage.createImageGeneration({ ...validatedData, userId });
+        // Persist provider / model / creditsUsed so the worker branches
+        // correctly and any failure refunds the right amount.
+        const generation = await storage.createImageGeneration({
+          ...(singleValidated as any),
+          userId,
+          provider: requestedProvider,
+          model: requestedProvider === "gmi" ? requestedModel : undefined,
+          creditsUsed: perImageCost,
+        });
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         processImageGeneration(generation.id, baseUrl).catch(console.error);
@@ -951,7 +995,64 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const userFolder = generationUser?.username || generation.userId;
 
       const startTime = Date.now();
-      
+
+      // === GMI Cloud branch ===
+      // When the row was created with provider="gmi" (currently only from the
+      // /nsfw page) we bypass the entire BytePlus ARK request/streaming code
+      // below and just submit the job to GMI, poll, then funnel the resulting
+      // image URL through the same Bunny upload + DB update path used for the
+      // single (non-sequential) case.
+      if (generation.provider === "gmi") {
+        const modelId = generation.model || "Z-Image";
+        try {
+          const { imageUrl } = await gmiGenerateImage({
+            modelId,
+            prompt: enhanceImagePrompt(generation.prompt),
+            size: generation.size || undefined,
+            seed: typeof generation.seed === "number" ? generation.seed : undefined,
+            guidanceScale: typeof generation.guidanceScale === "number" ? generation.guidanceScale : undefined,
+          });
+
+          const processingTime = (Date.now() - startTime) / 1000;
+          // SSRF + abuse guards: GMI image URLs are signed CDN links whose
+          // exact host we cannot enumerate, so we use the looser public-https
+          // check (still blocks loopback/private/.internal) and then download
+          // through a helper that enforces content-type=image/*, a 25 MB byte
+          // cap and a 30s timeout. Anything off-spec raises and refunds.
+          assertPublicHttpsUrl(imageUrl);
+          let bunnyImageUrl: string | undefined;
+          if (bunnyStorage.isConfigured()) {
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              try {
+                const imgBuffer = await fetchImageWithLimits(imageUrl, { maxBytes: 25 * 1024 * 1024, timeoutMs: 30_000 });
+                // GMI models don't carry our brand watermark, so skip
+                // addWatermark() entirely — the watermark toggle is a
+                // ByteDance-only concept here.
+                const remotePath = `users/${userFolder}/images/${generationId}.jpg`;
+                bunnyImageUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
+                console.log(`✅ [GMI:${modelId}] uploaded to Bunny: ${bunnyImageUrl}`);
+                break;
+              } catch (e) {
+                console.error(`[GMI] Bunny upload failed (attempt ${attempt}):`, e);
+                if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
+              }
+            }
+          }
+
+          await storage.updateImageGeneration(generationId, {
+            status: "completed",
+            generatedImageUrl: imageUrl,
+            bunnyImageUrl,
+            processingTime,
+            cost: 0.05,
+          });
+          return;
+        } catch (e: any) {
+          console.error(`[GMI:${modelId}] generation failed:`, e?.message || e);
+          throw e; // outer catch handles refund + status update
+        }
+      }
+
       let requestBody: any;
       let apiKey: string | undefined;
       

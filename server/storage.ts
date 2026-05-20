@@ -347,7 +347,19 @@ export class DatabaseStorage implements IStorage {
     return rows as any;
   }
 
-  async createImageGeneration(insertGeneration: InsertImageGeneration & { userId: string; sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration> {
+  async createImageGeneration(insertGeneration: InsertImageGeneration & {
+    userId: string;
+    sequentialGeneration?: boolean;
+    maxImages?: number | null;
+    additionalImageUrls?: string[];
+    /** Persisted so processImageGeneration() can branch on it. */
+    provider?: string;
+    /** Provider-specific model id (e.g. GMI "Z-Image"). */
+    model?: string;
+    /** True per-row credit cost. Used by failImageGenerationAndRefund so
+     *  the user gets back exactly what they paid (not a hard-coded 3). */
+    creditsUsed?: number;
+  }): Promise<ImageGeneration> {
     const [row] = await db.insert(imageGenerations).values({
       userId: insertGeneration.userId,
       batchId: insertGeneration.batchId ?? null,
@@ -364,7 +376,9 @@ export class DatabaseStorage implements IStorage {
       generatedImageUrls: [],
       status: "pending",
       cost: 0.05,
-      creditsUsed: 3,
+      creditsUsed: insertGeneration.creditsUsed ?? 3,
+      provider: insertGeneration.provider ?? "byteplus",
+      model: insertGeneration.model ?? null,
     }).returning();
 
     return row;
