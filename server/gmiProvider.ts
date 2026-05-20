@@ -292,10 +292,13 @@ function aspectToWanVideoSize(aspect: "16:9" | "9:16" | "1:1" | undefined, res: 
 }
 
 export const GMI_VIDEO_MODELS: Record<string, GmiVideoModelConfig> = {
-  "wan2.7-i2v": {
-    id: "wan2.7-i2v",
-    label: "Wan 2.7 i2v (阿里 · 寬鬆)",
-    description: "阿里 Wan 2.7 開源圖生影片，預設審查寬鬆",
+  // GMI's self-hosted Wan 2.2 Lightning on H100. provider="Wan" (not
+  // "Aliyun") in the GMI console, which means it bypasses Aliyun's content
+  // moderation layer that rejects NSFW prompts on wan2.5/2.6/2.7-i2v.
+  "wan2.2-lightning-i2V-8H100": {
+    id: "wan2.2-lightning-i2V-8H100",
+    label: "Wan 2.2 Lightning i2v (GMI 自託管 · NSFW 友善)",
+    description: "GMI 在 H100 上自架的 Wan 2.2 開源版，繞過阿里雲審查，速度快",
     creditsPerSecond720p: 6,
     creditsPerSecond1080p: 10,
     pollTimeoutMs: 12 * 60 * 1000, // 12 min
