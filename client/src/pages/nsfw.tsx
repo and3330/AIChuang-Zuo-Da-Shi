@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/use-seo";
 import type { UploadResult } from "@uppy/core";
-import type { ImageGeneration } from "@shared/schema";
+import type { ImageGeneration, VideoGeneration } from "@shared/schema";
 
 const TEMPLATE_FILES: { file: string; label: string; emoji: string }[] = [
   { file: "00-范例.md", label: "範例 Prompt", emoji: "📝" },
@@ -96,11 +96,20 @@ export default function NsfwPage() {
     try { return localStorage.getItem("nsfw_age_ok") === "1"; } catch { return false; }
   });
 
-  const [mode, setMode] = useState<"text-to-image" | "image-to-image">("text-to-image");
+  // Three top-level modes. image-to-video reuses the existing
+  // /api/video-generations pipeline (SeedDance 2.0) — no new backend
+  // surface, NSFW page just exposes the existing capability with an
+  // uncensored prompt template library.
+  const [mode, setMode] = useState<"text-to-image" | "image-to-image" | "image-to-video">("text-to-image");
   const [prompt, setPrompt] = useState("");
   const [size, setSize] = useState("2K");
   const [guidanceScale, setGuidanceScale] = useState(5.5);
   const [seed, setSeed] = useState(21);
+  // Video-only knobs. Defaults mirror the home.tsx 圖片生影片 panel.
+  const [videoDuration, setVideoDuration] = useState<number>(5);
+  const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("9:16");
+  const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("720p");
+  const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState("");
   // Model selection. "byteplus" = default Seedream 5.0 (with watermark toggle,
   // supports text + image-to-image). Other ids route through GMI Cloud and
   // hit /api/image-generations with provider:"gmi". GMI models are text-only
@@ -211,6 +220,46 @@ export default function NsfwPage() {
     },
   });
 
+  // Video generation mutation — hits the same endpoint as home.tsx with
+  // type="image-to-video". The server already enforces the daily 10-video
+  // cap, validates before charging, and refunds on failure.
+  const videoGenerateMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await apiRequest("POST", "/api/video-generations", data);
+      return response.json();
+    },
+    onSuccess: (data: any) => {
+      setCurrentVideoGenerationId(data.id);
+      queryClient.invalidateQueries({ queryKey: ["/api/video-generations", data.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "影片生成已開始", description: "請稍候，約需 1-3 分鐘..." });
+    },
+    onError: (error: any) => {
+      const msg = error?.message || "無法開始影片生成。";
+      const description = msg.includes("402") ? "積分不足，請先充值。" :
+                          msg.includes("401") ? "請先登入。" :
+                          msg.includes("429") ? "今日影片生成次數已達上限（10 支/日），明日再試。" :
+                          `影片生成請求失敗：${msg}`;
+      toast({ title: "生成失敗", description, variant: "destructive" });
+    },
+  });
+
+  const { data: videoGeneration } = useQuery<VideoGeneration>({
+    queryKey: ["/api/video-generations", currentVideoGenerationId],
+    queryFn: async () => {
+      const response = await apiRequest("GET", `/api/video-generations/${currentVideoGenerationId}`);
+      return response.json();
+    },
+    enabled: !!currentVideoGenerationId,
+    staleTime: 0,
+    gcTime: 0,
+    refetchInterval: (query) => {
+      const v = query.state.data as VideoGeneration | undefined;
+      return (v?.status === "pending" || v?.status === "processing") ? 3000 : false;
+    },
+  });
+
   const { data: generation, isLoading: isPolling } = useQuery<ImageGeneration>({
     queryKey: ["/api/image-generations", currentGenerationId],
     queryFn: async () => {
@@ -231,8 +280,12 @@ export default function NsfwPage() {
       toast({ title: "缺少描述", description: "請輸入或從模板挑選提示詞。", variant: "destructive" });
       return;
     }
-    if (mode === "image-to-image" && !uploadedImagePath) {
-      toast({ title: "缺少圖片", description: "圖片編輯模式請先上傳圖片。", variant: "destructive" });
+    if ((mode === "image-to-image" || mode === "image-to-video") && !uploadedImagePath) {
+      toast({
+        title: "缺少圖片",
+        description: mode === "image-to-video" ? "圖片生影片模式請先上傳一張靜態圖片。" : "圖片編輯模式請先上傳圖片。",
+        variant: "destructive",
+      });
       return;
     }
     if (mode === "image-to-image" && !selectedModelMeta.supportsI2I) {
@@ -243,6 +296,20 @@ export default function NsfwPage() {
       });
       return;
     }
+    if (mode === "image-to-video") {
+      // Reset prior image polling so the result card flips cleanly to video.
+      setCurrentGenerationId("");
+      videoGenerateMutation.mutate({
+        type: "image-to-video",
+        originalImageUrl: uploadedImagePath,
+        prompt: prompt.trim(),
+        duration: videoDuration,
+        cameraFixed: false,
+        aspectRatio: videoAspectRatio,
+        resolution: videoResolution,
+      });
+      return;
+    }
     // Common payload bits. For GMI models we send provider+model and skip
     // the watermark flag — GMI doesn't watermark and our server intentionally
     // ignores that toggle for GMI rows.
@@ -250,6 +317,7 @@ export default function NsfwPage() {
       selectedModelMeta.provider === "gmi"
         ? { provider: "gmi", model: selectedModelMeta.id }
         : {};
+    setCurrentVideoGenerationId("");
     if (mode === "text-to-image") {
       generateMutation.mutate({
         type: "text-to-image",
@@ -271,11 +339,18 @@ export default function NsfwPage() {
   // Per-image credit cost. Default Seedream still honours the watermark
   // toggle (3 with / 8 without). GMI models charge a flat per-image rate
   // from the registry above and ignore the watermark flag.
-  const cost = selectedModelMeta.provider === "gmi"
+  const imageCost = selectedModelMeta.provider === "gmi"
     ? selectedModelMeta.credits
     : (watermark ? 3 : 8);
-  const isGenerating = generateMutation.isPending || (currentGenerationId && (generation?.status === "pending" || generation?.status === "processing"));
+  // Video cost mirrors server: 8 credits/sec @ 720p, 15 credits/sec @ 1080p.
+  const videoCreditsPerSec = videoResolution === "720p" ? 8 : 15;
+  const videoCost = Math.round(videoDuration * videoCreditsPerSec);
+  const cost = mode === "image-to-video" ? videoCost : imageCost;
+  const isImageBusy = generateMutation.isPending || (currentGenerationId && (generation?.status === "pending" || generation?.status === "processing"));
+  const isVideoBusy = videoGenerateMutation.isPending || (currentVideoGenerationId && (videoGeneration?.status === "pending" || videoGeneration?.status === "processing"));
+  const isGenerating = mode === "image-to-video" ? isVideoBusy : isImageBusy;
   const resultUrl = generation?.generatedImageUrl;
+  const resultVideoUrl = videoGeneration?.generatedVideoUrl || (videoGeneration as any)?.bunnyVideoUrl;
 
   // ----- Age gate UI -----
   if (!ageOk) {
@@ -429,22 +504,28 @@ export default function NsfwPage() {
             {/* mode toggle */}
             <Card className="bg-white shadow-sm">
               <CardContent className="p-4">
-                <div className="grid grid-cols-2 gap-2 mb-4">
+                <div className="grid grid-cols-3 gap-2 mb-4">
                   <button
                     onClick={() => setMode("text-to-image")}
-                    className={`py-2 rounded-lg text-sm font-medium ${mode === "text-to-image" ? "bg-rose-600 text-white" : "bg-gray-100 text-gray-700"}`}
+                    className={`py-2 rounded-lg text-xs sm:text-sm font-medium ${mode === "text-to-image" ? "bg-rose-600 text-white" : "bg-gray-100 text-gray-700"}`}
                   >
                     📝 文字生圖
                   </button>
                   <button
                     onClick={() => setMode("image-to-image")}
-                    className={`py-2 rounded-lg text-sm font-medium ${mode === "image-to-image" ? "bg-rose-600 text-white" : "bg-gray-100 text-gray-700"}`}
+                    className={`py-2 rounded-lg text-xs sm:text-sm font-medium ${mode === "image-to-image" ? "bg-rose-600 text-white" : "bg-gray-100 text-gray-700"}`}
                   >
                     🖼️ 圖片編輯
                   </button>
+                  <button
+                    onClick={() => setMode("image-to-video")}
+                    className={`py-2 rounded-lg text-xs sm:text-sm font-medium ${mode === "image-to-video" ? "bg-purple-600 text-white" : "bg-gray-100 text-gray-700"}`}
+                  >
+                    🎬 圖生影片
+                  </button>
                 </div>
 
-                {mode === "image-to-image" && (
+                {(mode === "image-to-image" || mode === "image-to-video") && (
                   <div className="mb-4">
                     {!uploadedImageUrl ? (
                       <UnifiedUploader
@@ -464,6 +545,11 @@ export default function NsfwPage() {
                           ✕
                         </button>
                       </div>
+                    )}
+                    {mode === "image-to-video" && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        💡 上傳一張靜態圖，描述想要的動態（如「人物緩慢轉頭，輕風吹動髮絲」），SeedDance 2.0 會生成 {videoDuration} 秒短片。
+                      </p>
                     )}
                   </div>
                 )}
@@ -488,10 +574,11 @@ export default function NsfwPage() {
                   )}
                 </div>
 
-                {/* Model picker. Sits above the size/seed grid so it reads
-                    as the most important choice. Each option shows its
-                    per-image credit cost; GMI options are grouped with an
-                    optgroup so the default Seedream stays visually primary. */}
+                {/* Model picker — only meaningful for image modes. The video
+                    pipeline is fixed to SeedDance 2.0 today, so we hide the
+                    selector in 圖生影片 mode and show video-specific knobs
+                    instead. */}
+                {mode !== "image-to-video" && (
                 <div className="mt-4">
                   <Label className="text-xs text-gray-700 flex items-center justify-between">
                     <span>AI 模型</span>
@@ -520,59 +607,111 @@ export default function NsfwPage() {
                     </p>
                   )}
                 </div>
+                )}
 
-                <div className="grid grid-cols-2 gap-3 mt-4">
-                  <div>
-                    <Label className="text-xs text-gray-700">尺寸</Label>
-                    <select
-                      value={size}
-                      onChange={(e) => setSize(e.target.value)}
-                      className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
-                    >
-                      <option value="2K">2K 高清</option>
-                      <option value="4K">4K 超高清</option>
-                      <option value="1920x1920">1:1 正方形</option>
-                      <option value="1440x2560">9:16 直向</option>
-                      <option value="2560x1440">16:9 橫向</option>
-                    </select>
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-700">引導強度</Label>
-                    <Input
-                      type="number"
-                      min={1} max={20} step={0.5}
-                      value={guidanceScale}
-                      onChange={(e) => setGuidanceScale(parseFloat(e.target.value) || 5.5)}
-                      className="mt-1 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-700">隨機種子</Label>
-                    <Input
-                      type="number"
-                      value={seed}
-                      onChange={(e) => setSeed(parseInt(e.target.value) || 21)}
-                      className="mt-1 text-sm"
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={watermark}
-                        onChange={(e) => setWatermark(e.target.checked)}
+                {mode !== "image-to-video" ? (
+                  <div className="grid grid-cols-2 gap-3 mt-4">
+                    <div>
+                      <Label className="text-xs text-gray-700">尺寸</Label>
+                      <select
+                        value={size}
+                        onChange={(e) => setSize(e.target.value)}
+                        className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                      >
+                        <option value="2K">2K 高清</option>
+                        <option value="4K">4K 超高清</option>
+                        <option value="1920x1920">1:1 正方形</option>
+                        <option value="1440x2560">9:16 直向</option>
+                        <option value="2560x1440">16:9 橫向</option>
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-700">引導強度</Label>
+                      <Input
+                        type="number"
+                        min={1} max={20} step={0.5}
+                        value={guidanceScale}
+                        onChange={(e) => setGuidanceScale(parseFloat(e.target.value) || 5.5)}
+                        className="mt-1 text-sm"
                       />
-                      含浮水印（便宜）
-                    </label>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-gray-700">隨機種子</Label>
+                      <Input
+                        type="number"
+                        value={seed}
+                        onChange={(e) => setSeed(parseInt(e.target.value) || 21)}
+                        className="mt-1 text-sm"
+                      />
+                    </div>
+                    <div className="flex items-end">
+                      <label className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={watermark}
+                          onChange={(e) => setWatermark(e.target.checked)}
+                        />
+                        含浮水印（便宜）
+                      </label>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  // Video-specific controls. Aspect ratio defaults to 9:16
+                  // since most NSFW reference imagery is portrait. Duration
+                  // is clamped on the server too (2-12s).
+                  <div className="mt-4 space-y-3">
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label className="text-xs text-gray-700">時長</Label>
+                        <select
+                          value={videoDuration}
+                          onChange={(e) => setVideoDuration(parseInt(e.target.value) || 5)}
+                          className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                        >
+                          <option value={3}>3 秒</option>
+                          <option value={5}>5 秒</option>
+                          <option value={8}>8 秒</option>
+                          <option value={10}>10 秒</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-gray-700">比例</Label>
+                        <select
+                          value={videoAspectRatio}
+                          onChange={(e) => setVideoAspectRatio(e.target.value as any)}
+                          className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                        >
+                          <option value="9:16">9:16 直向</option>
+                          <option value="16:9">16:9 橫向</option>
+                          <option value="1:1">1:1 方形</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-gray-700">畫質</Label>
+                        <select
+                          value={videoResolution}
+                          onChange={(e) => setVideoResolution(e.target.value as any)}
+                          className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
+                        >
+                          <option value="720p">720P（8 積分/秒）</option>
+                          <option value="1080p">1080P（15 積分/秒）</option>
+                        </select>
+                      </div>
+                    </div>
+                    <p className="text-xs text-purple-700 bg-purple-50 px-3 py-2 rounded-lg">
+                      🎬 使用 SeedDance 2.0；本次預估扣費 <b>{videoCost} 積分</b>（{videoDuration} 秒 × {videoCreditsPerSec} 積分/秒）。每日上限 10 支影片。
+                    </p>
+                  </div>
+                )}
 
                 <Button
-                  className="w-full mt-4 bg-rose-600 hover:bg-rose-700 text-white"
+                  className={`w-full mt-4 text-white ${mode === "image-to-video" ? "bg-purple-600 hover:bg-purple-700" : "bg-rose-600 hover:bg-rose-700"}`}
                   disabled={!!isGenerating}
                   onClick={handleGenerate}
                 >
-                  {isGenerating ? "🎨 生成中..." : `🔞 開始生成（${cost} 積分）`}
+                  {isGenerating
+                    ? (mode === "image-to-video" ? "🎬 生成影片中..." : "🎨 生成中...")
+                    : `${mode === "image-to-video" ? "🎬 開始生成影片" : "🔞 開始生成"}（${cost} 積分）`}
                 </Button>
                 {user && (
                   <div className="text-xs text-gray-500 mt-2 text-center">
@@ -582,18 +721,66 @@ export default function NsfwPage() {
               </CardContent>
             </Card>
 
-            {/* result */}
-            {(isGenerating || resultUrl || generation?.status === "failed") && (
+            {/* Video result card — shown whenever a video job is in flight,
+                done or failed. Kept separate from the image result card so
+                switching modes doesn't blow away prior results. */}
+            {(isVideoBusy || resultVideoUrl || videoGeneration?.status === "failed") && (
+              <Card className="bg-white shadow-sm">
+                <CardContent className="p-4">
+                  <h3 className="text-sm font-semibold text-purple-800 mb-3">🎬 影片生成結果</h3>
+                  {isVideoBusy && (
+                    <div className="aspect-[9/16] bg-gradient-to-br from-purple-50 to-rose-50 rounded-lg flex flex-col items-center justify-center text-gray-600 max-h-80">
+                      <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mb-3" />
+                      <p className="text-sm">SeedDance 渲染中，約 1-3 分鐘...</p>
+                      <p className="text-xs text-gray-400 mt-1">頁面可保持開啟，完成後自動顯示。</p>
+                    </div>
+                  )}
+                  {!isVideoBusy && resultVideoUrl && (
+                    <>
+                      <video src={resultVideoUrl} controls className="w-full rounded-lg max-h-[70vh] bg-black" />
+                      <div className="flex gap-2 mt-3">
+                        <a
+                          href={resultVideoUrl}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex-1 text-center py-2 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm"
+                        >
+                          ⬇️ 下載影片
+                        </a>
+                        <button
+                          onClick={() => {
+                            setCurrentVideoGenerationId("");
+                            window.scrollTo({ top: 0, behavior: "smooth" });
+                          }}
+                          className="flex-1 py-2 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg text-sm"
+                        >
+                          ✨ 再生一支
+                        </button>
+                      </div>
+                    </>
+                  )}
+                  {!isVideoBusy && videoGeneration?.status === "failed" && (
+                    <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">
+                      影片生成失敗：{videoGeneration.errorMessage || "未知錯誤"}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* image result */}
+            {(isImageBusy || resultUrl || generation?.status === "failed") && (
               <Card className="bg-white shadow-sm">
                 <CardContent className="p-4">
                   <h3 className="text-sm font-semibold text-gray-800 mb-3">生成結果</h3>
-                  {isGenerating && (
+                  {isImageBusy && (
                     <div className="aspect-square bg-gradient-to-br from-rose-50 to-purple-50 rounded-lg flex flex-col items-center justify-center text-gray-500">
                       <div className="animate-spin w-8 h-8 border-2 border-rose-500 border-t-transparent rounded-full mb-3" />
                       <p className="text-sm">AI 創作中，約 10-30 秒...</p>
                     </div>
                   )}
-                  {!isGenerating && resultUrl && (
+                  {!isImageBusy && resultUrl && (
                     <>
                       <Dialog open={isLightboxOpen} onOpenChange={setIsLightboxOpen}>
                         <DialogTrigger asChild>
@@ -625,7 +812,7 @@ export default function NsfwPage() {
                       </div>
                     </>
                   )}
-                  {!isGenerating && generation?.status === "failed" && (
+                  {!isImageBusy && generation?.status === "failed" && (
                     <div className="text-sm text-red-600 bg-red-50 p-3 rounded-lg">
                       生成失敗：{generation.errorMessage || "未知錯誤"}
                     </div>
