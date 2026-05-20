@@ -56,11 +56,13 @@ function NavigationHeader() {
                   🏞 場景庫
                 </Button>
               </Link>
-              <Link href="/nsfw">
-                <Button variant="ghost" size="sm" className="text-rose-600 hover:text-rose-700 font-medium">
-                  🔞 NSFW
-                </Button>
-              </Link>
+              {user.isAdmin && (
+                <Link href="/nsfw">
+                  <Button variant="ghost" size="sm" className="text-rose-600 hover:text-rose-700 font-medium">
+                    🔞 NSFW
+                  </Button>
+                </Link>
+              )}
               <Link href="/account">
                 <Button variant="ghost" size="sm" className="text-purple-600 font-medium">
                   <i className="fas fa-user mr-1"></i> 帳戶

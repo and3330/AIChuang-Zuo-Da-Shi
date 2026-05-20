@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { Switch, Route, Link, Redirect } from "wouter";
 import { queryClient, apiRequest, getQueryFn } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
@@ -314,6 +314,13 @@ function AuthPage() {
   );
 }
 
+function AdminOnly({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useUser();
+  if (isLoading) return null;
+  if (!user?.isAdmin) return <Redirect to="/" />;
+  return <>{children}</>;
+}
+
 function Router() {
   return (
     <Switch>
@@ -321,7 +328,9 @@ function Router() {
       <Route path="/drama" component={DramaPage} />
       <Route path="/character-library" component={CharacterLibraryPage} />
       <Route path="/scene-library" component={SceneLibraryPage} />
-      <Route path="/nsfw" component={NsfwPage} />
+      <Route path="/nsfw">
+        {() => <AdminOnly><NsfwPage /></AdminOnly>}
+      </Route>
       <Route path="/account" component={AccountPage} />
       <Route path="/transactions" component={TransactionsPage} />
       <Route path="/admin" component={AdminPage} />
