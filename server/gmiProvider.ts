@@ -295,21 +295,21 @@ export const GMI_VIDEO_MODELS: Record<string, GmiVideoModelConfig> = {
   // GMI's self-hosted Wan 2.2 Lightning on H100. provider="Wan" (not
   // "Aliyun") in the GMI console, which means it bypasses Aliyun's content
   // moderation layer that rejects NSFW prompts on wan2.5/2.6/2.7-i2v.
-  "wan2.2-lightning-i2V-8H100": {
-    id: "wan2.2-lightning-i2V-8H100",
-    label: "Wan 2.2 Lightning i2v (GMI 自託管 · NSFW 友善)",
-    description: "GMI 在 H100 上自架的 Wan 2.2 開源版，繞過阿里雲審查，速度快",
+  "Wan-AI_Wan2.2-I2V-A14B": {
+    id: "Wan-AI_Wan2.2-I2V-A14B",
+    label: "Wan 2.2 i2v 14B (GMI 自託管 · NSFW 友善)",
+    description: "Wan-AI 官方 Wan 2.2 開源版，由 GMI 自託管（非阿里雲），繞過審查層",
     creditsPerSecond720p: 6,
     creditsPerSecond1080p: 10,
     pollTimeoutMs: 12 * 60 * 1000, // 12 min
     buildPayload: ({ imageDataOrUrl, prompt, aspectRatio, seconds, resolution }) => {
-      // Wan i2v on the request-queue accepts either a public image URL or a
-      // base64 data URI in `image`. `prompt` (alias of `text`) drives motion.
-      // `size` is optional; if omitted the output matches the source frame's
-      // aspect ratio. We pass it for predictability when the user picked one.
+      // Wan-AI_Wan2.2-I2V-A14B on the request-queue API uses
+      // `path_input_image` (not `image`) — confirmed via 400 invalid-payload
+      // response. Accepts public URL or base64 data URI. `prompt` drives
+      // motion; `size` is W*H asterisk notation.
       const clamped = Math.max(3, Math.min(10, Math.round(seconds || 5)));
       return {
-        image: imageDataOrUrl,
+        path_input_image: imageDataOrUrl,
         prompt,
         size: aspectToWanVideoSize(aspectRatio, resolution),
         seconds: clamped,

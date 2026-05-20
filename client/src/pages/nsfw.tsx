@@ -116,7 +116,7 @@ export default function NsfwPage() {
   // Keep in sync with server/gmiProvider.ts GMI_VIDEO_MODELS.
   const VIDEO_MODELS = [
     { id: "seeddance",                  label: "SeedDance 2.0 (BytePlus · 預設)",                  desc: "穩定快速，但有內建 NSFW 過濾",                          provider: "byteplus" as const, per720: 8, per1080: 15 },
-    { id: "wan2.2-lightning-i2V-8H100", label: "Wan 2.2 Lightning i2v (GMI 自託管 · NSFW 友善)",   desc: "GMI 自架的 Wan 2.2 開源版（H100），繞過阿里審查、速度快", provider: "gmi"      as const, per720: 6, per1080: 10 },
+    { id: "Wan-AI_Wan2.2-I2V-A14B", label: "Wan 2.2 i2v 14B (GMI 自託管 · NSFW 友善)",   desc: "Wan-AI 官方 Wan 2.2 開源版，由 GMI 自託管（非阿里雲），繞過審查層", provider: "gmi"      as const, per720: 6, per1080: 10 },
   ];
   const [selectedVideoModel, setSelectedVideoModel] = useState<string>("seeddance");
   const selectedVideoMeta = VIDEO_MODELS.find(m => m.id === selectedVideoModel) ?? VIDEO_MODELS[0];
