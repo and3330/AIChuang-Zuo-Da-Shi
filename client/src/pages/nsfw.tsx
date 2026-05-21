@@ -33,6 +33,54 @@ const TEMPLATE_FILES: { file: string; label: string; emoji: string }[] = [
   { file: "14-人格卡片.md", label: "人格卡片", emoji: "🎭" },
 ];
 
+/**
+ * 一鍵範本 — 10 組常用情境，點一下整段塞進提示詞框，使用者不用自己組。
+ * 內容是參考 `00-范例.md` 裡的「完整 Prompt 范例」精選改寫，每段都包含
+ * 場景 + 服裝 + 動作 + 鏡頭 + 風格 + 細節，可直接出圖。
+ */
+const QUICK_TEMPLATES: { emoji: string; label: string; tag: string; prompt: string }[] = [
+  {
+    emoji: "🏫", label: "校園制服 · 教室誘惑", tag: "校園",
+    prompt: "1girl, asian, japanese schoolgirl, sailor uniform, white shirt unbuttoned, breasts exposed, sitting on classroom desk, legs apart, afternoon sunlight from window, dust particles, shy expression, blush, detailed face, masterpiece, best quality, ultra detailed, 8k, photorealistic, film grain, Kodak Portra 400",
+  },
+  {
+    emoji: "🛁", label: "浴室濕身 · 蒸氣朦朧", tag: "家居",
+    prompt: "1girl, asian, beautiful detailed face, wet hair, water droplets on skin, in modern bathroom, steam, soft natural light from window, sitting on bathtub edge, fully nude, slim body, small breasts, anatomically correct, masterpiece, best quality, photorealistic, 8k, cinematic lighting, depth of field",
+  },
+  {
+    emoji: "👔", label: "OL 辦公室 · 加班深夜", tag: "職場",
+    prompt: "1girl, asian office lady, white blouse open, black pencil skirt pulled up, sitting on office desk at night, fluorescent light, glass window with city lights, tired but seductive expression, garter belt, stockings, high heels, detailed face, masterpiece, best quality, photorealistic, 8k, cinematic",
+  },
+  {
+    emoji: "🏖️", label: "海邊比基尼 · 黃昏", tag: "戶外",
+    prompt: "1girl, asian, beautiful detailed face, micro bikini, large breasts, slim waist, standing on beach at sunset, golden hour, wet hair, wet skin, ocean waves, soft warm light, looking at viewer, slightly parted lips, masterpiece, best quality, photorealistic, 8k, depth of field, Fuji Pro 400H",
+  },
+  {
+    emoji: "🎤", label: "KTV 包廂 · 派對微醺", tag: "派對",
+    prompt: "1girl, asian, drunk expression, flushed cheeks, strapless party dress pulled down, bare breasts, holding microphone, sitting on KTV sofa, legs open, neon lights, disco ball, colorful lights, party atmosphere, medium shot, masterpiece, best quality, ultra detailed, 8k, photorealistic",
+  },
+  {
+    emoji: "🚗", label: "車內後座 · 私密時刻", tag: "場景",
+    prompt: "1girl, asian, sitting in car back seat at night, mini skirt pulled up, no panties, legs open, parked in dim parking lot, street lights through window, intimate atmosphere, detailed face, embarrassed expression, masterpiece, best quality, photorealistic, 8k, cinematic lighting",
+  },
+  {
+    emoji: "👰", label: "婚紗試穿 · 純白誘惑", tag: "禮服",
+    prompt: "1girl, asian, beautiful detailed face, white wedding dress, strapless, breasts exposed above corset, in bridal shop fitting room, standing in front of large mirror, soft window light, elegant pose, long hair, jewelry, masterpiece, best quality, photorealistic, 8k, dreamy atmosphere",
+  },
+  {
+    emoji: "🎌", label: "和服祭典 · 日式古風", tag: "風格",
+    prompt: "1girl, asian, traditional japanese yukata, loosely worn, one shoulder exposed, breast slipping out, sitting on tatami mat, summer festival night, paper lantern light, cherry blossoms, fan in hand, shy smile, long black hair, masterpiece, best quality, photorealistic, 8k, film grain",
+  },
+  {
+    emoji: "🧖", label: "溫泉露天 · 雪夜氤氳", tag: "戶外",
+    prompt: "1girl, asian, soaking in outdoor onsen at night, snow falling, steam rising from hot spring, fully nude, beautiful small breasts visible above water, wet skin, looking up at snowy sky, peaceful expression, traditional japanese inn, masterpiece, best quality, photorealistic, 8k, cinematic, depth of field",
+  },
+  {
+    emoji: "🛏️", label: "卧室晨光 · 慵懶純情", tag: "家居",
+    prompt: "1girl, asian, lying on bed in morning, white bedsheets, sunlight through curtains, oversized white shirt only, no underwear, partially covered, sleepy expression, messy hair, soft natural light, intimate atmosphere, detailed face, masterpiece, best quality, photorealistic, 8k, Kodak Portra 400, film grain",
+  },
+];
+
 type ParsedLine =
   | { kind: "heading"; level: number; text: string }
   | { kind: "quote"; text: string }
@@ -183,6 +231,24 @@ export default function NsfwPage() {
     });
     promptRef.current?.focus();
   };
+
+  /** 一鍵範本：整段塞入。若已有內容會詢問是替換還是接在後面，
+   *  確保使用者不會無意間覆蓋自己打到一半的提示詞。 */
+  const applyQuickTemplate = (tpl: { label: string; prompt: string }) => {
+    if (prompt.trim().length > 0) {
+      const ok = window.confirm(`提示詞框已有內容，要用「${tpl.label}」覆蓋嗎？\n（按取消則接在後面）`);
+      if (ok) setPrompt(tpl.prompt);
+      else setPrompt(prev => prev.trim() + "\n\n" + tpl.prompt);
+    } else {
+      setPrompt(tpl.prompt);
+    }
+    toast({ title: "✅ 已套用範本", description: tpl.label });
+    promptRef.current?.focus();
+    promptRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
+
+  // 進階詞庫預設折疊，使用者要自訂組詞時才打開。
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   // upload handlers (same pattern as home.tsx)
   const handleGetUploadParameters = async () => {
@@ -419,96 +485,133 @@ export default function NsfwPage() {
         </div>
 
         <div className="grid lg:grid-cols-12 gap-6">
-          {/* ============ 左欄：提示詞模板庫 ============ */}
-          <div className="lg:col-span-7 order-2 lg:order-1">
+          {/* ============ 左欄：提示詞範本 + 進階詞庫 ============ */}
+          <div className="lg:col-span-7 order-2 lg:order-1 space-y-4">
+            {/* 一鍵範本：10 個常用情境，直接點就好，不用組詞 */}
             <Card className="bg-white shadow-sm">
               <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-                  <h2 className="text-base font-semibold text-gray-800">📚 提示詞模板庫</h2>
-                  <Input
-                    placeholder="🔍 搜尋詞彙（如：制服 / 教室 / 微笑）"
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    className="w-full sm:w-64 text-sm"
-                  />
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-base font-semibold text-gray-800">🚀 一鍵範本</h2>
+                  <span className="text-xs text-gray-500">點一下整段套用，不用自己組詞</span>
                 </div>
-
-                {/* tabs */}
-                <div className="flex gap-1.5 overflow-x-auto pb-2 mb-3 scrollbar-thin">
-                  {TEMPLATE_FILES.map(t => (
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-2 xl:grid-cols-3 gap-2">
+                  {QUICK_TEMPLATES.map((tpl, i) => (
                     <button
-                      key={t.file}
-                      onClick={() => setActiveFile(t.file)}
-                      className={`shrink-0 px-3 py-1.5 rounded-full text-xs border transition-colors ${
-                        activeFile === t.file
-                          ? "bg-rose-600 text-white border-rose-600"
-                          : "bg-gray-50 text-gray-700 border-gray-200 hover:bg-rose-50 hover:border-rose-300"
-                      }`}
+                      key={i}
+                      onClick={() => applyQuickTemplate(tpl)}
+                      className="group flex flex-col items-start gap-1 text-left p-3 rounded-lg border border-gray-200 bg-gradient-to-br from-rose-50 to-pink-50 hover:from-rose-100 hover:to-pink-100 hover:border-rose-300 transition-colors"
+                      title={tpl.prompt}
                     >
-                      <span className="mr-1">{t.emoji}</span>{t.label}
+                      <div className="text-2xl">{tpl.emoji}</div>
+                      <div className="text-sm font-semibold text-gray-800 leading-tight">{tpl.label}</div>
+                      <div className="text-[10px] text-rose-600 bg-white/70 px-1.5 py-0.5 rounded">#{tpl.tag}</div>
                     </button>
                   ))}
                 </div>
+                <p className="text-[11px] text-gray-500 mt-3 leading-relaxed">
+                  💡 範本是完整提示詞（包含場景、服裝、動作、鏡頭、風格），套用後可直接生成，也可以再加自己的描述。
+                </p>
+              </CardContent>
+            </Card>
 
-                <div className="text-xs text-gray-500 mb-2 px-1">
-                  💡 點任意一行詞彙會自動加到右側提示詞框。
-                </div>
+            {/* 進階詞庫：折疊式，使用者想自訂時才打開 */}
+            <Card className="bg-white shadow-sm">
+              <CardContent className="p-4">
+                <button
+                  onClick={() => setAdvancedOpen(v => !v)}
+                  className="w-full flex items-center justify-between gap-2 group"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="text-base font-semibold text-gray-800">🧰 進階詞庫</span>
+                    <span className="text-xs text-gray-500">15 個分類 · 1000+ 詞彙</span>
+                  </div>
+                  <span className={`text-gray-400 group-hover:text-gray-700 transition-transform ${advancedOpen ? "rotate-180" : ""}`}>
+                    ▼
+                  </span>
+                </button>
 
-                <div className="h-[60vh] overflow-y-auto pr-2 border rounded-lg bg-gray-50/50 p-3 text-sm">
-                  {loadingTemplate && (
-                    <div className="text-center text-gray-400 py-10">載入模板中...</div>
-                  )}
-                  {!loadingTemplate && filtered.length === 0 && (
-                    <div className="text-center text-gray-400 py-10">沒有符合的詞彙</div>
-                  )}
-                  {!loadingTemplate && filtered.map((l, i) => {
-                    if (l.kind === "blank") return <div key={i} className="h-2" />;
-                    if (l.kind === "hr") return <hr key={i} className="my-3 border-gray-200" />;
-                    if (l.kind === "heading") {
-                      const sizeCls = l.level <= 2 ? "text-base font-bold text-rose-700 mt-3 mb-1" :
-                                      l.level === 3 ? "text-sm font-semibold text-gray-800 mt-2 mb-1" :
-                                      "text-xs font-semibold text-gray-600 mt-2";
-                      return <div key={i} className={sizeCls}>{stripMd(l.text)}</div>;
-                    }
-                    if (l.kind === "quote") {
-                      return <div key={i} className="text-xs text-gray-500 italic border-l-2 border-gray-300 pl-2 my-1">{stripMd(l.text)}</div>;
-                    }
-                    if (l.kind === "tableSep") return null;
-                    if (l.kind === "tableRow") {
-                      return (
-                        <div key={i} className="flex gap-1.5 flex-wrap my-1">
-                          {l.cells.map((c, ci) => {
-                            const clean = stripMd(c);
-                            if (!clean || clean === "-") return null;
-                            return (
-                              <button
-                                key={ci}
-                                onClick={() => insertToPrompt(c)}
-                                className="px-2 py-0.5 text-xs bg-white border border-gray-200 rounded hover:bg-rose-50 hover:border-rose-300 text-gray-700"
-                                title="點擊加入提示詞"
-                              >
-                                {clean}
-                              </button>
-                            );
-                          })}
-                        </div>
-                      );
-                    }
-                    // chip
-                    const clean = stripMd(l.text);
-                    if (!clean) return null;
-                    return (
-                      <button
-                        key={i}
-                        onClick={() => insertToPrompt(l.text)}
-                        className="block w-full text-left px-2 py-1 rounded hover:bg-rose-100 text-gray-700 text-xs leading-relaxed"
-                        title="點擊加入提示詞"
+                {advancedOpen && (
+                  <div className="mt-4">
+                    {/* 搜尋 + 分類選單 */}
+                    <div className="flex gap-2 mb-3 flex-wrap">
+                      <Input
+                        placeholder="🔍 搜尋詞彙（如：制服 / 教室 / 微笑）"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="flex-1 min-w-[200px] text-sm"
+                      />
+                      <select
+                        value={activeFile}
+                        onChange={(e) => setActiveFile(e.target.value)}
+                        className="px-3 py-1.5 border border-gray-200 rounded-lg text-sm bg-white"
                       >
-                        {clean}
-                      </button>
-                    );
-                  })}
-                </div>
+                        {TEMPLATE_FILES.map(t => (
+                          <option key={t.file} value={t.file}>{t.emoji} {t.label}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="text-xs text-gray-500 mb-2 px-1">
+                      💡 點任意詞彙會以「，」串到提示詞框，可組合多個。
+                    </div>
+
+                    <div className="h-[50vh] overflow-y-auto pr-2 border rounded-lg bg-gray-50/50 p-3 text-sm">
+                      {loadingTemplate && (
+                        <div className="text-center text-gray-400 py-10">載入模板中...</div>
+                      )}
+                      {!loadingTemplate && filtered.length === 0 && (
+                        <div className="text-center text-gray-400 py-10">沒有符合的詞彙</div>
+                      )}
+                      {!loadingTemplate && filtered.map((l, i) => {
+                        if (l.kind === "blank") return <div key={i} className="h-2" />;
+                        if (l.kind === "hr") return <hr key={i} className="my-3 border-gray-200" />;
+                        if (l.kind === "heading") {
+                          const sizeCls = l.level <= 2 ? "text-base font-bold text-rose-700 mt-3 mb-1" :
+                                          l.level === 3 ? "text-sm font-semibold text-gray-800 mt-2 mb-1" :
+                                          "text-xs font-semibold text-gray-600 mt-2";
+                          return <div key={i} className={sizeCls}>{stripMd(l.text)}</div>;
+                        }
+                        if (l.kind === "quote") {
+                          return <div key={i} className="text-xs text-gray-500 italic border-l-2 border-gray-300 pl-2 my-1">{stripMd(l.text)}</div>;
+                        }
+                        if (l.kind === "tableSep") return null;
+                        if (l.kind === "tableRow") {
+                          return (
+                            <div key={i} className="flex gap-1.5 flex-wrap my-1">
+                              {l.cells.map((c, ci) => {
+                                const clean = stripMd(c);
+                                if (!clean || clean === "-") return null;
+                                return (
+                                  <button
+                                    key={ci}
+                                    onClick={() => insertToPrompt(c)}
+                                    className="px-2 py-0.5 text-xs bg-white border border-gray-200 rounded hover:bg-rose-50 hover:border-rose-300 text-gray-700"
+                                    title="點擊加入提示詞"
+                                  >
+                                    {clean}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          );
+                        }
+                        // chip
+                        const clean = stripMd(l.text);
+                        if (!clean) return null;
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => insertToPrompt(l.text)}
+                            className="block w-full text-left px-2 py-1 rounded hover:bg-rose-100 text-gray-700 text-xs leading-relaxed"
+                            title="點擊加入提示詞"
+                          >
+                            {clean}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
