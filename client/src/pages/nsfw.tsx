@@ -86,9 +86,12 @@ type ParsedLine =
   | { kind: "quote"; text: string }
   | { kind: "hr" }
   | { kind: "chip"; text: string }
-  | { kind: "tableRow"; cells: string[] }
+  | { kind: "tableHeader"; cells: string[] }
+  | { kind: "tableRow"; cells: string[]; header?: string[] }
   | { kind: "tableSep" }
   | { kind: "blank" };
+
+const ID_HEADER_RE = /^(ID|編號|序號|#|No\.?|Idx)$/i;
 
 function parseMarkdown(md: string): ParsedLine[] {
   const lines = md.split(/\r?\n/);
@@ -117,7 +120,62 @@ function parseMarkdown(md: string): ParsedLine[] {
     if (num) { out.push({ kind: "chip", text: num[1].trim() }); continue; }
     out.push({ kind: "chip", text: line.trim() });
   }
+  // 後處理：(1) 把「在 tableSep 之前的最後一個 tableRow」標記為 header
+  //         (2) 把表頭傳遞給後續所有資料列，直到下一張表開始
+  // (markdown table 標準語法：標題列 → ---分隔線 → 資料列)
+  let currentHeader: string[] | undefined;
+  for (let i = 0; i < out.length; i++) {
+    if (out[i].kind === "tableRow" && out[i + 1]?.kind === "tableSep") {
+      const r = out[i] as Extract<ParsedLine, { kind: "tableRow" }>;
+      const headerCells = r.cells;
+      out[i] = { kind: "tableHeader", cells: headerCells };
+      currentHeader = headerCells;
+    } else if (out[i].kind === "tableRow" && currentHeader) {
+      const r = out[i] as Extract<ParsedLine, { kind: "tableRow" }>;
+      out[i] = { kind: "tableRow", cells: r.cells, header: currentHeader };
+    } else if (out[i].kind === "heading" || out[i].kind === "hr") {
+      // 跨章節就重置表頭，避免上一張表的 header 漏到下一張不相干的表
+      currentHeader = undefined;
+    }
+  }
   return out;
+}
+
+/** 判斷某個欄位「應該被視為 ID 而剝除」：必須同時滿足
+ *  (a) 對應表頭是 ID/編號/序號 之類
+ *  (b) 內容像 ID 格式（C01、W12、純數字、## 號）
+ *  兩個條件，避免誤刪語意內容如 A1（A 罩杯1）。
+ */
+function isIdColumn(cellRaw: string, headerCellRaw: string | undefined): boolean {
+  if (!headerCellRaw) return false;
+  const h = stripMd(headerCellRaw).trim();
+  if (!ID_HEADER_RE.test(h)) return false;
+  const c = stripMd(cellRaw).trim();
+  return /^[A-Z]?\d{1,4}$/i.test(c) || /^[A-Z]+\d{1,4}$/.test(c);
+}
+
+/** 從一個資料列裡萃取出可以直接塞進提示詞的關鍵字字串。
+ *  規則：
+ *    - 跳過 ID 欄（須表頭+內容都像 ID 才剝；否則保留）
+ *    - 跳過空格與 "-"
+ *    - 每格再用 / 、 ， , 分割成關鍵字
+ *    - 全部用 ", " 串起來
+ *    - 後備：若剝完是空字串，退回所有非空格的純串接，不會送出空 prompt
+ */
+function tableRowToPrompt(cells: string[], header?: string[]): string {
+  const out: string[] = [];
+  for (let i = 0; i < cells.length; i++) {
+    const c = stripMd(cells[i]).trim();
+    if (!c || c === "-") continue;
+    if (isIdColumn(cells[i], header?.[i])) continue;
+    const parts = c.split(/[\/、，,]/).map(s => s.trim()).filter(Boolean);
+    out.push(...parts);
+  }
+  if (out.length === 0) {
+    // safety fallback：剝乾淨後沒東西，退回所有非空格 (含原 ID 欄)
+    return cells.map(c => stripMd(c).trim()).filter(c => c && c !== "-").join(", ");
+  }
+  return out.join(", ");
 }
 
 function stripMd(s: string): string {
@@ -575,24 +633,65 @@ export default function NsfwPage() {
                           return <div key={i} className="text-xs text-gray-500 italic border-l-2 border-gray-300 pl-2 my-1">{stripMd(l.text)}</div>;
                         }
                         if (l.kind === "tableSep") return null;
-                        if (l.kind === "tableRow") {
+                        if (l.kind === "tableHeader") {
+                          // 標題列：純顯示用，灰色細字、不可點，視覺像表頭。
                           return (
-                            <div key={i} className="flex gap-1.5 flex-wrap my-1">
-                              {l.cells.map((c, ci) => {
-                                const clean = stripMd(c);
-                                if (!clean || clean === "-") return null;
-                                return (
-                                  <button
-                                    key={ci}
-                                    onClick={() => insertToPrompt(c)}
-                                    className="px-2 py-0.5 text-xs bg-white border border-gray-200 rounded hover:bg-rose-50 hover:border-rose-300 text-gray-700"
-                                    title="點擊加入提示詞"
-                                  >
-                                    {clean}
-                                  </button>
-                                );
-                              })}
+                            <div key={i} className="grid grid-cols-[auto_1fr] gap-2 px-2 py-1 mt-2 mb-1 border-b border-gray-200">
+                              <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wide">欄位</span>
+                              <div className="flex gap-1 flex-wrap">
+                                {l.cells.map((c, ci) => {
+                                  const clean = stripMd(c);
+                                  if (!clean) return null;
+                                  return (
+                                    <span key={ci} className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                      {clean}
+                                    </span>
+                                  );
+                                })}
+                              </div>
                             </div>
+                          );
+                        }
+                        if (l.kind === "tableRow") {
+                          // 資料列：整列當一張卡，點一下把所有關鍵字（header-aware 跳過 ID）一次塞入。
+                          const allClean = l.cells.map(c => stripMd(c).trim());
+                          const idIdx = l.cells.findIndex((c, idx) => isIdColumn(c, l.header?.[idx]));
+                          const idCell = idIdx >= 0 ? allClean[idIdx] : "";
+                          const meaningful = allClean.filter((c, idx) => c && c !== "-" && idx !== idIdx);
+                          if (meaningful.length === 0) return null;
+                          const title = meaningful[0];
+                          const extras = meaningful.slice(1);
+                          const fullPrompt = tableRowToPrompt(l.cells, l.header);
+                          return (
+                            <button
+                              key={i}
+                              onClick={() => insertToPrompt(fullPrompt)}
+                              className="w-full text-left my-1 px-2.5 py-2 rounded-lg border border-gray-200 bg-white hover:bg-rose-50 hover:border-rose-300 transition-colors group"
+                              title={`點擊加入：${fullPrompt}`}
+                            >
+                              <div className="flex items-start gap-2">
+                                {idCell && (
+                                  <span className="shrink-0 text-[10px] font-mono text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded mt-0.5">
+                                    {idCell}
+                                  </span>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium text-gray-800 group-hover:text-rose-700">
+                                    {title}
+                                  </div>
+                                  {extras.length > 0 && (
+                                    <div className="flex gap-1 flex-wrap mt-1">
+                                      {extras.map((e, ei) => (
+                                        <span key={ei} className="text-[10px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                                          {e}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="shrink-0 text-xs text-gray-300 group-hover:text-rose-500">＋</span>
+                              </div>
+                            </button>
                           );
                         }
                         // chip
