@@ -316,6 +316,33 @@ export const GMI_VIDEO_MODELS: Record<string, GmiVideoModelConfig> = {
       };
     },
   },
+  // Aliyun-hosted wan2.7-i2v. Higher fidelity & supports first_frame +
+  // last_frame URLs, durations 2-15s. NOTE: provider="Aliyun" means
+  // content moderation IS active — NSFW prompts will return 400
+  // "inappropriate content". Exposed for non-NSFW use (home /home page);
+  // also surfaced in /nsfw with a警語 so users know to keep it SFW.
+  "wan2.7-i2v": {
+    id: "wan2.7-i2v",
+    label: "Wan 2.7 i2v (阿里雲 · 高細節 · 限非 NSFW)",
+    description: "阿里雲 Wan 2.7 影像生影片，畫質/時序最佳，但走阿里雲審查、NSFW 內容會被拒",
+    creditsPerSecond720p: 8,
+    creditsPerSecond1080p: 14,
+    pollTimeoutMs: 12 * 60 * 1000,
+    buildPayload: ({ imageDataOrUrl, prompt, seconds, resolution }) => {
+      // wan2.7-i2v payload per official docs:
+      //   first_frame (image URL or data URI), prompt, resolution ("720P"|"1080P"),
+      //   duration (2-15 int seconds). No `size` field (resolution + first_frame
+      //   aspect drives output dims).
+      const clamped = Math.max(2, Math.min(15, Math.round(seconds || 5)));
+      return {
+        first_frame: imageDataOrUrl,
+        prompt,
+        resolution: resolution === "1080p" ? "1080P" : "720P",
+        duration: clamped,
+        prompt_extend: true,
+      };
+    },
+  },
 };
 
 export const GMI_VIDEO_MODEL_LIST = Object.values(GMI_VIDEO_MODELS).map((c) => ({

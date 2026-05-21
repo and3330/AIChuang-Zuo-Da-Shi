@@ -221,8 +221,14 @@ export default function NsfwPage() {
   // with provider:"gmi" — pricing cheaper (6/10) and審查寬鬆。
   // Keep in sync with server/gmiProvider.ts GMI_VIDEO_MODELS.
   const VIDEO_MODELS = [
-    { id: "seeddance",                  label: "SeedDance 2.0 (BytePlus · 預設)",                  desc: "穩定快速，但有內建 NSFW 過濾",                          provider: "byteplus" as const, per720: 8, per1080: 15 },
-    { id: "Wan-AI_Wan2.2-I2V-A14B", label: "Wan 2.2 i2v 14B (GMI 自託管 · NSFW 友善)",   desc: "Wan-AI 官方 Wan 2.2 開源版，由 GMI 自託管（非阿里雲），繞過審查層", provider: "gmi"      as const, per720: 6, per1080: 10 },
+    { id: "seeddance",                  label: "SeedDance 2.0 (BytePlus · 預設)",                  desc: "穩定快速，但有內建 NSFW 過濾",                          provider: "byteplus" as const, per720: 8,  per1080: 15 },
+    { id: "Wan-AI_Wan2.2-I2V-A14B", label: "Wan 2.2 i2v 14B (GMI 自託管 · NSFW 友善)",   desc: "Wan-AI 官方 Wan 2.2 開源版，由 GMI 自託管（非阿里雲），繞過審查層", provider: "gmi"      as const, per720: 6,  per1080: 10 },
+    // wan2.7-i2v is Aliyun-hosted, so content moderation IS active. We
+    // expose it here for users who want the higher-quality model on
+    // strictly SFW prompts (e.g. anime-style soft cosplay, glamour);
+    // NSFW prompts will fail with 400 inappropriate content and the
+    // server-side refund pipeline will refund credits automatically.
+    { id: "wan2.7-i2v",             label: "Wan 2.7 i2v (阿里雲 · 高細節 · ⚠️ 限非 NSFW)", desc: "畫質與時序最佳，但走阿里雲審查、NSFW 內容會被拒並退款，建議用在 SFW 構圖",  provider: "gmi"      as const, per720: 8,  per1080: 14 },
   ];
   const [selectedVideoModel, setSelectedVideoModel] = useState<string>("seeddance");
   const selectedVideoMeta = VIDEO_MODELS.find(m => m.id === selectedVideoModel) ?? VIDEO_MODELS[0];

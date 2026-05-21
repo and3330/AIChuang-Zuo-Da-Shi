@@ -93,6 +93,18 @@ export default function Home() {
   const [myVideosOpen, setMyVideosOpen] = useState(false);
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
+  // Image-to-video model picker. Same registry pattern as /nsfw — must be
+  // kept in sync with server/gmiProvider.ts GMI_VIDEO_MODELS. Default is
+  // SeedDance (BytePlus) for backward compatibility.
+  // wan2.7-i2v is Aliyun-hosted so it's fine to surface on /home (this page
+  // is general-purpose SFW); NSFW prompts would be moderated server-side.
+  const I2V_MODELS = [
+    { id: "seeddance",              label: "SeedDance 2.0 (BytePlus · 預設)",          desc: "穩定快速，支援參考素材全能模式", provider: "byteplus" as const, per720: 8,  per1080: 15, supportsOmni: true  },
+    { id: "wan2.7-i2v",             label: "Wan 2.7 i2v (阿里雲 · 高細節)",            desc: "Aliyun Wan 2.7，畫質與時序最佳", provider: "gmi"      as const, per720: 8,  per1080: 14, supportsOmni: false },
+    { id: "Wan-AI_Wan2.2-I2V-A14B", label: "Wan 2.2 i2v 14B (GMI 自託管 · 經濟)", desc: "Wan 2.2 開源版，便宜但無審查",   provider: "gmi"      as const, per720: 6,  per1080: 10, supportsOmni: false },
+  ];
+  const [selectedI2VModel, setSelectedI2VModel] = useState<string>("seeddance");
+  const selectedI2VMeta = I2V_MODELS.find(m => m.id === selectedI2VModel) ?? I2V_MODELS[0];
 
   const getNarrativeInfo = (idx: number, total: number): { label: string; short: string; color: string; bg: string; border: string; icon: string } => {
     const ratio = total <= 1 ? 0 : idx / (total - 1);
@@ -792,11 +804,20 @@ export default function Home() {
         aspectRatio: videoAspectRatio,
         resolution: videoResolution,
       };
-      if (videoReferenceImages.length > 0) {
-        videoData.additionalImageUrls = videoReferenceImages.map(r => r.path);
-      }
-      if (videoReferenceAudio) {
-        videoData.referenceAudioUrl = videoReferenceAudio.path;
+      // GMI route: attach provider+model. Omni refs/audio are ignored by
+      // the server for GMI models (gmiGenerateVideo doesn't read them);
+      // the picker UI already hides the omni section when a GMI model is
+      // selected so the user isn't misled.
+      if (selectedI2VMeta.provider === "gmi") {
+        videoData.provider = "gmi";
+        videoData.model = selectedI2VMeta.id;
+      } else {
+        if (videoReferenceImages.length > 0) {
+          videoData.additionalImageUrls = videoReferenceImages.map(r => r.path);
+        }
+        if (videoReferenceAudio) {
+          videoData.referenceAudioUrl = videoReferenceAudio.path;
+        }
       }
       videoGenerateMutation.mutate(videoData);
     }
@@ -945,7 +966,11 @@ export default function Home() {
   const WATERMARK_REMOVAL_COST = 5;
   const getCreditsNeeded = () => {
     if (mode === "story") return storySceneCount * 3;
-    if (mode === "image-to-video" || mode === "text-to-video") return Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15));
+    if (mode === "image-to-video") {
+      const per = videoResolution === "720p" ? selectedI2VMeta.per720 : selectedI2VMeta.per1080;
+      return Math.round(videoDuration * per);
+    }
+    if (mode === "text-to-video") return Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15));
     const perImageCost = watermark ? 3 : 3 + WATERMARK_REMOVAL_COST;
     if (mode === "text-to-image") return isSequentialMode ? perImageCost * sequentialCount : perImageCost;
     if (isBatchMode) return perImageCost * batchPrompts.filter(p => p.trim()).length;
@@ -1860,6 +1885,32 @@ export default function Home() {
                       </div>
                     </div>
 
+                    {/* ── AI 影片模型選擇 ─────────────────────────────── */}
+                    <div className="border border-purple-200 bg-purple-50/40 rounded-xl p-4 space-y-2">
+                      <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                        <i className="fas fa-robot text-purple-500"></i>
+                        AI 影片模型
+                      </Label>
+                      <select
+                        value={selectedI2VModel}
+                        onChange={(e) => setSelectedI2VModel(e.target.value)}
+                        className="w-full px-3 py-2 border border-purple-200 rounded-lg bg-white text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                      >
+                        {I2V_MODELS.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}（720P {m.per720} 積分/秒 · 1080P {m.per1080} 積分/秒）
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-gray-500">{selectedI2VMeta.desc}</p>
+                      {!selectedI2VMeta.supportsOmni && (
+                        <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 flex items-start gap-1.5">
+                          <i className="fas fa-info-circle mt-0.5"></i>
+                          <span>此模型不支援「參考素材全能模式」，下方的參考圖片與參考音訊將被忽略。若需要多參考素材請選擇 SeedDance 2.0。</span>
+                        </p>
+                      )}
+                    </div>
+
                     <div>
                       <div className="flex items-center justify-between mb-1.5">
                         <Label className="text-sm font-medium text-gray-700">描述影片動態效果</Label>
@@ -2057,7 +2108,7 @@ export default function Home() {
                           }`}
                         >
                           <div className="font-semibold text-sm">720P</div>
-                          <div className="text-xs mt-0.5 text-green-600 font-medium">8 積分/秒</div>
+                          <div className="text-xs mt-0.5 text-green-600 font-medium">{selectedI2VMeta.per720} 積分/秒</div>
                         </button>
                         <button
                           onClick={() => setVideoResolution("1080p")}
@@ -2068,7 +2119,7 @@ export default function Home() {
                           }`}
                         >
                           <div className="font-semibold text-sm">1080P</div>
-                          <div className="text-xs mt-0.5 text-orange-600 font-medium">15 積分/秒</div>
+                          <div className="text-xs mt-0.5 text-orange-600 font-medium">{selectedI2VMeta.per1080} 積分/秒</div>
                         </button>
                       </div>
                     </div>
@@ -2117,23 +2168,23 @@ export default function Home() {
 
                     <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                       <i className="fas fa-info-circle"></i>
-                      影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15))} 積分
+                      影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * (videoResolution === "720p" ? selectedI2VMeta.per720 : selectedI2VMeta.per1080))} 積分
                     </div>
 
                     <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
                       <h4 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
                         <i className="fas fa-coins text-yellow-500"></i>
-                        影片生成費用說明
+                        影片生成費用說明（依當前模型）
                       </h4>
                       <div className="grid grid-cols-2 gap-3 text-xs">
                         <div className="bg-white rounded-lg p-2.5 border border-gray-100">
                           <div className="font-semibold text-gray-700">720P 標準畫質</div>
-                          <div className="text-green-600 font-bold text-base mt-1">8 積分/秒</div>
+                          <div className="text-green-600 font-bold text-base mt-1">{selectedI2VMeta.per720} 積分/秒</div>
                           <div className="text-gray-400 mt-0.5">適合一般用途、社群分享</div>
                         </div>
                         <div className="bg-white rounded-lg p-2.5 border border-gray-100">
                           <div className="font-semibold text-gray-700">1080P 高畫質</div>
-                          <div className="text-orange-600 font-bold text-base mt-1">15 積分/秒</div>
+                          <div className="text-orange-600 font-bold text-base mt-1">{selectedI2VMeta.per1080} 積分/秒</div>
                           <div className="text-gray-400 mt-0.5">適合專業製作、高品質需求</div>
                         </div>
                       </div>

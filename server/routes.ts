@@ -1396,10 +1396,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         : insertImageToVideoSchema.parse(req.body);
 
       // Provider routing. GMI route is only valid for image-to-video and the
-      // model id must be in the GMI_VIDEO_MODELS whitelist. Pricing differs:
-      // GMI Wan i2v = 6 / 10 credits/s (720p / 1080p); SeedDance = 8 / 15.
+      // model id must be in the GMI_VIDEO_MODELS whitelist. Pricing is now
+      // pulled per-model from the registry so each Wan variant can have its
+      // own rate (e.g. Wan 2.2 = 6/10, Wan 2.7 = 8/14).
       const provider = (validatedData as any).provider === "gmi" ? "gmi" : "byteplus";
       const modelId = (validatedData as any).model as string | undefined;
+      let gmiPer720 = 6;
+      let gmiPer1080 = 10;
       if (provider === "gmi") {
         const { GMI_VIDEO_MODELS } = await import("./gmiProvider");
         if (videoType !== "image-to-video") {
@@ -1408,11 +1411,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         if (!modelId || !GMI_VIDEO_MODELS[modelId]) {
           return res.status(400).json({ error: `不支援的 GMI 影片模型：${modelId ?? "(未指定)"}` });
         }
+        gmiPer720 = GMI_VIDEO_MODELS[modelId].creditsPerSecond720p;
+        gmiPer1080 = GMI_VIDEO_MODELS[modelId].creditsPerSecond1080p;
       }
       const duration = Math.max(4, Math.min(12, req.body.duration || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
       const VIDEO_CREDITS_PER_SECOND = provider === "gmi"
-        ? (resolution === "720p" ? 6 : 10)
+        ? (resolution === "720p" ? gmiPer720 : gmiPer1080)
         : (resolution === "720p" ? 8 : 15);
       const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
 
