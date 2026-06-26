@@ -171,10 +171,11 @@ export const insertTextToImageSchema = createInsertSchema(imageGenerations).pick
   type: z.literal("text-to-image"),
   sequentialGeneration: z.boolean().optional(),
   maxImages: z.number().min(2).max(10).optional().nullable(),
-  // Provider routing: "byteplus" (default, BytePlus ARK Seedream 5.0) or
-  // "gmi" (GMI Cloud). When "gmi", `model` must be a registered GMI model id.
-  provider: z.enum(["byteplus", "gmi"]).optional(),
-  model: z.string().max(64).optional(),
+  // Provider routing: "byteplus" (default, BytePlus ARK Seedream 5.0),
+  // "gmi" (GMI Cloud) or "atlas" (AtlasCloud flux-dev-lora). When non-default,
+  // `model` must be a registered model id for that provider.
+  provider: z.enum(["byteplus", "gmi", "atlas"]).optional(),
+  model: z.string().max(80).optional(),
 });
 
 export const insertImageToImageSchema = createInsertSchema(imageGenerations).pick({
@@ -190,8 +191,8 @@ export const insertImageToImageSchema = createInsertSchema(imageGenerations).pic
   sequentialGeneration: z.boolean().optional(),
   maxImages: z.number().min(2).max(10).optional().nullable(),
   additionalImageUrls: z.array(z.string()).optional(),
-  provider: z.enum(["byteplus", "gmi"]).optional(),
-  model: z.string().max(64).optional(),
+  provider: z.enum(["byteplus", "gmi", "atlas"]).optional(),
+  model: z.string().max(80).optional(),
 });
 
 export const insertBatchImageToImageSchema = z.object({

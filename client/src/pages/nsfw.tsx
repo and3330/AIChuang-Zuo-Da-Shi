@@ -242,6 +242,7 @@ export default function NsfwPage() {
     { id: "Z-Image",          label: "Z-Image (阿里通義 · 寬鬆)",            desc: "中英文友好、無內建安全過濾",         credits: 3, provider: "gmi" as const, supportsI2I: false },
     { id: "wan2.7-image",     label: "Wan 2.7 (阿里 · 開源寬鬆)",            desc: "Wan 2.7 開源、預設審查寬鬆",         credits: 4, provider: "gmi" as const, supportsI2I: false },
     { id: "flux-kontext-pro", label: "FLUX Kontext Pro (Black Forest · 高細節)", desc: "細節最強、放寬安全等級 (=6)",     credits: 6, provider: "gmi" as const, supportsI2I: false },
+    { id: "black-forest-labs/flux-dev-lora", label: "FLUX.1 dev + LoRA (AtlasCloud · 超寫實)", desc: "FLUX.1 dev 開源高畫質＋內建超寫實 LoRA，支援文字生圖與圖片編輯，NSFW 友善", credits: 5, provider: "atlas" as const, supportsI2I: true },
   ];
   const [selectedModel, setSelectedModel] = useState<string>("byteplus");
   const selectedModelMeta = NSFW_MODELS.find(m => m.id === selectedModel) ?? NSFW_MODELS[0];
@@ -454,12 +455,12 @@ export default function NsfwPage() {
       });
       return;
     }
-    // Common payload bits. For GMI models we send provider+model and skip
-    // the watermark flag — GMI doesn't watermark and our server intentionally
-    // ignores that toggle for GMI rows.
+    // Common payload bits. For non-BytePlus providers (GMI / AtlasCloud) we
+    // send provider+model and skip the watermark flag — those providers don't
+    // watermark and our server intentionally ignores that toggle for them.
     const providerFields =
-      selectedModelMeta.provider === "gmi"
-        ? { provider: "gmi", model: selectedModelMeta.id }
+      selectedModelMeta.provider !== "byteplus"
+        ? { provider: selectedModelMeta.provider, model: selectedModelMeta.id }
         : {};
     setCurrentVideoGenerationId("");
     if (mode === "text-to-image") {
@@ -483,7 +484,7 @@ export default function NsfwPage() {
   // Per-image credit cost. Default Seedream still honours the watermark
   // toggle (3 with / 8 without). GMI models charge a flat per-image rate
   // from the registry above and ignore the watermark flag.
-  const imageCost = selectedModelMeta.provider === "gmi"
+  const imageCost = selectedModelMeta.provider !== "byteplus"
     ? selectedModelMeta.credits
     : (watermark ? 3 : 8);
   // Video cost — depends on selected model. SeedDance = 8/15, Wan i2v = 6/10.
@@ -821,9 +822,14 @@ export default function NsfwPage() {
                         <option key={m.id} value={m.id}>{m.label} — {m.credits} 積分</option>
                       ))}
                     </optgroup>
+                    <optgroup label="AtlasCloud（FLUX LoRA）">
+                      {NSFW_MODELS.filter(m => m.provider === "atlas").map(m => (
+                        <option key={m.id} value={m.id}>{m.label} — {m.credits} 積分</option>
+                      ))}
+                    </optgroup>
                   </select>
                   <p className="text-xs text-gray-500 mt-1">{selectedModelMeta.desc}</p>
-                  {selectedModelMeta.provider === "gmi" && !selectedModelMeta.supportsI2I && (
+                  {selectedModelMeta.provider !== "byteplus" && !selectedModelMeta.supportsI2I && (
                     <p className="text-xs text-amber-600 mt-1">
                       ⚠️ 此模型僅支援文字生圖，圖片編輯請切回 Seedream。
                     </p>

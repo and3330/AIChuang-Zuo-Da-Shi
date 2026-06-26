@@ -14,6 +14,7 @@ import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
 import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
 import { GMI_IMAGE_MODELS, GMI_IMAGE_MODEL_LIST, gmiGenerateImage } from "./gmiProvider";
+import { ATLAS_IMAGE_MODELS, ATLAS_IMAGE_MODEL_LIST, atlasGenerateImage } from "./atlasProvider";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -809,9 +810,11 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       // Provider routing. Only single requests can opt into GMI; batch is a
       // BytePlus-only flow today. We also enforce server-side that GMI must
       // be text-to-image (the registered models don't take an image input).
-      const requestedProvider = !isBatch && (singleValidated as any)?.provider === "gmi"
-        ? "gmi" as const
-        : "byteplus" as const;
+      const rawProvider = !isBatch ? (singleValidated as any)?.provider : undefined;
+      const requestedProvider: "gmi" | "atlas" | "byteplus" =
+        !isBatch && rawProvider === "gmi" ? "gmi"
+        : !isBatch && rawProvider === "atlas" ? "atlas"
+        : "byteplus";
       const requestedModel: string = !isBatch
         ? (typeof (singleValidated as any)?.model === "string" ? (singleValidated as any).model.trim() : "")
         : "";
@@ -823,13 +826,22 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           return res.status(400).json({ error: `未支援的 GMI 模型：${requestedModel || "(空白)"}` });
         }
       }
+      if (requestedProvider === "atlas") {
+        // AtlasCloud flux-dev-lora supports both text-to-image and
+        // image-to-image, so we only reject unknown models.
+        if (!ATLAS_IMAGE_MODELS[requestedModel]) {
+          return res.status(400).json({ error: `未支援的 AtlasCloud 模型：${requestedModel || "(空白)"}` });
+        }
+      }
 
-      // Per-image credit cost. GMI uses the registry price flat; BytePlus
-      // still honours the watermark removal premium.
+      // Per-image credit cost. GMI / Atlas use the registry price flat;
+      // BytePlus still honours the watermark removal premium.
       const WATERMARK_REMOVAL_COST = 5;
       const hasWatermark = req.body.watermark !== false;
       const perImageCost = requestedProvider === "gmi"
         ? GMI_IMAGE_MODELS[requestedModel].creditsPerImage
+        : requestedProvider === "atlas"
+        ? ATLAS_IMAGE_MODELS[requestedModel].creditsPerImage
         : (hasWatermark ? 3 : 3 + WATERMARK_REMOVAL_COST);
 
       let creditsNeeded: number;
@@ -883,7 +895,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           ...(singleValidated as any),
           userId,
           provider: requestedProvider,
-          model: requestedProvider === "gmi" ? requestedModel : undefined,
+          model: requestedProvider !== "byteplus" ? requestedModel : undefined,
           creditsUsed: perImageCost,
         });
 
@@ -1049,6 +1061,67 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           return;
         } catch (e: any) {
           console.error(`[GMI:${modelId}] generation failed:`, e?.message || e);
+          throw e; // outer catch handles refund + status update
+        }
+      }
+
+      // === AtlasCloud branch (flux-dev-lora, NSFW page) ===
+      // flux-dev-lora supports both text-to-image and image-to-image. For i2i
+      // we read the uploaded source from object storage and pass it as a
+      // base64 data URI. Result is funnelled through the same Bunny upload +
+      // DB update path used elsewhere.
+      if (generation.provider === "atlas") {
+        const modelId = generation.model || "black-forest-labs/flux-dev-lora";
+        try {
+          let refImageDataUri: string | undefined;
+          if (generation.type === "image-to-image" && generation.originalImageUrl) {
+            const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
+            const chunks: Buffer[] = [];
+            for await (const chunk of objectFile.createReadStream()) {
+              chunks.push(Buffer.from(chunk));
+            }
+            refImageDataUri = `data:image/jpeg;base64,${Buffer.concat(chunks).toString("base64")}`;
+          }
+
+          const { imageUrl } = await atlasGenerateImage({
+            modelId,
+            prompt: enhanceImagePrompt(generation.prompt),
+            size: generation.size || undefined,
+            seed: typeof generation.seed === "number" ? generation.seed : undefined,
+            guidanceScale: typeof generation.guidanceScale === "number" ? generation.guidanceScale : undefined,
+            image: refImageDataUri,
+          });
+
+          const processingTime = (Date.now() - startTime) / 1000;
+          // Same SSRF + abuse guards as the GMI path: public-https check then a
+          // limited download (image/* content-type, 25 MB cap, 30s timeout).
+          assertPublicHttpsUrl(imageUrl);
+          let bunnyImageUrl: string | undefined;
+          if (bunnyStorage.isConfigured()) {
+            for (let attempt = 1; attempt <= 2; attempt++) {
+              try {
+                const imgBuffer = await fetchImageWithLimits(imageUrl, { maxBytes: 25 * 1024 * 1024, timeoutMs: 30_000 });
+                const remotePath = `users/${userFolder}/images/${generationId}.jpg`;
+                bunnyImageUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
+                console.log(`✅ [Atlas:${modelId}] uploaded to Bunny: ${bunnyImageUrl}`);
+                break;
+              } catch (e) {
+                console.error(`[Atlas] Bunny upload failed (attempt ${attempt}):`, e);
+                if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
+              }
+            }
+          }
+
+          await storage.updateImageGeneration(generationId, {
+            status: "completed",
+            generatedImageUrl: imageUrl,
+            bunnyImageUrl,
+            processingTime,
+            cost: 0.05,
+          });
+          return;
+        } catch (e: any) {
+          console.error(`[Atlas:${modelId}] generation failed:`, e?.message || e);
           throw e; // outer catch handles refund + status update
         }
       }
