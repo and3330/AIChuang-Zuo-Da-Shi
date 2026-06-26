@@ -833,6 +833,16 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           return res.status(400).json({ error: `未支援的 AtlasCloud 模型：${requestedModel || "(空白)"}` });
         }
       }
+      // Both GMI and Atlas registries generate exactly one image per request.
+      // Reject sequential / maxImages so the charge (perImageCost × N) can
+      // never exceed what is actually produced — that would overcharge on
+      // success and under-refund on failure (refund uses the row creditsUsed).
+      if (requestedProvider !== "byteplus") {
+        const sv = singleValidated as any;
+        if (sv?.sequentialGeneration || (typeof sv?.maxImages === "number" && sv.maxImages > 1)) {
+          return res.status(400).json({ error: "此模型一次僅能生成 1 張圖片，請關閉連續生成。" });
+        }
+      }
 
       // Per-image credit cost. GMI / Atlas use the registry price flat;
       // BytePlus still honours the watermark removal premium.
@@ -896,7 +906,10 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           userId,
           provider: requestedProvider,
           model: requestedProvider !== "byteplus" ? requestedModel : undefined,
-          creditsUsed: perImageCost,
+          // Store the actual amount charged (which for BytePlus sequential
+          // generation is perImageCost × maxImages) so a failure refunds
+          // exactly what was deducted.
+          creditsUsed: creditsNeeded,
         });
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
