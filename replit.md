@@ -46,7 +46,7 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 ## External Dependencies
 
 - **BytePlus ARK API**:
-    - Image Generation: Seedream 5.0 Pro (endpoint: `ep-20260720160902-zmphq`, model `dola-seedream-5-0-pro-260628`; synchronous call can take ~2 min+ per image)
+    - Image Generation: Seedream 5.0 Pro (endpoint: `ep-20260720160902-zmphq`, model `dola-seedream-5-0-pro-260628`; synchronous call can take ~2 min+ per image; does NOT support `sequential_image_generation` — multi-image "組圖" requests fan out N parallel single-image calls with partial-failure credit refunds)
     - Video Generation: SeedDance 2.0 (endpoint: `ep-20260428161232-4znch`), including Omni mode.
 - **PostgreSQL**: Primary database for all application data.
 - **Bunny.net CDN**: For persistent storage and delivery of all generated images and videos.

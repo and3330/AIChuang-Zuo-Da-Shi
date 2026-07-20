@@ -1150,21 +1150,19 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         
         const isSequential = generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
         
+        // Seedream 5.0 Pro does not support the sequential_image_generation
+        // parameter (even "disabled" is rejected with InvalidParameter).
+        // Multi-image ("sequential") requests are handled below by issuing
+        // N parallel single-image calls instead.
+        void isSequential;
         requestBody = {
           model: SEEDDANCE_MODEL,
           prompt: enhanceImagePrompt(generation.prompt),
           response_format: "url",
           size: sizeValue,
-          sequential_image_generation: isSequential ? "auto" : "disabled",
-          stream: isSequential,
+          stream: false,
           watermark: generation.watermark !== false
         };
-        
-        if (isSequential) {
-          requestBody.sequential_image_generation_options = {
-            max_images: generation.maxImages
-          };
-        }
       } else {
         if (!generation.originalImageUrl) {
           throw new Error("Original image URL is required for image-to-image generation");
@@ -1210,22 +1208,18 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         
         const isSequentialI2I = generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
         
+        // See note above: sequential_image_generation is not supported by
+        // Seedream 5.0 Pro; multi-image is handled via parallel calls below.
+        void isSequentialI2I;
         requestBody = {
           model: SEEDDANCE_MODEL,
           prompt: enhanceImagePrompt(generation.prompt),
           image: imageParam,
           response_format: "url",
           size: sizeValue,
-          sequential_image_generation: isSequentialI2I ? "auto" : "disabled",
-          stream: isSequentialI2I,
+          stream: false,
           watermark: generation.watermark !== false
         };
-        
-        if (isSequentialI2I) {
-          requestBody.sequential_image_generation_options = {
-            max_images: generation.maxImages
-          };
-        }
       }
 
       console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));
@@ -1236,114 +1230,84 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         throw new Error(`ARK_API_KEY environment variable is not set. Please configure your API key for Seedream 5.0.`);
       }
       
-      const response = await fetch(ARK_API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(requestBody)
-      });
-      
-      console.log(`API response status: ${response.status}`);
-      const responseHeaders = Object.fromEntries(response.headers.entries());
-      console.log(`API response headers:`, JSON.stringify(responseHeaders, null, 2));
-
-      const processingTime = (Date.now() - startTime) / 1000;
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.log(`❌ BytePlus API Error ${response.status}:`);
-        console.log(errorText);
-        await storage.updateImageGeneration(generationId, {
-          status: "failed",
-          errorMessage: `API Error: ${response.status} ${errorText}`,
-          processingTime
+      // Single-image synchronous call to Seedream 5.0 Pro. Throws on any
+      // failure so the outer catch refunds the user's credits.
+      const generateOneImage = async (): Promise<string> => {
+        const response = await fetch(ARK_API_ENDPOINT, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(requestBody)
         });
-        return;
-      }
+
+        console.log(`API response status: ${response.status}`);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.log(`❌ BytePlus API Error ${response.status}:`);
+          console.log(errorText);
+          throw new Error(`API Error: ${response.status} ${errorText}`);
+        }
+
+        const result = await response.json();
+        console.log(`📋 API response model info:`, JSON.stringify({
+          model: result.model,
+          created: result.created,
+          object: result.object,
+          usage: result.usage
+        }, null, 2));
+        const url = result.data?.[0]?.url;
+        if (!url) {
+          throw new Error("No generated image URL in response");
+        }
+        return url.replace(/&amp;/g, '&');
+      };
 
       const isSequential = generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
       
       if (isSequential) {
-        const responseText = await response.text();
-        console.log(`Sequential raw response (full length ${responseText.length}):`);
-        console.log(responseText.substring(0, 2000));
-        if (responseText.length > 2000) {
-          console.log(`... (truncated, showing last 1000 chars):`);
-          console.log(responseText.substring(responseText.length - 1000));
+        // Seedream 5.0 Pro dropped the sequential/streaming API, so fan out
+        // N parallel single-image requests and collect whatever succeeds.
+        const count = generation.maxImages!;
+        console.log(`Sequential mode: issuing ${count} parallel single-image requests`);
+        const settled = await Promise.allSettled(
+          Array.from({ length: count }, () => generateOneImage())
+        );
+        const generatedImageUrls = settled
+          .filter((s): s is PromiseFulfilledResult<string> => s.status === "fulfilled")
+          .map(s => s.value);
+        const processingTime = (Date.now() - startTime) / 1000;
+
+        console.log(`Sequential generation completed with ${generatedImageUrls.length}/${count} images`);
+
+        if (generatedImageUrls.length === 0) {
+          const firstRejection = settled.find(s => s.status === "rejected") as PromiseRejectedResult | undefined;
+          const reason = firstRejection?.reason instanceof Error
+            ? firstRejection.reason.message
+            : "No generated images";
+          throw new Error(reason);
         }
-        const lines = responseText.split('\n').filter(line => line.trim());
-        const generatedImageUrls: string[] = [];
-        
-        const urlRegex = /https?:\/\/[^\s"',\}]+/g;
-        
-        for (const line of lines) {
-          console.log(`Parsing line: ${line.substring(0, 200)}`);
-          
-          if (line.startsWith('data: ') || line.startsWith('data:')) {
-            const jsonStr = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
-            if (jsonStr.trim() === '[DONE]') continue;
-            
+
+        // Partial success: refund the credits for the images that failed,
+        // since the user was pre-charged for all `count` images.
+        const failedCount = count - generatedImageUrls.length;
+        if (failedCount > 0 && generation.userId) {
+          const perImage = Math.floor((generation.creditsUsed || 0) / count);
+          const refundAmount = perImage * failedCount;
+          if (refundAmount > 0) {
             try {
-              const data = JSON.parse(jsonStr);
-              console.log(`Parsed streaming data keys: ${Object.keys(data).join(', ')}`);
-              
-              if (data.url) {
-                generatedImageUrls.push(data.url.replace(/&amp;/g, '&'));
-                console.log(`Found URL in data.url`);
-              }
-              if (data.data && Array.isArray(data.data)) {
-                for (const item of data.data) {
-                  if (item.url) {
-                    generatedImageUrls.push(item.url.replace(/&amp;/g, '&'));
-                    console.log(`Found URL in data.data[].url`);
-                  }
-                  if (item.b64_json) {
-                    console.log(`Found b64_json in data.data[] (not URL)`);
-                  }
-                }
-              }
-              if (data.output && data.output.data && Array.isArray(data.output.data)) {
-                for (const item of data.output.data) {
-                  if (item.url) {
-                    generatedImageUrls.push(item.url.replace(/&amp;/g, '&'));
-                    console.log(`Found URL in data.output.data[].url`);
-                  }
-                }
-              }
-              if (data.choices && Array.isArray(data.choices)) {
-                for (const choice of data.choices) {
-                  if (choice.image_url) {
-                    generatedImageUrls.push(choice.image_url.replace(/&amp;/g, '&'));
-                    console.log(`Found URL in data.choices[].image_url`);
-                  }
-                }
-              }
-            } catch (e) {
-              console.log(`Failed to parse streaming JSON, trying regex: ${jsonStr.substring(0, 200)}`);
-              const matches = jsonStr.match(urlRegex);
-              if (matches) {
-                for (const match of matches) {
-                  if (match.includes('ark-content-generation') || match.includes('.jpeg') || match.includes('.png')) {
-                    generatedImageUrls.push(match.replace(/&amp;/g, '&'));
-                    console.log(`Found URL via regex fallback`);
-                  }
-                }
-              }
+              await storage.atomicAddCredits(
+                generation.userId,
+                refundAmount,
+                `組圖部分失敗退還 ${failedCount} 張共 ${refundAmount} 積分`
+              );
+              console.log(`✅ Refunded ${refundAmount} credits for ${failedCount} failed sequential images`);
+            } catch (refundErr) {
+              console.error("Partial refund failed:", refundErr);
             }
           }
-        }
-        
-        console.log(`Sequential generation completed with ${generatedImageUrls.length} images`);
-        
-        if (generatedImageUrls.length === 0) {
-          await storage.updateImageGeneration(generationId, {
-            status: "failed",
-            errorMessage: "No generated images in streaming response",
-            processingTime
-          });
-          return;
         }
         
         let bunnyImageUrl: string | undefined;
@@ -1386,23 +1350,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           cost: 0.05 * generatedImageUrls.length
         });
       } else {
-        const result = await response.json();
-        console.log(`📋 API response model info:`, JSON.stringify({
-          model: result.model,
-          created: result.created,
-          object: result.object,
-          usage: result.usage
-        }, null, 2));
-        const generatedImageUrl = result.data?.[0]?.url;
-
-        if (!generatedImageUrl) {
-          await storage.updateImageGeneration(generationId, {
-            status: "failed",
-            errorMessage: "No generated image URL in response",
-            processingTime
-          });
-          return;
-        }
+        const generatedImageUrl = await generateOneImage();
+        const processingTime = (Date.now() - startTime) / 1000;
 
         let bunnyImageUrl: string | undefined;
         if (bunnyStorage.isConfigured()) {
