@@ -242,7 +242,9 @@ export default function NsfwPage() {
     { id: "Z-Image",          label: "Z-Image (阿里通義 · 寬鬆)",            desc: "中英文友好、無內建安全過濾",         credits: 3, provider: "gmi" as const, supportsI2I: false },
     { id: "wan2.7-image",     label: "Wan 2.7 (阿里 · 開源寬鬆)",            desc: "Wan 2.7 開源、預設審查寬鬆",         credits: 4, provider: "gmi" as const, supportsI2I: false },
     { id: "flux-kontext-pro", label: "FLUX Kontext Pro (Black Forest · 高細節)", desc: "細節最強、放寬安全等級 (=6)",     credits: 6, provider: "gmi" as const, supportsI2I: false },
-    { id: "black-forest-labs/flux-dev-lora", label: "FLUX.1 dev + LoRA (AtlasCloud · 超寫實)", desc: "FLUX.1 dev 開源高畫質＋內建超寫實 LoRA，支援文字生圖與圖片編輯，NSFW 友善", credits: 5, provider: "atlas" as const, supportsI2I: true },
+    // 暫時隱藏：AtlasCloud 金鑰目前沒有圖片生成權限（生成端點回 404/401），
+    // 待帳號開通 Serverless 圖片生成後再取消註解。後端 atlas 路由保留可用。
+    // { id: "black-forest-labs/flux-dev-lora", label: "FLUX.1 dev + LoRA (AtlasCloud · 超寫實)", desc: "FLUX.1 dev 開源高畫質＋內建超寫實 LoRA，支援文字生圖與圖片編輯，NSFW 友善", credits: 5, provider: "atlas" as const, supportsI2I: true },
   ];
   const [selectedModel, setSelectedModel] = useState<string>("byteplus");
   const selectedModelMeta = NSFW_MODELS.find(m => m.id === selectedModel) ?? NSFW_MODELS[0];
@@ -822,11 +824,13 @@ export default function NsfwPage() {
                         <option key={m.id} value={m.id}>{m.label} — {m.credits} 積分</option>
                       ))}
                     </optgroup>
+                    {/* 暫時隱藏 AtlasCloud（金鑰無圖片生成權限），恢復時取消註解並還原 NSFW_MODELS 的 atlas 項目
                     <optgroup label="AtlasCloud（FLUX LoRA）">
                       {NSFW_MODELS.filter(m => m.provider === "atlas").map(m => (
                         <option key={m.id} value={m.id}>{m.label} — {m.credits} 積分</option>
                       ))}
                     </optgroup>
+                    */}
                   </select>
                   <p className="text-xs text-gray-500 mt-1">{selectedModelMeta.desc}</p>
                   {selectedModelMeta.provider !== "byteplus" && !selectedModelMeta.supportsI2I && (

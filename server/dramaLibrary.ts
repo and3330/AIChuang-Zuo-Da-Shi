@@ -26,7 +26,7 @@ import mammoth from "mammoth";
 import { assertAllowedRemoteUrl } from "./ssrfGuard";
 
 const ARK_IMAGE_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
-const SEEDREAM_MODEL = "ep-20251223142939-njrkd";
+const SEEDREAM_MODEL = "ep-20260720160902-zmphq";
 
 // Four-view image presets (all share the same base portrait so we get a
 // consistent character rotated around — the prompt does the work of

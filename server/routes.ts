@@ -92,7 +92,7 @@ function convertAspectRatioToSize(size: string): string {
   return size;
 }
 
-const SEEDDANCE_MODEL = "ep-20251223142939-njrkd";
+const SEEDDANCE_MODEL = "ep-20260720160902-zmphq";
 const ARK_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
 
 const VIDEO_MODEL = process.env.ARK_VIDEO_MODEL || "ep-20250813120833-g4mpb";
@@ -3092,7 +3092,7 @@ Requirements:
       const enhancedScenePrompt = enhanceImagePrompt(scenePrompt);
       if (globalBase64s.length > 0) {
         requestBody = {
-          model: "ep-20251223142939-njrkd",
+          model: "ep-20260720160902-zmphq",
           prompt: enhancedScenePrompt,
           image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
           response_format: "url",
@@ -3102,7 +3102,7 @@ Requirements:
         };
       } else {
         requestBody = {
-          model: "ep-20251223142939-njrkd",
+          model: "ep-20260720160902-zmphq",
           prompt: enhancedScenePrompt,
           response_format: "url",
           size: imageSize,
@@ -3362,7 +3362,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
             const fullPrompt = `${scenePrompt}${labelNote}`;
             requestBody = {
-              model: "ep-20251223142939-njrkd",
+              model: "ep-20260720160902-zmphq",
               prompt: enhanceImagePrompt(fullPrompt),
               image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
               response_format: "url",
@@ -3372,7 +3372,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             };
           } else {
             requestBody = {
-              model: "ep-20251223142939-njrkd",
+              model: "ep-20260720160902-zmphq",
               prompt: enhanceImagePrompt(scenePrompt),
               response_format: "url",
               size: imageSize,
@@ -4528,7 +4528,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             }
             const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
             requestBody = {
-              model: "ep-20251223142939-njrkd",
+              model: "ep-20260720160902-zmphq",
               prompt: enhanceImagePrompt(`${scenePrompt}${labelNote}`),
               image: allRefs.length === 1 ? allRefs[0] : allRefs,
               response_format: "url",
@@ -4539,7 +4539,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             };
           } else {
             requestBody = {
-              model: "ep-20251223142939-njrkd",
+              model: "ep-20260720160902-zmphq",
               prompt: enhanceImagePrompt(scenePrompt),
               response_format: "url",
               size: imageSize,
@@ -4729,7 +4729,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         if (sceneRefList.length > 0) { labelParts.push(`第 ${idx} 張圖為場景構圖參考`); idx += sceneRefList.length; }
         if (styleList.length > 0) { labelParts.push(`第 ${idx}${styleList.length > 1 ? `-${idx + styleList.length - 1}` : ""} 張圖為畫風風格參考`); }
         requestBody = {
-          model: "ep-20251223142939-njrkd",
+          model: "ep-20260720160902-zmphq",
           prompt: enhanceImagePrompt(`${scenePrompt}（${labelParts.join("；")}）`),
           image: allRefs.length === 1 ? allRefs[0] : allRefs,
           response_format: "url",
@@ -4739,7 +4739,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         };
       } else {
         requestBody = {
-          model: "ep-20251223142939-njrkd",
+          model: "ep-20260720160902-zmphq",
           prompt: enhanceImagePrompt(scenePrompt),
           response_format: "url",
           size: imageSize,
