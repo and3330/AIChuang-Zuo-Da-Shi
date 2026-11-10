@@ -87,6 +87,12 @@ export function toAtlasSize(size: string | null | undefined): string {
   return `${best[0]}*${best[1]}`;
 }
 
+/** Width / height (px) an app-level size resolves to. */
+export function atlasSizeDimensions(size: string | null | undefined): { width: number; height: number } {
+  const [w, h] = toAtlasSize(size).split("*").map(Number);
+  return { width: w, height: h };
+}
+
 /* ---------- HTTP helpers ---------- */
 
 async function atlasSubmitJob(
@@ -215,6 +221,40 @@ export async function atlasGenerateImage(args: {
   if (!url) {
     throw new Error(`AtlasCloud 完成但無法擷取圖片 URL：${JSON.stringify(done).slice(0, 400)}`);
   }
+  return url.replace(/&amp;/g, "&");
+}
+
+/* ---------- asset-library previews (cheap text-to-image) ---------- */
+
+/**
+ * Model for bulk asset-library preview images. Deliberately NOT Seedream: at
+ * thousands of images the per-image price matters more than edit ability.
+ */
+export const ATLAS_LIBRARY_MODEL = process.env.LIBRARY_IMAGE_MODEL || "openai/gpt-image-2.5-flare/text-to-image";
+/** List price per image when this was written (2026-11); shown as an estimate only. */
+export const ATLAS_LIBRARY_PRICE_USD = 0.003;
+const LIBRARY_IMAGE_QUALITY = process.env.LIBRARY_IMAGE_QUALITY || "medium";
+
+/** One preview image from a text prompt. Returns the provider URL. */
+export async function atlasGenerateLibraryImage(args: {
+  prompt: string;
+  /** "WIDTHxHEIGHT", e.g. "1024x1536". */
+  size: string;
+  transparent?: boolean;
+}): Promise<string> {
+  const payload: Record<string, any> = {
+    model: ATLAS_LIBRARY_MODEL,
+    prompt: args.prompt,
+    quality: LIBRARY_IMAGE_QUALITY,
+    size: args.size,
+    background: args.transparent ? "transparent" : "opaque",
+    output_format: "png",
+    n: 1,
+  };
+  const predictionId = await atlasSubmitJob(payload);
+  const done = await atlasPollUntilDone(predictionId, { timeoutMs: 5 * 60 * 1000, intervalMs: 3000 });
+  const url = extractFirstImageUrl(done);
+  if (!url) throw new Error("AtlasCloud 完成但無法擷取圖片 URL");
   return url.replace(/&amp;/g, "&");
 }
 

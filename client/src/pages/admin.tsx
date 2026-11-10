@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/use-seo";
 import { Link } from "wouter";
+import { PartnerTokensPanel } from "@/components/PartnerTokensPanel";
+import { LibraryAdminPanel } from "@/components/LibraryAdminPanel";
 
 interface AdminUser {
   id: string;
@@ -119,7 +121,7 @@ export default function AdminPage() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditDescription, setCreditDescription] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"users" | "orders" | "generations" | "chats">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "orders" | "generations" | "chats" | "tokens" | "library">("users");
   const [orderSearch, setOrderSearch] = useState("");
   const [promptDialog, setPromptDialog] = useState<{ open: boolean; prompt: string; type: string }>({ open: false, prompt: "", type: "" });
   const [mediaDialog, setMediaDialog] = useState<{ open: boolean; url: string; type: "image" | "video" }>({ open: false, url: "", type: "image" });
@@ -285,7 +287,7 @@ export default function AdminPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="flex gap-2 mb-6">
+        <div className="flex gap-2 mb-6 flex-wrap">
           <button
             onClick={() => setActiveTab("users")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
@@ -315,6 +317,28 @@ export default function AdminPage() {
             }`}
           >
             <i className="fas fa-stream mr-2"></i>生成紀錄
+          </button>
+          <button
+            onClick={() => setActiveTab("tokens")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "tokens"
+                ? "bg-purple-600 text-white shadow-sm"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+            }`}
+            data-testid="tab-partner-tokens"
+          >
+            <i className="fas fa-key mr-2"></i>對外 API
+          </button>
+          <button
+            onClick={() => setActiveTab("library")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "library"
+                ? "bg-purple-600 text-white shadow-sm"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+            }`}
+            data-testid="tab-library"
+          >
+            <i className="fas fa-images mr-2"></i>素材圖庫
           </button>
           <button
             onClick={() => setActiveTab("chats")}
@@ -474,6 +498,12 @@ export default function AdminPage() {
               </div>
             </CardContent>
           </Card>
+        )}
+
+        {activeTab === "library" && <LibraryAdminPanel />}
+
+        {activeTab === "tokens" && (
+          <PartnerTokensPanel users={(users ?? []).map((u: any) => ({ id: u.id, username: u.username, email: u.email ?? null, credits: u.credits ?? 0 }))} />
         )}
 
         {activeTab === "orders" && (

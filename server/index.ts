@@ -49,7 +49,9 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
+      // Service tokens and partner job data must never reach the logs.
+      const sensitive = path.startsWith("/api/v1/partner") || path.startsWith("/api/admin/partner-tokens");
+      if (capturedJsonResponse && !sensitive) {
         logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
       }
 

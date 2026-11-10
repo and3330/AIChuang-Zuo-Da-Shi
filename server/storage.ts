@@ -388,13 +388,16 @@ export class DatabaseStorage implements IStorage {
     const batchId = randomUUID();
     const generations: ImageGeneration[] = [];
 
-    for (const prompt of batchData.prompts) {
+    for (let i = 0; i < batchData.prompts.length; i++) {
+      const prompt = batchData.prompts[i];
+      const ownImage = batchData.promptImageUrls?.[i];
+      const extraImages = [...(batchData.additionalImageUrls ?? []), ...(ownImage ? [ownImage] : [])];
       const gen = await this.createImageGeneration({
         userId: batchData.userId,
         type: batchData.type,
         batchId,
         originalImageUrl: batchData.originalImageUrl,
-        additionalImageUrls: batchData.additionalImageUrls,
+        additionalImageUrls: extraImages.length > 0 ? extraImages : undefined,
         prompt,
         guidanceScale: batchData.guidanceScale,
         seed: batchData.seed,
