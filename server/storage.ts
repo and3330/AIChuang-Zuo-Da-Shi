@@ -377,7 +377,7 @@ export class DatabaseStorage implements IStorage {
       status: "pending",
       cost: 0.05,
       creditsUsed: insertGeneration.creditsUsed ?? 3,
-      provider: insertGeneration.provider ?? "byteplus",
+      provider: insertGeneration.provider ?? "atlas",
       model: insertGeneration.model ?? null,
     }).returning();
 

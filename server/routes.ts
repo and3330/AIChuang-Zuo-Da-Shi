@@ -2891,7 +2891,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const charB = characterBName?.trim() || "角色B";
       const genreText = genre?.trim() || "短劇";
 
-      const prompt = `你是 SeedDance 2.0 與 Seedream 5.5 的資深短劇分鏡編劇，熟悉抖音/TikTok 直式短劇（漫劇）的爆款敘事節奏與 BytePlus ARK 圖生影片的提示詞最佳實踐。
+      const prompt = `你是 WAN 3.0 與 Seedream 5.5 的資深短劇分鏡編劇，熟悉抖音/TikTok 直式短劇（漫劇）的爆款敘事節奏與 BytePlus ARK 圖生影片的提示詞最佳實踐。
 
 請依下列概念，產出一集完整 ${count} 幕的短劇分鏡腳本：
 
@@ -3545,7 +3545,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     }
   });
 
-  // ─── Animate Scene with SeedDance 2.0 ─────────────────────────────────────
+  // ─── Animate Scene with WAN 3.0 ─────────────────────────────────────
 
   app.post("/api/drama/episodes/:episodeId/animate-scene/:sceneIdx", requireAuth, async (req, res) => {
     try {
@@ -3674,7 +3674,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       };
       // NOTE: image generation has always been sequential here and remains so
       // — chain mode strictly REQUIRES sequential ordering (scene N+1 reads
-      // scene N's last frame), and the BytePlus ARK rate limits make parallel
+      // scene N's last frame), and provider rate limits make parallel
       // batching risky. Conditional parallelism is intentionally out of scope
       // for the chain-mode feature.
       // Resolves the continuity reference image for `curr` based on its

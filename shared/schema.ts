@@ -66,7 +66,7 @@ export const videoGenerations = pgTable("video_generations", {
   originalImageUrl: text("original_image_url"),
   additionalImageUrls: text("additional_image_urls").array(),
   /** Optional reference audio (object-storage path or HTTP URL). When set,
-   *  the request is routed through the SeedDance 2.0 omni endpoint with a
+   *  the request WAS routed through the old SeedDance omni endpoint with a
    *  role:"reference_audio" content part. */
   referenceAudioUrl: text("reference_audio_url"),
   generatedVideoUrl: text("generated_video_url"),
@@ -222,7 +222,7 @@ export const insertTextToVideoSchema = z.object({
   type: z.literal("text-to-video"),
   prompt: z.string(),
   /** Optional reference audio (object-storage path or HTTP URL). When set,
-   *  text-to-video also routes through the SeedDance 2.0 omni endpoint with
+   *  text-to-video USED to route through the old SeedDance omni endpoint with
    *  generate_audio=true so the supplied audio drives the soundtrack. */
   referenceAudioUrl: z.string().optional(),
   duration: z.number().min(2).max(12).optional().default(5),

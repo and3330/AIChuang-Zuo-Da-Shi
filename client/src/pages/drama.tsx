@@ -2460,7 +2460,7 @@ function EpisodeView({
             <div className="relative z-10">
               {/* Pipeline labels */}
               <div className="flex items-center gap-2 mb-4">
-                {["📝 分鏡描述", "→", "🖼 SeedDream 出圖", "→", "🎬 WAN 動畫"].map((s, i) => (
+                {["📝 分鏡描述", "→", "🖼 Seedream 出圖", "→", "🎬 WAN 動畫"].map((s, i) => (
                   <span key={i} className={`text-xs ${s === "→" ? "text-[#cbd5e1]" : "bg-[#ffffff] border border-[#e2e8f0] px-3 py-1 rounded-full text-[#64748b]"}`}>
                     {s}
                   </span>

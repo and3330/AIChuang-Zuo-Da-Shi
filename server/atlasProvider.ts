@@ -15,7 +15,7 @@
  *                status reaches "completed" / "succeeded" on done, "failed" on
  *                failure, otherwise "queued" / "processing".
  *
- * Notes vs. the old BytePlus ARK endpoint:
+ * Notes for callers:
  *   - `size` is "W*H" and must be one of the official presets (see below).
  *   - No `seed` and no `watermark` params. The app's own brand watermark is
  *     still applied locally via addWatermark() where the caller asks for it.

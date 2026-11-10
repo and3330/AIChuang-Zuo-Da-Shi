@@ -78,7 +78,7 @@ export default function Home() {
   const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   // Reference materials for image-to-video (omni mode): up to 3 extra images
   // (角色/風格/構圖) and an optional reference audio (driver track / 配音 / BGM
-  // sample). When any of these is present the request goes to the SeedDance
+  // sample). NOTE: WAN 3.0 ignores these; they were used by the old SeedDance
   // 2.0 omni endpoint; otherwise the standard endpoint is used as before.
   const [videoReferenceImages, setVideoReferenceImages] = useState<{ url: string; path: string }[]>([]);
   const [videoReferenceAudio, setVideoReferenceAudio] = useState<{ path: string; name: string } | null>(null);
@@ -88,7 +88,7 @@ export default function Home() {
   const [textToVideoRefAudio, setTextToVideoRefAudio] = useState<{ path: string; name: string } | null>(null);
   // Elapsed-time tick for the active video poll. Populated by an effect
   // below so the progress card can show "已生成 32s" instead of just a
-  // spinner during the 1–3 minute SeedDance run.
+  // spinner during the 1–3 minute video run.
   const [videoElapsedSec, setVideoElapsedSec] = useState(0);
   // "我的影片" history sheet open state.
   const [myVideosOpen, setMyVideosOpen] = useState(false);
@@ -973,7 +973,7 @@ export default function Home() {
   const creditsNeeded = getCreditsNeeded();
   const hasEnoughCredits = (user?.credits ?? 0) >= creditsNeeded;
 
-  const isSeedDanceMode = mode === "image-to-image" || mode === "text-to-image";
+  const isImageMode = mode === "image-to-image" || mode === "text-to-image";
   const isVideoMode = mode === "image-to-video" || mode === "text-to-video";
   const isStoryMode = mode === "story";
 
@@ -1125,7 +1125,7 @@ export default function Home() {
               <button
                 onClick={() => { if (isVideoMode) setMode("text-to-image"); }}
                 className={`flex-1 py-3 px-6 text-sm font-medium transition-all relative ${
-                  isSeedDanceMode 
+                  isImageMode 
                     ? "text-blue-700 bg-blue-50"
                     : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 }`}
@@ -1135,7 +1135,7 @@ export default function Home() {
                   <span className="font-semibold">Seedream 5.5</span>
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">圖片</span>
                 </div>
-                {isSeedDanceMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
+                {isImageMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
               </button>
               <button
                 onClick={() => { if (!isVideoMode) setMode("text-to-video"); }}
@@ -1174,8 +1174,8 @@ export default function Home() {
               </a>
             </div>
 
-            {/* SeedDance Sub-modes */}
-            {isSeedDanceMode && (
+            {/* Image sub-modes */}
+            {isImageMode && (
               <div className="p-4">
                 <div className="grid grid-cols-2 gap-3">
                   <button
