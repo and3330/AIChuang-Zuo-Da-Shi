@@ -10,6 +10,7 @@ export default function MobileTabBar() {
   const tabs = [
     { label: "首頁", icon: "fa-home", route: "/" },
     { label: "漫劇", icon: "fa-film", route: "/drama" },
+    { label: "套圖", icon: "fa-images", route: "/photoset" },
     { label: "角色庫", icon: "fa-user-friends", route: "/character-library" },
     { label: "帳戶", icon: "fa-user", route: "/account" },
     ...(user.isAdmin ? [{ label: "管理", icon: "fa-cog", route: "/admin" }] : []),

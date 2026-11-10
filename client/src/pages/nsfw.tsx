@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor } from "@shared/imageSizes";
 import { useUser } from "@/App";
 import { NavigationHeader } from "@/pages/account";
 import { UnifiedUploader } from "@/components/UnifiedUploader";
@@ -203,12 +204,12 @@ export default function NsfwPage() {
   });
 
   // Three top-level modes. image-to-video reuses the existing
-  // /api/video-generations pipeline (SeedDance 2.0) — no new backend
+  // /api/video-generations pipeline (WAN 3.0) — no new backend
   // surface, NSFW page just exposes the existing capability with an
   // uncensored prompt template library.
   const [mode, setMode] = useState<"text-to-image" | "image-to-image" | "image-to-video">("text-to-image");
   const [prompt, setPrompt] = useState("");
-  const [size, setSize] = useState("2K");
+  const [size, setSize] = useState("2048x2048");
   const [guidanceScale, setGuidanceScale] = useState(5.5);
   const [seed, setSeed] = useState(21);
   // Video-only knobs. Defaults mirror the home.tsx 圖片生影片 panel.
@@ -216,38 +217,16 @@ export default function NsfwPage() {
   const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("9:16");
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("720p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState("");
-  // Video model picker. "seeddance" = default BytePlus SeedDance 2.0 (8/15
-  // credits/s, has built-in NSFW filter). GMI ids hit /api/video-generations
-  // with provider:"gmi" — pricing cheaper (6/10) and審查寬鬆。
-  // Keep in sync with server/gmiProvider.ts GMI_VIDEO_MODELS.
+  // Video model. Every image-to-video job runs on AtlasCloud WAN 3.0 (the
+  // server ignores any provider/model sent by the client).
   const VIDEO_MODELS = [
-    { id: "seeddance",                  label: "SeedDance 2.0 (BytePlus · 預設)",                  desc: "穩定快速，但有內建 NSFW 過濾",                          provider: "byteplus" as const, per720: 8,  per1080: 15 },
-    { id: "Wan-AI_Wan2.2-I2V-A14B", label: "Wan 2.2 i2v 14B (GMI 自託管 · NSFW 友善)",   desc: "Wan-AI 官方 Wan 2.2 開源版，由 GMI 自託管（非阿里雲），繞過審查層", provider: "gmi"      as const, per720: 6,  per1080: 10 },
-    // wan2.7-i2v is Aliyun-hosted, so content moderation IS active. We
-    // expose it here for users who want the higher-quality model on
-    // strictly SFW prompts (e.g. anime-style soft cosplay, glamour);
-    // NSFW prompts will fail with 400 inappropriate content and the
-    // server-side refund pipeline will refund credits automatically.
-    { id: "wan2.7-i2v",             label: "Wan 2.7 i2v (阿里雲 · 高細節 · ⚠️ 限非 NSFW)", desc: "畫質與時序最佳，但走阿里雲審查、NSFW 內容會被拒並退款，建議用在 SFW 構圖",  provider: "gmi"      as const, per720: 8,  per1080: 14 },
+    { id: "wan-3.0", label: "WAN 3.0 (AtlasCloud)", desc: "阿里 WAN 3.0 圖生影片，原生音訊，畫面比例跟隨上傳圖片", per720: 8, per1080: 15 },
   ];
-  const [selectedVideoModel, setSelectedVideoModel] = useState<string>("seeddance");
+  const [selectedVideoModel, setSelectedVideoModel] = useState<string>("wan-3.0");
   const selectedVideoMeta = VIDEO_MODELS.find(m => m.id === selectedVideoModel) ?? VIDEO_MODELS[0];
-  // Model selection. "byteplus" = default Seedream 5.0 (with watermark toggle,
-  // supports text + image-to-image). Other ids route through GMI Cloud and
-  // hit /api/image-generations with provider:"gmi". GMI models are text-only
-  // for now and bypass the watermark pipeline (no addWatermark()).
-  // Keep ids + labels + prices in sync with server/gmiProvider.ts.
-  const NSFW_MODELS = [
-    { id: "byteplus", label: "Seedream 5.0 (BytePlus · 預設)", desc: "穩定快速、可選浮水印與圖片編輯", credits: 3, provider: "byteplus" as const, supportsI2I: true },
-    { id: "Z-Image",          label: "Z-Image (阿里通義 · 寬鬆)",            desc: "中英文友好、無內建安全過濾",         credits: 3, provider: "gmi" as const, supportsI2I: false },
-    { id: "wan2.7-image",     label: "Wan 2.7 (阿里 · 開源寬鬆)",            desc: "Wan 2.7 開源、預設審查寬鬆",         credits: 4, provider: "gmi" as const, supportsI2I: false },
-    { id: "flux-kontext-pro", label: "FLUX Kontext Pro (Black Forest · 高細節)", desc: "細節最強、放寬安全等級 (=6)",     credits: 6, provider: "gmi" as const, supportsI2I: false },
-    // 暫時隱藏：AtlasCloud 金鑰目前沒有圖片生成權限（生成端點回 404/401），
-    // 待帳號開通 Serverless 圖片生成後再取消註解。後端 atlas 路由保留可用。
-    // { id: "black-forest-labs/flux-dev-lora", label: "FLUX.1 dev + LoRA (AtlasCloud · 超寫實)", desc: "FLUX.1 dev 開源高畫質＋內建超寫實 LoRA，支援文字生圖與圖片編輯，NSFW 友善", credits: 5, provider: "atlas" as const, supportsI2I: true },
-  ];
-  const [selectedModel, setSelectedModel] = useState<string>("byteplus");
-  const selectedModelMeta = NSFW_MODELS.find(m => m.id === selectedModel) ?? NSFW_MODELS[0];
+  // Image model. All image generation runs on AtlasCloud Seedream 5.5
+  // (text-to-image + image editing); there is nothing to pick.
+  const IMAGE_MODEL = { label: "Seedream 5.5 (AtlasCloud)", desc: "ByteDance Seedream 5.5，支援文字生圖與圖片編輯，可選浮水印" };
   const [watermark, setWatermark] = useState(true);
   const [uploadedImagePath, setUploadedImagePath] = useState("");
   const [uploadedImageUrl, setUploadedImageUrl] = useState("");
@@ -431,20 +410,9 @@ export default function NsfwPage() {
       });
       return;
     }
-    if (mode === "image-to-image" && !selectedModelMeta.supportsI2I) {
-      toast({
-        title: "此模型暫不支援圖片編輯",
-        description: `${selectedModelMeta.label} 目前僅支援文字生圖，請切換到 Seedream 或改用文字生圖模式。`,
-        variant: "destructive",
-      });
-      return;
-    }
     if (mode === "image-to-video") {
       // Reset prior image polling so the result card flips cleanly to video.
       setCurrentGenerationId("");
-      const videoProviderFields = selectedVideoMeta.provider === "gmi"
-        ? { provider: "gmi", model: selectedVideoMeta.id }
-        : {};
       videoGenerateMutation.mutate({
         type: "image-to-video",
         originalImageUrl: uploadedImagePath,
@@ -453,24 +421,15 @@ export default function NsfwPage() {
         cameraFixed: false,
         aspectRatio: videoAspectRatio,
         resolution: videoResolution,
-        ...videoProviderFields,
       });
       return;
     }
-    // Common payload bits. For non-BytePlus providers (GMI / AtlasCloud) we
-    // send provider+model and skip the watermark flag — those providers don't
-    // watermark and our server intentionally ignores that toggle for them.
-    const providerFields =
-      selectedModelMeta.provider !== "byteplus"
-        ? { provider: selectedModelMeta.provider, model: selectedModelMeta.id }
-        : {};
     setCurrentVideoGenerationId("");
     if (mode === "text-to-image") {
       generateMutation.mutate({
         type: "text-to-image",
         prompt: prompt.trim(),
         guidanceScale, seed, watermark, size,
-        ...providerFields,
       });
     } else {
       generateMutation.mutate({
@@ -478,18 +437,13 @@ export default function NsfwPage() {
         originalImageUrl: uploadedImagePath,
         prompt: prompt.trim(),
         guidanceScale, seed, watermark, size,
-        ...providerFields,
       });
     }
   };
 
-  // Per-image credit cost. Default Seedream still honours the watermark
-  // toggle (3 with / 8 without). GMI models charge a flat per-image rate
-  // from the registry above and ignore the watermark flag.
-  const imageCost = selectedModelMeta.provider !== "byteplus"
-    ? selectedModelMeta.credits
-    : (watermark ? 3 : 8);
-  // Video cost — depends on selected model. SeedDance = 8/15, Wan i2v = 6/10.
+  // Per-image credit cost: 3 with watermark, 8 without.
+  const imageCost = watermark ? 3 : 8;
+  // Video cost: WAN 3.0 = 8 (720P) / 15 (1080P) credits per second.
   const videoCreditsPerSec = videoResolution === "720p" ? selectedVideoMeta.per720 : selectedVideoMeta.per1080;
   const videoCost = Math.round(videoDuration * videoCreditsPerSec);
   const cost = mode === "image-to-video" ? videoCost : imageCost;
@@ -773,7 +727,7 @@ export default function NsfwPage() {
                     )}
                     {mode === "image-to-video" && (
                       <p className="text-xs text-gray-500 mt-2">
-                        💡 上傳一張靜態圖，描述想要的動態（如「人物緩慢轉頭，輕風吹動髮絲」），SeedDance 2.0 會生成 {videoDuration} 秒短片。
+                        💡 上傳一張靜態圖，描述想要的動態（如「人物緩慢轉頭，輕風吹動髮絲」），WAN 3.0 會生成 {videoDuration} 秒短片。
                       </p>
                     )}
                   </div>
@@ -800,44 +754,19 @@ export default function NsfwPage() {
                 </div>
 
                 {/* Model picker — only meaningful for image modes. The video
-                    pipeline is fixed to SeedDance 2.0 today, so we hide the
+                    pipeline is fixed to WAN 3.0 today, so we hide the
                     selector in 圖生影片 mode and show video-specific knobs
                     instead. */}
                 {mode !== "image-to-video" && (
                 <div className="mt-4">
                   <Label className="text-xs text-gray-700 flex items-center justify-between">
                     <span>AI 模型</span>
-                    <span className="text-rose-600 font-semibold">{selectedModelMeta.credits} 積分／張</span>
+                    <span className="text-rose-600 font-semibold">{imageCost} 積分／張</span>
                   </Label>
-                  <select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
-                  >
-                    <optgroup label="BytePlus（預設）">
-                      {NSFW_MODELS.filter(m => m.provider === "byteplus").map(m => (
-                        <option key={m.id} value={m.id}>{m.label} — {m.credits} 積分</option>
-                      ))}
-                    </optgroup>
-                    <optgroup label="GMI Cloud（多家模型）">
-                      {NSFW_MODELS.filter(m => m.provider === "gmi").map(m => (
-                        <option key={m.id} value={m.id}>{m.label} — {m.credits} 積分</option>
-                      ))}
-                    </optgroup>
-                    {/* 暫時隱藏 AtlasCloud（金鑰無圖片生成權限），恢復時取消註解並還原 NSFW_MODELS 的 atlas 項目
-                    <optgroup label="AtlasCloud（FLUX LoRA）">
-                      {NSFW_MODELS.filter(m => m.provider === "atlas").map(m => (
-                        <option key={m.id} value={m.id}>{m.label} — {m.credits} 積分</option>
-                      ))}
-                    </optgroup>
-                    */}
-                  </select>
-                  <p className="text-xs text-gray-500 mt-1">{selectedModelMeta.desc}</p>
-                  {selectedModelMeta.provider !== "byteplus" && !selectedModelMeta.supportsI2I && (
-                    <p className="text-xs text-amber-600 mt-1">
-                      ⚠️ 此模型僅支援文字生圖，圖片編輯請切回 Seedream。
-                    </p>
-                  )}
+                  <div className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm bg-gray-50">
+                    {IMAGE_MODEL.label}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">{IMAGE_MODEL.desc}</p>
                 </div>
                 )}
 
@@ -850,11 +779,15 @@ export default function NsfwPage() {
                         onChange={(e) => setSize(e.target.value)}
                         className="mt-1 w-full px-2 py-1.5 border border-gray-200 rounded-lg text-sm"
                       >
-                        <option value="2K">2K 高清</option>
-                        <option value="4K">4K 超高清</option>
-                        <option value="1920x1920">1:1 正方形</option>
-                        <option value="1440x2560">9:16 直向</option>
-                        <option value="2560x1440">16:9 橫向</option>
+                        {IMAGE_TIERS.map(t => (
+                          <optgroup key={t.id} label={t.label}>
+                            {IMAGE_RATIOS.map(r => (
+                              <option key={r.id} value={imageSizeFor(r.id, t.id)}>
+                                {r.label}（{r.sizes[t.id][0]}×{r.sizes[t.id][1]}）
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
                       </select>
                     </div>
                     <div>
@@ -976,7 +909,7 @@ export default function NsfwPage() {
                   {isVideoBusy && (
                     <div className="aspect-[9/16] bg-gradient-to-br from-purple-50 to-rose-50 rounded-lg flex flex-col items-center justify-center text-gray-600 max-h-80">
                       <div className="animate-spin w-8 h-8 border-2 border-purple-500 border-t-transparent rounded-full mb-3" />
-                      <p className="text-sm">SeedDance 渲染中，約 1-3 分鐘...</p>
+                      <p className="text-sm">WAN 渲染中，約 1-3 分鐘...</p>
                       <p className="text-xs text-gray-400 mt-1">頁面可保持開啟，完成後自動顯示。</p>
                     </div>
                   )}

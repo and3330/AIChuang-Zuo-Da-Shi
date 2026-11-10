@@ -19,6 +19,7 @@ import DramaPage from "@/pages/drama";
 import CharacterLibraryPage from "@/pages/character-library";
 import SceneLibraryPage from "@/pages/scene-library";
 import NsfwPage from "@/pages/nsfw";
+import PhotosetPage from "@/pages/photoset";
 import NotFound from "@/pages/not-found";
 import ChatWidget from "@/components/ChatWidget";
 import MobileTabBar from "@/components/MobileTabBar";
@@ -328,6 +329,7 @@ function Router() {
       <Route path="/drama" component={DramaPage} />
       <Route path="/character-library" component={CharacterLibraryPage} />
       <Route path="/scene-library" component={SceneLibraryPage} />
+      <Route path="/photoset" component={PhotosetPage} />
       <Route path="/nsfw">
         {() => <AdminOnly><NsfwPage /></AdminOnly>}
       </Route>

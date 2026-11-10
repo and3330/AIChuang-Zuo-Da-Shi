@@ -1,14 +1,11 @@
 import TelegramBot from "node-telegram-bot-api";
+import { atlasGenerateImage, atlasGenerateTextVideo } from "./atlasProvider";
 import { storage } from "./storage";
 import { BunnyStorageService } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
 
 const bunnyStorage = new BunnyStorageService();
 
-const IMAGE_API = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
-const VIDEO_API = "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
-const SEEDDANCE_MODEL = "seedream-5.0";
-const VIDEO_ENDPOINT = "ep-20250813120833-g4mpb";
 
 const pendingBindings = new Map<number, { email: string; code: string; expiresAt: number }>();
 
@@ -249,29 +246,7 @@ export function startTelegramBot() {
         userId: user.id,
       });
 
-      const apiKey = process.env.ARK_API_KEY;
-      const response = await fetch(IMAGE_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: SEEDDANCE_MODEL,
-          prompt: enhanceImagePrompt(prompt),
-          response_format: "url",
-          size: "1024x1024",
-          watermark: true,
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`API error: ${response.status}`);
-      }
-
-      const result = await response.json();
-      const imageUrl = result.data?.[0]?.url;
-      if (!imageUrl) throw new Error("No image URL returned");
+      const imageUrl = await atlasGenerateImage({ prompt: enhanceImagePrompt(prompt), size: "1024x1024" });
 
       let finalUrl = imageUrl;
       const userFolder = freshUser?.username || user.id;
@@ -365,65 +340,12 @@ export function startTelegramBot() {
         userId: user.id,
       });
 
-      const apiKey = process.env.ARK_API_KEY;
-      const taskResponse = await fetch(VIDEO_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: VIDEO_ENDPOINT,
-          content: [{ type: "text", text: enhanceVideoPrompt(prompt) + " --resolution 720p" }],
-        }),
+      const { videoUrl } = await atlasGenerateTextVideo({
+        prompt: enhanceVideoPrompt(prompt),
+        resolution: "720p",
+        duration,
+        aspectRatio: "16:9",
       });
-
-      if (!taskResponse.ok) {
-        throw new Error(`Video API error: ${taskResponse.status}`);
-      }
-
-      const taskResult = await taskResponse.json();
-      const taskId = taskResult.id;
-      if (!taskId) throw new Error("No task ID returned");
-
-      let videoUrl: string | undefined;
-      const maxAttempts = 60;
-
-      for (let i = 0; i < maxAttempts; i++) {
-        await new Promise((r) => setTimeout(r, 5000));
-
-        const pollResponse = await fetch(`${VIDEO_API}/${taskId}`, {
-          headers: { Authorization: `Bearer ${apiKey}` },
-        });
-        const pollResult = await pollResponse.json();
-
-        if (pollResult.status === "succeeded") {
-          if (pollResult.content?.video_url && typeof pollResult.content.video_url === "string") {
-            videoUrl = pollResult.content.video_url.replace(/&amp;/g, "&");
-          } else if (pollResult.content && Array.isArray(pollResult.content)) {
-            for (const item of pollResult.content) {
-              if (item.type === "video_url" && item.video_url?.url) {
-                videoUrl = item.video_url.url.replace(/&amp;/g, "&");
-                break;
-              }
-            }
-          }
-          break;
-        } else if (pollResult.status === "failed") {
-          throw new Error(pollResult.error?.message || "Video generation failed");
-        }
-
-        if (i % 6 === 5) {
-          try {
-            await bot.editMessageText(
-              `🎬 影片生成中... (約${Math.round((i + 1) * 5 / 60)}分鐘)\n提示詞：${prompt}\n\n⏳ 請繼續等候...`,
-              { chat_id: chatId, message_id: statusMsg.message_id }
-            );
-          } catch {}
-        }
-      }
-
-      if (!videoUrl) throw new Error("Video generation timed out");
 
       let finalVideoUrl = videoUrl;
       const userFolder = freshUser?.username || user.id;
@@ -583,28 +505,7 @@ export function startTelegramBot() {
         userId: user.id,
       });
 
-      const apiKey = process.env.ARK_API_KEY;
-      const response = await fetch(IMAGE_API, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: SEEDDANCE_MODEL,
-          prompt: enhanceImagePrompt(caption),
-          image: [base64Image],
-          response_format: "url",
-          size: "1024x1024",
-          watermark: true,
-        }),
-      });
-
-      if (!response.ok) throw new Error(`API error: ${response.status}`);
-
-      const result = await response.json();
-      const imageUrl = result.data?.[0]?.url;
-      if (!imageUrl) throw new Error("No image URL returned");
+      const imageUrl = await atlasGenerateImage({ prompt: enhanceImagePrompt(caption), images: [base64Image], size: "1024x1024" });
 
       let finalUrl = imageUrl;
       const userFolder = freshUser?.username || user.id;

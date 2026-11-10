@@ -49,11 +49,10 @@ export const imageGenerations = pgTable("image_generations", {
   processingTime: real("processing_time"),
   cost: real("cost").default(0.03),
   creditsUsed: integer("credits_used").default(3),
-  /** Generation backend: "byteplus" (default, BytePlus ARK Seedream 5.0) or
-   *  "gmi" (GMI Cloud, model selected via the `model` column). */
+  /** Generation backend. New rows are always "atlas" (AtlasCloud Seedream
+   *  5.5); "byteplus" / "gmi" only appear on historical rows. */
   provider: text("provider").default("byteplus"),
-  /** Provider-specific model id, e.g. "Z-Image" / "wan2.7-image" /
-   *  "flux-kontext-pro". Null = provider default. */
+  /** Provider-specific model id, e.g. "bytedance/seedream-v5.5/edit". */
   model: text("model"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -82,11 +81,10 @@ export const videoGenerations = pgTable("video_generations", {
   processingTime: real("processing_time"),
   cost: real("cost").default(0.10),
   creditsUsed: integer("credits_used").default(10),
-  /** Provider routing: "byteplus" (SeedDance, default) or "gmi" (Wan 2.x i2v
-   *  via GMI Cloud). Drives the processVideoGeneration branch and pricing. */
+  /** Backend. New rows are always "atlas" (AtlasCloud WAN 3.0); "byteplus" /
+   *  "gmi" only appear on historical rows. */
   provider: text("provider").default("byteplus"),
-  /** Provider-specific model id, e.g. "wan2.7-i2v" for GMI. NULL/empty for
-   *  default SeedDance which uses the global VIDEO_MODEL endpoint. */
+  /** Provider-specific model id, e.g. "alibaba/wan-3.0/image-to-video". */
   model: text("model"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -171,9 +169,8 @@ export const insertTextToImageSchema = createInsertSchema(imageGenerations).pick
   type: z.literal("text-to-image"),
   sequentialGeneration: z.boolean().optional(),
   maxImages: z.number().min(2).max(10).optional().nullable(),
-  // Provider routing: "byteplus" (default, BytePlus ARK Seedream 5.0),
-  // "gmi" (GMI Cloud) or "atlas" (AtlasCloud flux-dev-lora). When non-default,
-  // `model` must be a registered model id for that provider.
+  // Legacy fields from old clients — accepted but ignored. All image
+  // generation runs on AtlasCloud Seedream 5.5.
   provider: z.enum(["byteplus", "gmi", "atlas"]).optional(),
   model: z.string().max(80).optional(),
 });
@@ -215,13 +212,9 @@ export const insertImageToVideoSchema = z.object({
   cameraFixed: z.boolean().optional().default(false),
   aspectRatio: z.enum(["16:9", "9:16", "1:1"]).optional().default("16:9"),
   resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
-  /** "byteplus" (SeedDance 2.0, default) or "gmi" (Wan 2.x via GMI Cloud).
-   *  GMI route only supports image-to-video and the model id whitelist in
-   *  server/gmiProvider.ts; mis-routed requests are rejected with 400.
-   *  Kept truly optional (no .default) so internal callers — drama studio,
-   *  story animator — don't have to specify it. The route handler defaults
-   *  to "byteplus" when absent. */
-  provider: z.enum(["byteplus", "gmi"]).optional(),
+  /** Legacy fields from old clients — accepted but ignored. Every
+   *  image-to-video job runs on AtlasCloud WAN 3.0. */
+  provider: z.enum(["byteplus", "gmi", "atlas"]).optional(),
   model: z.string().optional(),
 });
 
