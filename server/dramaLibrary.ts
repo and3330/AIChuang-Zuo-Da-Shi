@@ -164,7 +164,8 @@ export function registerDramaLibraryRoutes(
       // ── Async background work ────────────────────────────────────────────────
       (async () => {
         try {
-          const refBase64s = await Promise.all(refUrls.map(loadAsBase64));
+          // A character pack can hold up to 30 images; the edit model uses 10.
+          const refBase64s = await Promise.all(refUrls.slice(0, 10).map(loadAsBase64));
           const userFolder = user?.username || userId;
           const styleHint = character.styleHint?.trim()
             ? `，整體風格：${character.styleHint}`

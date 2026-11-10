@@ -196,6 +196,9 @@ export const insertBatchImageToImageSchema = z.object({
   type: z.literal("image-to-image"),
   originalImageUrl: z.string(),
   prompts: z.array(z.string()).min(2).max(10),
+  /** Extra reference images shared by every prompt (e.g. character refs).
+   *  With originalImageUrl that is at most 10 images for the edit model. */
+  additionalImageUrls: z.array(z.string()).max(9).optional(),
   guidanceScale: z.number().optional(),
   seed: z.number().optional(),
   watermark: z.boolean().optional(),
@@ -407,7 +410,8 @@ export const characterLibrary = pgTable("character_library", {
   userId: varchar("user_id").notNull(),
   name: text("name").notNull(),
   description: text("description").default(""),
-  /** Reference image URLs uploaded by user (Bunny CDN) */
+  /** Character image pack: object-storage paths of uploads and Bunny CDN
+   *  URLs of generated images. */
   refImageUrls: text("ref_image_urls").array().default([]),
   /** Generated 4-view URLs: { front, threeQuarter, side, back } */
   fourViewUrls: json("four_view_urls"),
@@ -485,10 +489,15 @@ export type InsertDramaEpisode = z.infer<typeof insertDramaEpisodeSchema>;
 
 // ─── Asset Library Schemas ────────────────────────────────────────────────────
 
+/** Max images in one character's reference pack. */
+export const CHARACTER_PACK_MAX_IMAGES = 30;
+
 export const insertCharacterLibrarySchema = z.object({
   name: z.string().min(1).max(60),
   description: z.string().optional().default(""),
-  refImageUrls: z.array(z.string()).max(6).optional().default([]),
+  /** The character's image pack: uploads plus generated sheet images. The
+   *  image model uses the first 10 as references, so order matters. */
+  refImageUrls: z.array(z.string()).max(CHARACTER_PACK_MAX_IMAGES).optional().default([]),
   styleHint: z.string().optional().default(""),
 });
 

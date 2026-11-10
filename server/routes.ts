@@ -984,6 +984,12 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         }
 
         const getImageAsDataUri = async (imageUrl: string): Promise<string> => {
+          // Images already on our CDN (e.g. a library character's generated
+          // pack) are public, so hand the URL to Atlas as-is. The allowlist
+          // keeps arbitrary user-supplied hosts out.
+          if (/^https?:\/\//i.test(imageUrl)) {
+            return ssrfAssertAllowedRemoteUrl(imageUrl).toString();
+          }
           console.log(`Getting image from object storage: ${imageUrl}`);
           const objectFile = await objectStorageService.getObjectEntityFile(imageUrl);
           const chunks: Buffer[] = [];
