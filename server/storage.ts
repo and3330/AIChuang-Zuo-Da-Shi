@@ -394,6 +394,7 @@ export class DatabaseStorage implements IStorage {
         type: batchData.type,
         batchId,
         originalImageUrl: batchData.originalImageUrl,
+        additionalImageUrls: batchData.additionalImageUrls,
         prompt,
         guidanceScale: batchData.guidanceScale,
         seed: batchData.seed,

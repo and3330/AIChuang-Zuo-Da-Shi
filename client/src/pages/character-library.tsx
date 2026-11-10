@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationHeader } from "./account";
-import type { CharacterLibraryItem, FourViewUrls } from "@shared/schema";
+import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type FourViewUrls } from "@shared/schema";
 
 async function uploadToObjectStorage(file: File): Promise<string> {
   const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
@@ -100,7 +100,7 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
                 {STYLE_HINTS.find(s => s.value === character.styleHint)?.label ?? character.styleHint}
               </span>
             )}
-            <span className="text-[10px] text-[#94a3b8]">參考圖 {refCount} 張</span>
+            <span className="text-[10px] text-[#94a3b8]">圖庫 {refCount} 張</span>
             {fourViewStatus === "completed" && (
               <span className="text-[10px] bg-[#22c55e]/10 text-[#16a34a] px-2 py-0.5 rounded-full">✓ 四視圖 {completedCount}/4</span>
             )}
@@ -136,6 +136,19 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
          "✨ 生成四視圖 (-12 積分)"}
       </button>
 
+      <div className="grid grid-cols-2 gap-2">
+        <Link href={`/photoset?mode=character&character=${character.id}`}>
+          <span className="block text-center text-sm border border-[#6366f1] text-[#4f46e5] hover:bg-[#6366f1]/10 py-2 rounded-lg cursor-pointer" data-testid={`link-sheet-${character.id}`}>
+            🧩 角色九宮格
+          </span>
+        </Link>
+        <Link href={`/photoset?mode=scene&character=${character.id}`}>
+          <span className="block text-center text-sm border border-[#e2e8f0] text-[#475569] hover:border-[#6366f1] hover:text-[#4f46e5] py-2 rounded-lg cursor-pointer" data-testid={`link-photoset-${character.id}`}>
+            📸 拍寫真套圖
+          </span>
+        </Link>
+      </div>
+
       {showEdit && <CharacterFormModal character={character} onClose={() => setShowEdit(false)} />}
     </div>
   );
@@ -166,7 +179,7 @@ function CharacterFormModal({ character, onClose }: { character?: CharacterLibra
 
   const handleUpload = async (files: FileList | null) => {
     if (!files) return;
-    const remaining = 6 - refImageUrls.length;
+    const remaining = CHARACTER_PACK_MAX_IMAGES - refImageUrls.length;
     setUploading(true);
     try {
       for (const file of Array.from(files).slice(0, remaining)) {
@@ -215,7 +228,7 @@ function CharacterFormModal({ character, onClose }: { character?: CharacterLibra
 
           <div>
             <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">
-              參考圖（建議 1-3 張正面照，最多 6 張）
+              角色圖庫（最多 {CHARACTER_PACK_MAX_IMAGES} 張；生成時使用前 9 張，請把最清楚的正面照放前面）
             </label>
             <div className="flex flex-wrap gap-2">
               {refImageUrls.map((url, i) => (
@@ -225,7 +238,7 @@ function CharacterFormModal({ character, onClose }: { character?: CharacterLibra
                     className="absolute -top-1 -right-1 w-5 h-5 bg-[#ef4444] text-white text-xs rounded-full hidden group-hover:flex items-center justify-center">×</button>
                 </div>
               ))}
-              {refImageUrls.length < 6 && (
+              {refImageUrls.length < CHARACTER_PACK_MAX_IMAGES && (
                 <button onClick={() => fileRef.current?.click()} disabled={uploading}
                   className="w-16 h-16 rounded-lg border-2 border-dashed border-[#cbd5e1] flex flex-col items-center justify-center text-[#94a3b8] hover:border-[#6366f1] hover:text-[#6366f1] transition-all"
                   data-testid="button-upload-ref">

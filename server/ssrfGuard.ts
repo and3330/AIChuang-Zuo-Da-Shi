@@ -2,9 +2,16 @@
 // Only Bunny CDN (the user-configured pull zone + storage host) is permitted.
 // Internal/private hosts are explicitly blocked.
 
+/** BUNNY_CDN_HOST may be configured with or without a scheme / trailing
+ *  slash ("cdn.example.com" or "https://cdn.example.com/"); compare hosts only. */
+function bareHost(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  return value.trim().replace(/^https?:\/\//i, "").replace(/\/.*$/, "").toLowerCase() || undefined;
+}
+
 const ALLOWED_REMOTE_HOSTS = new Set<string>(
   [
-    process.env.BUNNY_CDN_HOST,
+    bareHost(process.env.BUNNY_CDN_HOST),
     "storage.bunnycdn.com",
   ].filter((h): h is string => !!h && h.length > 0)
 );

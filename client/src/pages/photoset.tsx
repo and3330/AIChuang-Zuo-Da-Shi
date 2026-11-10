@@ -1,17 +1,25 @@
-import { useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/App";
 import { NavigationHeader } from "./account";
-import type { ImageGeneration } from "@shared/schema";
+import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type ImageGeneration } from "@shared/schema";
 import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor, type ImageRatioId, type ImageTierId } from "@shared/imageSizes";
+import { PHOTO_LOOKS, POSES, POSE_CATEGORIES, photoLookSuffix, poseById, poseShotPrompt, type PhotoLookId } from "@shared/photosetOptions";
 
-// 寫真套圖：上傳一張情境圖 → AI 分析並規劃一組鏡頭 → 使用者可修改 →
-// 用 Seedream 5.5 以情境圖為參考，一次生成整組套圖。
-// 生成走既有的批次端點 (/api/image-generations + prompts)，
+// 寫真套圖 / 角色九宮格
+//
+// 情境寫真：情境圖決定場景與氛圍；角色參考圖（角色庫的角色＋臨時上傳）決定
+//           畫面裡是誰。沒有參考圖時，沿用情境圖裡的人物。
+// 角色九宮格：不需要情境圖，用角色參考圖生成一組定裝圖（視角／表情／姿勢），
+//           成果可以一鍵存回角色圖庫，之後直接拿來當參考。
+//
+// 兩種模式的生成都走既有的批次端點 (/api/image-generations + prompts)，
 // 所以扣點、失敗退點、CDN 轉存都與首頁的批次編輯一致。
 
+type Mode = "scene" | "character";
 type Shot = { title: string; prompt: string };
 type Plan = { analysis: string; shots: Shot[] };
 type BatchStatus = {
@@ -24,7 +32,9 @@ type BatchStatus = {
 
 const MIN_SHOTS = 2;
 const MAX_SHOTS = 10;
-const COUNT_OPTIONS = [4, 6, 9];
+/** The image model takes 10 images; one slot is kept for the 情境圖. */
+const MAX_REFS = 9;
+const COUNT_OPTIONS: Record<Mode, number[]> = { scene: [4, 6, 9], character: [4, 6, 9] };
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 async function uploadToObjectStorage(file: File): Promise<string> {
@@ -54,22 +64,75 @@ function errorText(e: unknown): string {
   return msg;
 }
 
+function checkImageFile(file: File): string | null {
+  if (!file.type.startsWith("image/")) return "請上傳 JPG、PNG 或 WEBP 圖片。";
+  if (file.size > MAX_UPLOAD_BYTES) return "請上傳 20MB 以內的圖片。";
+  return null;
+}
+
+/** Note appended to every prompt so the image model knows what each input
+ *  image is for. Must match the order sent in generate(). */
+function referenceNote(mode: Mode, refCount: number, outfitFrom: "character" | "scene"): string {
+  if (mode === "character") {
+    return refCount > 1
+      ? "（所有參考圖都是同一位角色，請保持臉部五官、髮型髮色、身形與服裝完全一致。）"
+      : "（參考圖為角色本人，請保持臉部五官、髮型髮色、身形與服裝完全一致。）";
+  }
+  if (refCount === 0) return "";
+  const refRange = refCount > 1 ? `第 2–${refCount + 1} 張圖` : "第 2 張圖";
+  const outfit = outfitFrom === "scene" ? "服裝沿用第 1 張圖中的穿著" : "服裝沿用角色參考圖中的穿著";
+  return `（第 1 張圖是情境參考，只取其場景、光線、色調與氛圍；${refRange}是角色參考圖，畫面中的人物必須是角色參考圖中的這個人，臉部五官、髮型髮色與身形以角色參考圖為準，${outfit}。）`;
+}
+
 export default function PhotosetPage() {
   const { user } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const situationInputRef = useRef<HTMLInputElement>(null);
+  const refInputRef = useRef<HTMLInputElement>(null);
 
-  const [imagePath, setImagePath] = useState("");
-  const [uploading, setUploading] = useState(false);
-  const [count, setCount] = useState(6);
+  // Deep link from the character library: /photoset?mode=character&character=<id>
+  const initial = useMemo(() => {
+    const q = new URLSearchParams(window.location.search);
+    return {
+      mode: (q.get("mode") === "character" ? "character" : "scene") as Mode,
+      characterId: q.get("character") || "",
+    };
+  }, []);
+
+  const [mode, setMode] = useState<Mode>(initial.mode);
+  const [situationPath, setSituationPath] = useState("");
+  const [characterId, setCharacterId] = useState(initial.characterId);
+  const [extraRefs, setExtraRefs] = useState<string[]>([]);
+  const [outfitFrom, setOutfitFrom] = useState<"character" | "scene">("character");
+  const [uploading, setUploading] = useState<"" | "situation" | "refs">("");
+  const [count, setCount] = useState(initial.mode === "character" ? 9 : 6);
   const [ratioId, setRatioId] = useState<ImageRatioId>("3:4");
   const [tierId, setTierId] = useState<ImageTierId>("2k");
+  const [lookId, setLookId] = useState<PhotoLookId>("natural");
+  const [poseIds, setPoseIds] = useState<string[]>([]);
+  const [poseCategory, setPoseCategory] = useState<string>(POSE_CATEGORIES[0]);
+  const [showPoses, setShowPoses] = useState(false);
   const [direction, setDirection] = useState("");
   const [watermark, setWatermark] = useState(true);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [batchId, setBatchId] = useState("");
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const [savedUrls, setSavedUrls] = useState<string[]>([]);
+
+  const { data: characters = [] } = useQuery<CharacterLibraryItem[]>({
+    queryKey: ["/api/character-library"],
+  });
+  const character = characters.find(c => c.id === characterId) ?? null;
+  const characterRefs = character?.refImageUrls ?? [];
+
+  // Reference images actually sent: the character's pack first, then ad-hoc
+  // uploads, capped at what the model accepts.
+  const allRefs = useMemo(
+    () => [...characterRefs, ...extraRefs].slice(0, MAX_REFS),
+    [characterRefs, extraRefs],
+  );
+  const droppedRefs = characterRefs.length + extraRefs.length - allRefs.length;
 
   const ratio = IMAGE_RATIOS.find(r => r.id === ratioId) ?? IMAGE_RATIOS[0];
   const outputSize = imageSizeFor(ratioId, tierId);
@@ -79,55 +142,91 @@ export default function PhotosetPage() {
   const totalCost = validShots.length * perImage;
   const credits = user?.credits ?? 0;
 
-  const handleFile = async (file: File | undefined) => {
+  const inputsReady = mode === "scene" ? !!situationPath : allRefs.length > 0;
+
+  // Any change to what the shots are based on makes the current plan stale.
+  const resetPlan = () => { setPlan(null); setBatchId(""); setSavedUrls([]); };
+  useEffect(() => { resetPlan(); }, [mode, characterId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const switchMode = (m: Mode) => {
+    if (m === mode) return;
+    setMode(m);
+    setCount(m === "character" ? 9 : 6);
+  };
+
+  const handleSituationFile = async (file: File | undefined) => {
     if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast({ title: "檔案格式不支援", description: "請上傳 JPG、PNG 或 WEBP 圖片。", variant: "destructive" });
-      return;
-    }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      toast({ title: "圖片太大", description: "請上傳 20MB 以內的圖片。", variant: "destructive" });
-      return;
-    }
-    setUploading(true);
+    const problem = checkImageFile(file);
+    if (problem) { toast({ title: "無法使用這個檔案", description: problem, variant: "destructive" }); return; }
+    setUploading("situation");
     try {
-      const path = await uploadToObjectStorage(file);
-      setImagePath(path);
-      setPlan(null);
-      setBatchId("");
+      setSituationPath(await uploadToObjectStorage(file));
+      resetPlan();
     } catch (e) {
       toast({ title: "上傳失敗", description: errorText(e), variant: "destructive" });
     } finally {
-      setUploading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      setUploading("");
+      if (situationInputRef.current) situationInputRef.current.value = "";
+    }
+  };
+
+  const handleRefFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const room = MAX_REFS - characterRefs.length - extraRefs.length;
+    if (room <= 0) {
+      toast({ title: "參考圖已達上限", description: `一次最多使用 ${MAX_REFS} 張參考圖。`, variant: "destructive" });
+      return;
+    }
+    setUploading("refs");
+    try {
+      for (const file of Array.from(files).slice(0, room)) {
+        const problem = checkImageFile(file);
+        if (problem) { toast({ title: `略過 ${file.name}`, description: problem, variant: "destructive" }); continue; }
+        const path = await uploadToObjectStorage(file);
+        setExtraRefs(prev => [...prev, path]);
+      }
+      resetPlan();
+    } catch (e) {
+      toast({ title: "上傳失敗", description: errorText(e), variant: "destructive" });
+    } finally {
+      setUploading("");
+      if (refInputRef.current) refInputRef.current.value = "";
     }
   };
 
   const planMutation = useMutation({
-    mutationFn: async (): Promise<Plan> => {
+    mutationFn: async (planner: "ai" | "preset"): Promise<Plan> => {
       const res = await apiRequest("POST", "/api/photosets/plan", {
-        originalImageUrl: imagePath,
+        mode,
+        planner,
+        situationImageUrl: mode === "scene" ? situationPath : undefined,
+        referenceImageUrls: allRefs,
+        characterName: character?.name,
+        characterDescription: character?.description || undefined,
+        outfitFrom,
         count,
+        poseIds: planner === "ai" ? poseIds : [],
+        look: lookId,
         direction: direction.trim() || undefined,
         aspectRatio: ratio.id,
       });
       return res.json();
     },
-    onSuccess: (data) => {
-      setPlan(data);
-      setBatchId("");
-    },
-    onError: (e) => {
-      toast({ title: "規劃失敗", description: errorText(e), variant: "destructive" });
-    },
+    onSuccess: (data) => { setPlan(data); setBatchId(""); setSavedUrls([]); },
+    onError: (e) => toast({ title: "規劃失敗", description: errorText(e), variant: "destructive" }),
   });
 
   const generateMutation = useMutation({
     mutationFn: async () => {
+      const note = referenceNote(mode, allRefs.length, outfitFrom);
+      // Image order must match referenceNote(): 情境圖 first in scene mode.
+      const [first, ...rest] = mode === "scene" ? [situationPath, ...allRefs] : allRefs;
       const res = await apiRequest("POST", "/api/image-generations", {
         type: "image-to-image",
-        originalImageUrl: imagePath,
-        prompts: validShots.map(s => s.prompt.trim()),
+        originalImageUrl: first,
+        additionalImageUrls: rest.length > 0 ? rest : undefined,
+        // Each prompt = the shot + what each input image is for + the look.
+        prompts: validShots.map(s => `${s.prompt.trim()}${note}${photoLookSuffix(lookId)}`),
         watermark,
         size: outputSize,
       });
@@ -135,11 +234,10 @@ export default function PhotosetPage() {
     },
     onSuccess: (data) => {
       setBatchId(data.batchId);
+      setSavedUrls([]);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
-    onError: (e) => {
-      toast({ title: "生成失敗", description: errorText(e), variant: "destructive" });
-    },
+    onError: (e) => toast({ title: "生成失敗", description: errorText(e), variant: "destructive" }),
   });
 
   const { data: batch } = useQuery<BatchStatus>({
@@ -158,12 +256,49 @@ export default function PhotosetPage() {
 
   const batchDone = !!batch && batch.completedCount + batch.failedCount >= batch.totalCount;
   const isGenerating = generateMutation.isPending || (!!batchId && !batchDone);
+  const busy = isGenerating || planMutation.isPending;
+
+  // Only images already re-hosted on our CDN are permanent enough to keep in
+  // a character pack (provider URLs expire).
+  const savableUrls = (batch?.generations ?? [])
+    .filter(g => g.status === "completed" && !!g.bunnyImageUrl)
+    .map(g => g.bunnyImageUrl as string);
+  const packRoom = CHARACTER_PACK_MAX_IMAGES - characterRefs.length;
+
+  const saveToPackMutation = useMutation({
+    mutationFn: async (urls: string[]) => {
+      if (!character) throw new Error("請先選擇角色");
+      const fresh = urls.filter(u => !characterRefs.includes(u)).slice(0, Math.max(0, packRoom));
+      if (fresh.length === 0) throw new Error(packRoom <= 0 ? `角色圖庫已滿（${CHARACTER_PACK_MAX_IMAGES} 張）` : "這些圖已經在圖庫裡了");
+      await apiRequest("PATCH", `/api/character-library/${character.id}`, {
+        refImageUrls: [...characterRefs, ...fresh],
+      });
+      return fresh;
+    },
+    onSuccess: (fresh) => {
+      setSavedUrls(prev => [...prev, ...fresh]);
+      queryClient.invalidateQueries({ queryKey: ["/api/character-library"] });
+      toast({ title: `已加入「${character?.name}」的圖庫`, description: `新增 ${fresh.length} 張。` });
+    },
+    onError: (e) => toast({ title: "加入圖庫失敗", description: errorText(e), variant: "destructive" }),
+  });
 
   const updateShot = (idx: number, patch: Partial<Shot>) => {
     setPlan(p => p ? { ...p, shots: p.shots.map((s, i) => (i === idx ? { ...s, ...patch } : s)) } : p);
   };
   const removeShot = (idx: number) => {
     setPlan(p => p ? { ...p, shots: p.shots.filter((_, i) => i !== idx) } : p);
+  };
+  const togglePose = (id: string) => {
+    setPoseIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : prev.length >= MAX_SHOTS ? prev : [...prev, id]);
+  };
+  /** Add a library pose to the current plan as a ready-made shot (no AI). */
+  const addPoseShot = (id: string) => {
+    const pose = poseById(id);
+    if (!pose) return;
+    setPlan(p => p && p.shots.length < MAX_SHOTS
+      ? { ...p, shots: [...p.shots, { title: pose.name, prompt: poseShotPrompt(pose) }] }
+      : p);
   };
   const addShot = () => {
     setPlan(p => p && p.shots.length < MAX_SHOTS
@@ -172,91 +307,149 @@ export default function PhotosetPage() {
   };
 
   const canGenerate =
-    !!imagePath && validShots.length >= MIN_SHOTS && validShots.length <= MAX_SHOTS &&
-    credits >= totalCost && !isGenerating;
+    inputsReady && validShots.length >= MIN_SHOTS && validShots.length <= MAX_SHOTS &&
+    credits >= totalCost && !busy;
 
   const imageOf = (g: ImageGeneration) => g.bunnyImageUrl || g.generatedImageUrl || "";
+  const isSaved = (url: string) => savedUrls.includes(url) || characterRefs.includes(url);
+
+  const selectBtn = (active: boolean) =>
+    `rounded-lg border transition-colors ${active ? "border-[#6366f1] bg-[#6366f1]/10" : "border-[#e2e8f0] hover:border-[#6366f1]/40"}`;
 
   return (
     <div className="min-h-screen bg-[#f8fafc] pb-24">
       <NavigationHeader />
       <div className="max-w-6xl mx-auto px-4 py-8">
-        <div className="mb-6">
+        <div className="mb-5">
           <h1 className="text-2xl font-bold text-[#0f172a]">📸 寫真套圖</h1>
           <p className="text-sm text-[#64748b] mt-1">
-            上傳一張情境圖，AI 會分析人物與場景，規劃一整組不同景別、角度與姿勢的寫真，一次生成可直接貼上社群的套圖。
+            用情境圖決定場景與氛圍、用角色參考圖決定畫面裡是誰，一次生成整組可貼上社群的套圖；也可以先替角色生成九宮格定裝圖，存進角色圖庫重複使用。
           </p>
         </div>
 
-        <div className="grid lg:grid-cols-[360px_1fr] gap-6 items-start">
-          {/* ── 左：情境圖與設定 ───────────────────────────── */}
+        {/* ── 模式 ─────────────────────────────────────────── */}
+        <div className="grid sm:grid-cols-2 gap-3 mb-6">
+          <button onClick={() => switchMode("scene")} disabled={busy} className={`p-4 text-left ${selectBtn(mode === "scene")}`} data-testid="button-mode-scene">
+            <div className="text-sm font-semibold text-[#0f172a]">📸 情境寫真</div>
+            <div className="text-xs text-[#64748b] mt-1">上傳情境圖，AI 分析後規劃一組不同景別與姿勢的寫真。可指定角色，讓同一個人出現在這個情境裡。</div>
+          </button>
+          <button onClick={() => switchMode("character")} disabled={busy} className={`p-4 text-left ${selectBtn(mode === "character")}`} data-testid="button-mode-character">
+            <div className="text-sm font-semibold text-[#0f172a]">🧩 角色九宮格</div>
+            <div className="text-xs text-[#64748b] mt-1">不需要情境圖。用角色參考圖生成正面、側面、背面、各種表情與姿勢的定裝圖，把角色完整建立起來。</div>
+          </button>
+        </div>
+
+        <div className="grid lg:grid-cols-[380px_1fr] gap-6 items-start">
+          {/* ── 左：素材與設定 ─────────────────────────────── */}
           <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 space-y-5">
-            <div>
-              <p className="text-sm font-semibold text-[#0f172a] mb-2">① 情境圖</p>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                className="hidden"
-                onChange={(e) => handleFile(e.target.files?.[0])}
-                data-testid="input-photoset-file"
-              />
-              {imagePath ? (
-                <div className="space-y-2">
-                  <img src={imagePath} alt="情境圖" className="w-full max-h-80 object-contain rounded-xl bg-[#f1f5f9]" />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading || isGenerating}
-                    className="text-xs text-[#6366f1] hover:underline disabled:opacity-50"
-                  >
-                    {uploading ? "上傳中…" : "更換圖片"}
+            {mode === "scene" && (
+              <div>
+                <p className="text-sm font-semibold text-[#0f172a] mb-2">① 情境圖 <span className="text-xs font-normal text-[#94a3b8]">決定場景、光線與氛圍</span></p>
+                <input ref={situationInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                  onChange={(e) => handleSituationFile(e.target.files?.[0])} data-testid="input-photoset-situation" />
+                {situationPath ? (
+                  <div className="space-y-2">
+                    <img src={situationPath} alt="情境圖" className="w-full max-h-72 object-contain rounded-xl bg-[#f1f5f9]" />
+                    <button onClick={() => situationInputRef.current?.click()} disabled={!!uploading || busy}
+                      className="text-xs text-[#6366f1] hover:underline disabled:opacity-50">
+                      {uploading === "situation" ? "上傳中…" : "更換情境圖"}
+                    </button>
+                  </div>
+                ) : (
+                  <button onClick={() => situationInputRef.current?.click()} disabled={!!uploading}
+                    className="w-full h-40 border-2 border-dashed border-[#cbd5e1] rounded-xl flex flex-col items-center justify-center gap-2 text-[#64748b] hover:border-[#6366f1] hover:text-[#6366f1] transition-colors disabled:opacity-50"
+                    data-testid="button-photoset-upload-situation">
+                    <i className="fas fa-cloud-upload-alt text-2xl" />
+                    <span className="text-sm">{uploading === "situation" ? "上傳中…" : "點擊上傳情境圖"}</span>
+                    <span className="text-[11px] text-[#94a3b8]">JPG／PNG／WEBP，20MB 以內</span>
                   </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading}
-                  className="w-full h-44 border-2 border-dashed border-[#cbd5e1] rounded-xl flex flex-col items-center justify-center gap-2 text-[#64748b] hover:border-[#6366f1] hover:text-[#6366f1] transition-colors disabled:opacity-50"
-                  data-testid="button-photoset-upload"
-                >
-                  <i className="fas fa-cloud-upload-alt text-2xl" />
-                  <span className="text-sm">{uploading ? "上傳中…" : "點擊上傳情境圖"}</span>
-                  <span className="text-[11px] text-[#94a3b8]">JPG／PNG／WEBP，20MB 以內</span>
-                </button>
-              )}
-              <p className="text-[11px] text-[#94a3b8] mt-2">
-                建議使用人物清楚、服裝與場景完整的照片，整組套圖會以它維持人物與風格一致。
+                )}
+              </div>
+            )}
+
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a] mb-2">
+                {mode === "scene" ? "② 角色／人物參考圖" : "① 角色參考圖"}{" "}
+                <span className="text-xs font-normal text-[#94a3b8]">{mode === "scene" ? "選填，決定畫面裡是誰" : "必填，至少 1 張"}</span>
               </p>
+
+              <label className="text-xs text-[#64748b] block mb-1">從角色庫選擇</label>
+              <div className="flex gap-2">
+                <select value={characterId} onChange={(e) => setCharacterId(e.target.value)} disabled={busy}
+                  className="flex-1 min-w-0 px-3 py-2 border border-[#e2e8f0] rounded-lg text-sm bg-white" data-testid="select-photoset-character">
+                  <option value="">{mode === "scene" ? "不指定角色（沿用情境圖中的人物）" : "不使用角色庫（只用下方上傳的圖）"}</option>
+                  {characters.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}（圖庫 {c.refImageUrls?.length ?? 0} 張）</option>
+                  ))}
+                </select>
+                <Link href="/character-library">
+                  <span className="shrink-0 px-3 py-2 border border-[#e2e8f0] rounded-lg text-xs text-[#475569] hover:border-[#6366f1] hover:text-[#4f46e5] cursor-pointer whitespace-nowrap">管理角色</span>
+                </Link>
+              </div>
+              {character && characterRefs.length === 0 && (
+                <p className="text-xs text-[#ef4444] mt-1">這個角色的圖庫還沒有圖片，請到角色庫上傳，或在下方直接上傳參考圖。</p>
+              )}
+
+              <input ref={refInputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden"
+                onChange={(e) => handleRefFiles(e.target.files)} data-testid="input-photoset-refs" />
+              <div className="flex flex-wrap gap-2 mt-3">
+                {characterRefs.slice(0, MAX_REFS).map((url, i) => (
+                  <div key={`c-${i}`} className="relative w-16 h-16 rounded-lg overflow-hidden border border-[#6366f1]/40 bg-[#f8fafc]" title="來自角色圖庫">
+                    <img src={url} alt={`角色圖 ${i + 1}`} className="w-full h-full object-cover" />
+                    <span className="absolute bottom-0 inset-x-0 bg-[#6366f1]/80 text-white text-[9px] text-center">圖庫</span>
+                  </div>
+                ))}
+                {extraRefs.map((url, i) => (
+                  <div key={`x-${i}`} className="relative w-16 h-16 rounded-lg overflow-hidden border border-[#cbd5e1] bg-[#f8fafc] group">
+                    <img src={url} alt={`參考圖 ${i + 1}`} className="w-full h-full object-cover" />
+                    <button onClick={() => { setExtraRefs(prev => prev.filter((_, idx) => idx !== i)); resetPlan(); }} disabled={busy}
+                      className="absolute top-0 right-0 w-5 h-5 bg-[#ef4444] text-white text-xs rounded-bl-lg flex items-center justify-center" title="移除">×</button>
+                  </div>
+                ))}
+                {characterRefs.length + extraRefs.length < MAX_REFS && (
+                  <button onClick={() => refInputRef.current?.click()} disabled={!!uploading || busy}
+                    className="w-16 h-16 rounded-lg border-2 border-dashed border-[#cbd5e1] flex flex-col items-center justify-center text-[#94a3b8] hover:border-[#6366f1] hover:text-[#6366f1] transition-colors disabled:opacity-50"
+                    data-testid="button-photoset-upload-refs">
+                    {uploading === "refs" ? <span className="text-xs">…</span> : <><span className="text-xl leading-none">+</span><span className="text-[9px]">上傳</span></>}
+                  </button>
+                )}
+              </div>
+              <p className="text-[11px] text-[#94a3b8] mt-2">
+                本次使用 {allRefs.length}／{MAX_REFS} 張參考圖。
+                {droppedRefs > 0 && ` 角色圖庫超過上限，只取前 ${MAX_REFS} 張。`}
+                {" "}臉部清楚的正面照效果最好；這裡上傳的圖只用在這一次，要長期保存請加到角色庫。
+              </p>
+
+              {mode === "scene" && allRefs.length > 0 && (
+                <div className="mt-3">
+                  <label className="text-xs text-[#64748b] block mb-1">服裝來源</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button onClick={() => { setOutfitFrom("character"); resetPlan(); }} disabled={busy}
+                      className={`py-2 text-sm ${selectBtn(outfitFrom === "character")}`}>沿用角色圖的服裝</button>
+                    <button onClick={() => { setOutfitFrom("scene"); resetPlan(); }} disabled={busy}
+                      className={`py-2 text-sm ${selectBtn(outfitFrom === "scene")}`}>換上情境圖的服裝</button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-[#0f172a] mb-2">② 張數</p>
+              <p className="text-sm font-semibold text-[#0f172a] mb-2">{mode === "scene" ? "③" : "②"} 張數</p>
               <div className="flex gap-2">
-                {COUNT_OPTIONS.map(n => (
-                  <button
-                    key={n}
-                    onClick={() => setCount(n)}
-                    className={`flex-1 py-2 rounded-lg border text-sm font-medium transition-colors ${
-                      count === n ? "border-[#6366f1] bg-[#6366f1]/10 text-[#4f46e5]" : "border-[#e2e8f0] text-[#475569] hover:border-[#6366f1]/40"
-                    }`}
-                  >
-                    {n} 張
+                {COUNT_OPTIONS[mode].map(n => (
+                  <button key={n} onClick={() => setCount(n)} disabled={busy}
+                    className={`flex-1 py-2 text-sm font-medium ${selectBtn(count === n)} ${count === n ? "text-[#4f46e5]" : "text-[#475569]"}`}>
+                    {n} 張{mode === "character" && n === 9 ? "（九宮格）" : ""}
                   </button>
                 ))}
               </div>
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-[#0f172a] mb-2">③ 比例</p>
+              <p className="text-sm font-semibold text-[#0f172a] mb-2">{mode === "scene" ? "④" : "③"} 比例</p>
               <div className="grid grid-cols-2 gap-2">
                 {IMAGE_RATIOS.map(r => (
-                  <button
-                    key={r.id}
-                    onClick={() => setRatioId(r.id)}
-                    className={`p-2 rounded-lg border text-left transition-colors ${
-                      ratioId === r.id ? "border-[#6366f1] bg-[#6366f1]/10" : "border-[#e2e8f0] hover:border-[#6366f1]/40"
-                    }`}
-                  >
+                  <button key={r.id} onClick={() => setRatioId(r.id)} disabled={busy} className={`p-2 text-left ${selectBtn(ratioId === r.id)}`}>
                     <div className="text-sm font-medium text-[#0f172a]">{r.label}</div>
                     <div className="text-[11px] text-[#64748b]">{r.hint}</div>
                   </button>
@@ -265,19 +458,14 @@ export default function PhotosetPage() {
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-[#0f172a] mb-2">④ 畫質</p>
+              <p className="text-sm font-semibold text-[#0f172a] mb-2">{mode === "scene" ? "⑤" : "④"} 畫質</p>
               <div className="space-y-2">
                 {IMAGE_TIERS.map(t => {
                   const [w, h] = ratio.sizes[t.id];
                   return (
-                    <button
-                      key={t.id}
-                      onClick={() => setTierId(t.id)}
-                      className={`w-full p-2 rounded-lg border text-left flex items-center justify-between gap-2 transition-colors ${
-                        tierId === t.id ? "border-[#6366f1] bg-[#6366f1]/10" : "border-[#e2e8f0] hover:border-[#6366f1]/40"
-                      }`}
-                      data-testid={`button-photoset-tier-${t.id}`}
-                    >
+                    <button key={t.id} onClick={() => setTierId(t.id)} disabled={busy}
+                      className={`w-full p-2 text-left flex items-center justify-between gap-2 ${selectBtn(tierId === t.id)}`}
+                      data-testid={`button-photoset-tier-${t.id}`}>
                       <span>
                         <span className="text-sm font-medium text-[#0f172a]">{t.label}</span>
                         <span className="block text-[11px] text-[#64748b]">{t.hint}</span>
@@ -287,31 +475,99 @@ export default function PhotosetPage() {
                   );
                 })}
               </div>
+              <p className="text-[11px] text-[#94a3b8] mt-2">輸出尺寸：{outputSize.replace("x", " × ")} px。各畫質的積分相同。</p>
+            </div>
+
+            <div>
+              <p className="text-sm font-semibold text-[#0f172a] mb-2">{mode === "scene" ? "⑥" : "⑤"} 畫面質感</p>
+              <div className="grid grid-cols-2 gap-2">
+                {PHOTO_LOOKS.map(l => (
+                  <button key={l.id} onClick={() => setLookId(l.id)} disabled={busy} className={`p-2 text-left ${selectBtn(lookId === l.id)}`} data-testid={`button-photoset-look-${l.id}`}>
+                    <div className="text-sm font-medium text-[#0f172a]">{l.label}</div>
+                    <div className="text-[11px] text-[#64748b]">{l.hint}</div>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[11px] text-[#94a3b8] mt-2">質感設定會附加在每一張的提示詞後面，可隨時更換，不需要重新規劃。想降低 AI 感請選「自然寫實」或「手機隨拍」，並搭配 2K 畫質。</p>
+            </div>
+
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-sm font-semibold text-[#0f172a]">{mode === "scene" ? "⑦" : "⑥"} 指定姿勢 <span className="text-xs font-normal text-[#94a3b8]">選填</span></p>
+                <button onClick={() => setShowPoses(v => !v)} className="text-xs text-[#6366f1] hover:underline" data-testid="button-photoset-toggle-poses">
+                  {showPoses ? "收合" : poseIds.length > 0 ? `已選 ${poseIds.length} 個，展開修改` : "展開姿勢庫"}
+                </button>
+              </div>
+              {poseIds.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {poseIds.map((id, i) => (
+                    <span key={id} className="inline-flex items-center gap-1 pl-2 pr-1 py-0.5 rounded-full bg-[#6366f1]/10 text-[#4f46e5] text-xs">
+                      {i + 1}. {poseById(id)?.name}
+                      <button onClick={() => togglePose(id)} disabled={busy} className="w-4 h-4 rounded-full hover:bg-[#6366f1]/20" title="移除">×</button>
+                    </span>
+                  ))}
+                  <button onClick={() => setPoseIds([])} disabled={busy} className="text-xs text-[#94a3b8] hover:text-[#ef4444] px-1">全部清除</button>
+                </div>
+              )}
+              {showPoses && (
+                <div className="border border-[#e2e8f0] rounded-xl p-2 space-y-2">
+                  <div className="flex flex-wrap gap-1">
+                    {POSE_CATEGORIES.map(cat => (
+                      <button key={cat} onClick={() => setPoseCategory(cat)}
+                        className={`px-2 py-1 rounded-md text-xs ${poseCategory === cat ? "bg-[#0f172a] text-white" : "bg-[#f1f5f9] text-[#475569] hover:bg-[#e2e8f0]"}`}>
+                        {cat}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-2 gap-1.5 max-h-64 overflow-y-auto pr-1">
+                    {POSES.filter(p => p.category === poseCategory).map(p => {
+                      const picked = poseIds.includes(p.id);
+                      return (
+                        <button key={p.id} onClick={() => togglePose(p.id)} disabled={busy || (!picked && poseIds.length >= MAX_SHOTS)}
+                          title={p.description}
+                          className={`p-2 text-left ${selectBtn(picked)} disabled:opacity-40`} data-testid={`button-pose-${p.id}`}>
+                          <div className="text-xs font-medium text-[#0f172a]">{picked ? "✓ " : ""}{p.name}</div>
+                          <div className="text-[10px] text-[#94a3b8]">{p.framing}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
               <p className="text-[11px] text-[#94a3b8] mt-2">
-                輸出尺寸：{outputSize.replace("x", " × ")} px。各畫質的積分相同。
+                {poseIds.length >= MIN_SHOTS
+                  ? `AI 規劃時會依序為這 ${poseIds.length} 個姿勢各出一張（張數設定改以姿勢數為準）。`
+                  : poseIds.length === 1
+                    ? `請至少選 ${MIN_SHOTS} 個姿勢，或清除後改用張數。`
+                    : `不選則由 AI 自行安排姿勢。最多可選 ${MAX_SHOTS} 個。`}
               </p>
             </div>
 
             <div>
-              <p className="text-sm font-semibold text-[#0f172a] mb-2">⑤ 風格方向（選填）</p>
-              <textarea
-                value={direction}
-                onChange={(e) => setDirection(e.target.value.slice(0, 500))}
-                rows={3}
-                placeholder="例如：日系清新、多一點臉部特寫、加入逆光與走動的抓拍感"
+              <p className="text-sm font-semibold text-[#0f172a] mb-2">{mode === "scene" ? "⑧" : "⑦"} 風格方向（選填）</p>
+              <textarea value={direction} onChange={(e) => setDirection(e.target.value.slice(0, 500))} rows={3} disabled={busy}
+                placeholder={mode === "scene" ? "例如：日系清新、多一點臉部特寫、加入逆光與走動的抓拍感" : "例如：加入戰鬥姿勢、多一點情緒表情、換成白色背景"}
                 className="w-full px-3 py-2 border border-[#e2e8f0] rounded-lg text-sm focus:ring-2 focus:ring-[#6366f1] focus:border-transparent"
-                data-testid="input-photoset-direction"
-              />
+                data-testid="input-photoset-direction" />
             </div>
 
-            <button
-              onClick={() => planMutation.mutate()}
-              disabled={!imagePath || planMutation.isPending || isGenerating}
-              className="w-full py-2.5 rounded-xl bg-[#0f172a] text-white text-sm font-semibold hover:bg-[#1e293b] disabled:opacity-40 disabled:cursor-not-allowed"
-              data-testid="button-photoset-plan"
-            >
-              {planMutation.isPending ? "AI 分析規劃中…" : plan ? "重新分析並規劃" : "分析情境圖並規劃鏡頭（免費）"}
-            </button>
+            <div className="space-y-2">
+              <button onClick={() => planMutation.mutate("ai")} disabled={!inputsReady || busy || poseIds.length === 1}
+                className="w-full py-2.5 rounded-xl bg-[#0f172a] text-white text-sm font-semibold hover:bg-[#1e293b] disabled:opacity-40 disabled:cursor-not-allowed"
+                data-testid="button-photoset-plan">
+                {planMutation.isPending ? "AI 分析規劃中…" : plan ? "重新請 AI 分析並規劃" : mode === "scene" ? "AI 分析情境圖並規劃鏡頭（免費）" : "AI 分析角色並規劃定裝圖（免費）"}
+              </button>
+              {mode === "character" && (
+                <button onClick={() => planMutation.mutate("preset")} disabled={!inputsReady || busy}
+                  className="w-full py-2.5 rounded-xl border border-[#0f172a] text-[#0f172a] text-sm font-semibold hover:bg-[#f1f5f9] disabled:opacity-40 disabled:cursor-not-allowed"
+                  data-testid="button-photoset-preset">
+                  使用標準九宮格（不經 AI，立即產生）
+                </button>
+              )}
+              {!inputsReady && (
+                <p className="text-[11px] text-[#94a3b8]">{mode === "scene" ? "請先上傳情境圖。" : "請先選擇有圖的角色，或上傳至少一張角色參考圖。"}</p>
+              )}
+            </div>
           </div>
 
           {/* ── 右：鏡頭規劃與成果 ─────────────────────────── */}
@@ -319,7 +575,11 @@ export default function PhotosetPage() {
             {!plan && (
               <div className="bg-white border border-[#e2e8f0] rounded-2xl p-10 text-center text-[#94a3b8]">
                 <i className="fas fa-images text-3xl mb-3" />
-                <p className="text-sm">上傳情境圖並按下「分析情境圖並規劃鏡頭」，這裡會出現整組鏡頭清單，可逐條修改後再生成。</p>
+                <p className="text-sm">
+                  {mode === "scene"
+                    ? "上傳情境圖（可再指定角色），按下規劃後，這裡會出現整組鏡頭清單，可逐條修改後再生成。"
+                    : "選擇角色或上傳參考圖，按下規劃後，這裡會出現九宮格的鏡頭清單，可逐條修改後再生成。"}
+                </p>
               </div>
             )}
 
@@ -327,20 +587,25 @@ export default function PhotosetPage() {
               <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5 space-y-4">
                 {plan.analysis && (
                   <div className="bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-3">
-                    <p className="text-xs font-semibold text-[#475569] mb-1">AI 對情境圖的分析</p>
+                    <p className="text-xs font-semibold text-[#475569] mb-1">{mode === "scene" ? "AI 的分析" : "規劃說明"}</p>
                     <p className="text-sm text-[#334155] leading-relaxed">{plan.analysis}</p>
                   </div>
                 )}
 
                 <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-[#0f172a]">鏡頭清單（{shots.length} 張，可修改）</p>
-                  <button
-                    onClick={addShot}
-                    disabled={shots.length >= MAX_SHOTS || isGenerating}
-                    className="text-xs text-[#6366f1] hover:underline disabled:opacity-40"
-                  >
-                    ＋ 新增鏡頭
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <select value="" onChange={(e) => { if (e.target.value) addPoseShot(e.target.value); }} disabled={shots.length >= MAX_SHOTS || busy}
+                      className="text-xs border border-[#e2e8f0] rounded-md px-1.5 py-1 text-[#475569] bg-white disabled:opacity-40" data-testid="select-add-pose-shot">
+                      <option value="">＋ 從姿勢庫新增</option>
+                      {POSE_CATEGORIES.map(cat => (
+                        <optgroup key={cat} label={cat}>
+                          {POSES.filter(p => p.category === cat).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                        </optgroup>
+                      ))}
+                    </select>
+                    <button onClick={addShot} disabled={shots.length >= MAX_SHOTS || busy} className="text-xs text-[#6366f1] hover:underline disabled:opacity-40">＋ 空白鏡頭</button>
+                  </div>
                 </div>
 
                 <div className="space-y-3">
@@ -348,100 +613,92 @@ export default function PhotosetPage() {
                     <div key={idx} className="border border-[#e2e8f0] rounded-xl p-3 space-y-2" data-testid={`card-shot-${idx}`}>
                       <div className="flex items-center gap-2">
                         <span className="w-6 h-6 rounded-full bg-[#6366f1]/10 text-[#4f46e5] text-xs font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
-                        <input
-                          value={shot.title}
-                          onChange={(e) => updateShot(idx, { title: e.target.value.slice(0, 30) })}
-                          disabled={isGenerating}
-                          className="flex-1 min-w-0 text-sm font-semibold text-[#0f172a] bg-transparent border-b border-transparent focus:border-[#6366f1] focus:outline-none"
-                        />
-                        <button
-                          onClick={() => removeShot(idx)}
-                          disabled={shots.length <= MIN_SHOTS || isGenerating}
-                          className="text-xs text-[#ef4444] hover:underline disabled:opacity-30"
-                        >
-                          移除
-                        </button>
+                        <input value={shot.title} onChange={(e) => updateShot(idx, { title: e.target.value.slice(0, 30) })} disabled={busy}
+                          className="flex-1 min-w-0 text-sm font-semibold text-[#0f172a] bg-transparent border-b border-transparent focus:border-[#6366f1] focus:outline-none" />
+                        <button onClick={() => removeShot(idx)} disabled={shots.length <= MIN_SHOTS || busy} className="text-xs text-[#ef4444] hover:underline disabled:opacity-30">移除</button>
                       </div>
-                      <textarea
-                        value={shot.prompt}
-                        onChange={(e) => updateShot(idx, { prompt: e.target.value })}
-                        disabled={isGenerating}
-                        rows={3}
+                      <textarea value={shot.prompt} onChange={(e) => updateShot(idx, { prompt: e.target.value })} disabled={busy} rows={3}
                         placeholder="描述這張的景別、角度、姿勢、表情與光線"
-                        className="w-full px-3 py-2 border border-[#e2e8f0] rounded-lg text-sm leading-relaxed focus:ring-2 focus:ring-[#6366f1] focus:border-transparent disabled:bg-[#f8fafc]"
-                      />
+                        className="w-full px-3 py-2 border border-[#e2e8f0] rounded-lg text-sm leading-relaxed focus:ring-2 focus:ring-[#6366f1] focus:border-transparent disabled:bg-[#f8fafc]" />
                     </div>
                   ))}
                 </div>
 
                 <div className="flex items-center justify-between flex-wrap gap-3 pt-2 border-t border-[#e2e8f0]">
                   <label className="flex items-center gap-2 text-sm text-[#475569] cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={watermark}
-                      onChange={(e) => setWatermark(e.target.checked)}
-                      disabled={isGenerating}
-                      className="accent-[#6366f1]"
-                    />
+                    <input type="checkbox" checked={watermark} onChange={(e) => setWatermark(e.target.checked)} disabled={busy} className="accent-[#6366f1]" />
                     加上浮水印（3 積分／張；取消為 8 積分／張）
                   </label>
                   <div className="text-sm text-[#475569]">
-                    共 <b className="text-[#0f172a]">{validShots.length}</b> 張 × {perImage} ＝{" "}
-                    <b className="text-[#4f46e5]">{totalCost} 積分</b>
+                    共 <b className="text-[#0f172a]">{validShots.length}</b> 張 × {perImage} ＝ <b className="text-[#4f46e5]">{totalCost} 積分</b>
                     <span className="text-xs text-[#94a3b8] ml-2">（餘額 {credits}）</span>
                   </div>
                 </div>
 
-                {credits < totalCost && (
-                  <p className="text-xs text-[#ef4444]">積分不足，請先儲值或減少張數。</p>
+                {mode === "character" && watermark && (
+                  <p className="text-xs text-[#a16207] bg-[#fefce8] border border-[#fde68a] rounded-lg px-3 py-2">
+                    要把成果存進角色圖庫當參考圖時，建議取消浮水印，否則浮水印可能被帶進之後生成的圖。
+                  </p>
                 )}
-                {validShots.length < MIN_SHOTS && (
-                  <p className="text-xs text-[#ef4444]">至少需要 {MIN_SHOTS} 個有內容的鏡頭。</p>
-                )}
+                {credits < totalCost && <p className="text-xs text-[#ef4444]">積分不足，請先儲值或減少張數。</p>}
+                {validShots.length < MIN_SHOTS && <p className="text-xs text-[#ef4444]">至少需要 {MIN_SHOTS} 個有內容的鏡頭。</p>}
 
-                <button
-                  onClick={() => generateMutation.mutate()}
-                  disabled={!canGenerate}
+                <button onClick={() => generateMutation.mutate()} disabled={!canGenerate}
                   className="w-full py-3 rounded-xl bg-[#6366f1] text-white text-sm font-semibold hover:bg-[#4f46e5] disabled:opacity-40 disabled:cursor-not-allowed"
-                  data-testid="button-photoset-generate"
-                >
+                  data-testid="button-photoset-generate">
                   {isGenerating
                     ? `生成中… ${batch ? `${batch.completedCount + batch.failedCount}/${batch.totalCount}` : ""}`
-                    : batchDone ? `再生成一組（${totalCost} 積分）` : `生成整組套圖（${totalCost} 積分）`}
+                    : batchDone ? `再生成一組（${totalCost} 積分）` : `生成整組（${totalCost} 積分）`}
                 </button>
-                <p className="text-[11px] text-[#94a3b8]">
-                  每張約需 1–3 分鐘，整組同時生成；失敗的張數會自動退還積分。每日圖片上限 50 張。
-                </p>
+                <p className="text-[11px] text-[#94a3b8]">每張約需 1–3 分鐘，整組同時生成；失敗的張數會自動退還積分。每日圖片上限 50 張。</p>
               </div>
             )}
 
             {batch && (
               <div className="bg-white border border-[#e2e8f0] rounded-2xl p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-semibold text-[#0f172a]">套圖成果</p>
-                  <p className="text-xs text-[#64748b]">
-                    完成 {batch.completedCount}／{batch.totalCount}
-                    {batch.failedCount > 0 && <span className="text-[#ef4444]">，失敗 {batch.failedCount}（已退點）</span>}
-                  </p>
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <div>
+                    <p className="text-sm font-semibold text-[#0f172a]">成果</p>
+                    <p className="text-xs text-[#64748b]">
+                      完成 {batch.completedCount}／{batch.totalCount}
+                      {batch.failedCount > 0 && <span className="text-[#ef4444]">，失敗 {batch.failedCount}（已退點）</span>}
+                    </p>
+                  </div>
+                  {character && savableUrls.length > 0 && (
+                    <button onClick={() => saveToPackMutation.mutate(savableUrls)}
+                      disabled={saveToPackMutation.isPending || savableUrls.every(isSaved) || packRoom <= 0}
+                      className="px-3 py-2 rounded-lg bg-[#0f172a] text-white text-xs font-semibold hover:bg-[#1e293b] disabled:opacity-40"
+                      data-testid="button-photoset-save-all">
+                      {savableUrls.every(isSaved) ? "✓ 已全部加入圖庫" : `全部加入「${character.name}」圖庫`}
+                    </button>
+                  )}
                 </div>
+                {!character && batchDone && batch.completedCount > 0 && (
+                  <p className="text-xs text-[#64748b] mb-3">想把這些圖存成角色圖庫？請先到角色庫建立角色，下次在這裡選擇該角色後生成，就能一鍵加入。</p>
+                )}
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                   {batch.generations.map((g, idx) => {
                     const url = imageOf(g);
+                    const packable = !!character && !!g.bunnyImageUrl;
                     return (
                       <div key={g.id} className="relative rounded-xl overflow-hidden bg-[#f1f5f9] border border-[#e2e8f0]" style={{ aspectRatio: ratio.id.replace(":", " / ") }} data-testid={`card-result-${idx}`}>
                         {g.status === "completed" && url ? (
                           <>
-                            <img src={url} alt={`套圖 ${idx + 1}`} className="w-full h-full object-cover cursor-zoom-in" onClick={() => setLightbox(url)} />
-                            <a
-                              href={url}
-                              download={`photoset-${idx + 1}.jpg`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="absolute bottom-2 right-2 w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80"
-                              title="下載"
-                            >
-                              <i className="fas fa-download text-xs" />
-                            </a>
+                            <img src={url} alt={`成果 ${idx + 1}`} className="w-full h-full object-cover cursor-zoom-in" onClick={() => setLightbox(url)} />
+                            <div className="absolute bottom-2 right-2 flex gap-1.5">
+                              {packable && (
+                                <button onClick={() => saveToPackMutation.mutate([g.bunnyImageUrl as string])}
+                                  disabled={saveToPackMutation.isPending || isSaved(g.bunnyImageUrl as string) || packRoom <= 0}
+                                  className="h-8 px-2 rounded-full bg-black/60 text-white text-[11px] hover:bg-black/80 disabled:opacity-70"
+                                  title="加入角色圖庫">
+                                  {isSaved(g.bunnyImageUrl as string) ? "✓ 已加入" : "＋圖庫"}
+                                </button>
+                              )}
+                              <a href={url} download={`photoset-${idx + 1}.jpg`} target="_blank" rel="noreferrer"
+                                className="w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80" title="下載">
+                                <i className="fas fa-download text-xs" />
+                              </a>
+                            </div>
                           </>
                         ) : g.status === "failed" ? (
                           <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
