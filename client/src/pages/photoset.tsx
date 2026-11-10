@@ -7,6 +7,7 @@ import { useUser } from "@/App";
 import { NavigationHeader } from "./account";
 import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type ImageGeneration } from "@shared/schema";
 import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor, type ImageRatioId, type ImageTierId } from "@shared/imageSizes";
+import { RECIPE_SLOTS, loadRecipe, type Recipe } from "@/lib/recipe";
 import { PHOTO_LOOKS, POSES, POSE_CATEGORIES, photoLookSuffix, poseById, poseRefNote, poseShotPrompt, referenceNote, type PhotoLookId } from "@shared/photosetOptions";
 
 // 寫真套圖 / 角色九宮格
@@ -75,6 +76,14 @@ function checkImageFile(file: File): string | null {
   return null;
 }
 
+/** Art-direction text for the costume and pose picked in the asset library. */
+function recipeDirection(recipe: Recipe): string {
+  const parts: string[] = [];
+  if (recipe.costume) parts.push(`服裝：讓人物穿上這套穿搭——${recipe.costume.usage}`);
+  if (recipe.pose) parts.push(`姿勢：每一張都以這個姿勢為主——${recipe.pose.usage}`);
+  return parts.join("。").slice(0, 500);
+}
+
 export default function PhotosetPage() {
   const { user } = useUser();
   const { toast } = useToast();
@@ -87,26 +96,33 @@ export default function PhotosetPage() {
   // Deep link from the character library: /photoset?mode=character&character=<id>
   const initial = useMemo(() => {
     const q = new URLSearchParams(window.location.search);
+    // Arriving from the asset library with a recipe (/photoset?recipe=1).
+    const recipe: Recipe = q.get("recipe") === "1" ? loadRecipe() : {};
+    // A recipe with a face needs no 情境圖, so start in the mode that doesn't ask for one.
+    const wantsCharacter = q.get("mode") === "character" || (q.get("mode") !== "scene" && !!recipe.portrait?.imageUrl);
     return {
-      mode: (q.get("mode") === "character" ? "character" : "scene") as Mode,
+      mode: (wantsCharacter ? "character" : "scene") as Mode,
       characterId: q.get("character") || "",
+      recipe,
     };
   }, []);
 
   const [mode, setMode] = useState<Mode>(initial.mode);
   const [situationPath, setSituationPath] = useState("");
   const [characterId, setCharacterId] = useState(initial.characterId);
-  const [extraRefs, setExtraRefs] = useState<string[]>([]);
+  const [recipe, setRecipe] = useState<Recipe>(initial.recipe);
+  // The recipe's face goes in as a reference image; costume and pose as text.
+  const [extraRefs, setExtraRefs] = useState<string[]>(() => (initial.recipe.portrait?.imageUrl ? [initial.recipe.portrait.imageUrl] : []));
   const [outfitFrom, setOutfitFrom] = useState<"character" | "scene">("character");
   const [uploading, setUploading] = useState<"" | "situation" | "refs">("");
-  const [count, setCount] = useState(initial.mode === "character" ? 9 : 6);
+  const [count, setCount] = useState(Object.keys(initial.recipe).length > 0 ? 4 : initial.mode === "character" ? 9 : 6);
   const [ratioId, setRatioId] = useState<ImageRatioId>("3:4");
   const [tierId, setTierId] = useState<ImageTierId>("2k");
   const [lookId, setLookId] = useState<PhotoLookId>("natural");
   const [poseIds, setPoseIds] = useState<string[]>([]);
   const [poseCategory, setPoseCategory] = useState<string>(POSE_CATEGORIES[0]);
   const [showPoses, setShowPoses] = useState(false);
-  const [direction, setDirection] = useState("");
+  const [direction, setDirection] = useState(() => recipeDirection(initial.recipe));
   const [watermark, setWatermark] = useState(true);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [batchId, setBatchId] = useState("");
@@ -140,11 +156,21 @@ export default function PhotosetPage() {
   // shared references are trimmed to 8 when any shot has one.
   const refsToSend = anyPoseRef ? allRefs.slice(0, MAX_REFS - 1) : allRefs;
 
+  const hasRecipe = Object.keys(recipe).length > 0;
+
   const inputsReady = mode === "scene" ? !!situationPath : allRefs.length > 0;
 
   // Any change to what the shots are based on makes the current plan stale.
   const resetPlan = () => { setPlan(null); setBatchId(""); setSavedUrls([]); };
   useEffect(() => { resetPlan(); }, [mode, characterId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const clearRecipe = () => {
+    const face = recipe.portrait?.imageUrl;
+    if (face) setExtraRefs(prev => prev.filter(u => u !== face));
+    if (direction === recipeDirection(recipe)) setDirection("");
+    setRecipe({});
+    resetPlan();
+  };
 
   const switchMode = (m: Mode) => {
     if (m === mode) return;
@@ -202,6 +228,8 @@ export default function PhotosetPage() {
         characterName: character?.name,
         characterDescription: character?.description || undefined,
         outfitFrom,
+        // With a library recipe the goal is photos of the character, not a turnaround sheet.
+        characterGoal: hasRecipe ? "shoot" : "sheet",
         count,
         poseIds: planner === "ai" ? poseIds : [],
         look: lookId,
@@ -210,13 +238,17 @@ export default function PhotosetPage() {
       });
       return res.json();
     },
-    onSuccess: (data) => { setPlan(data); setBatchId(""); setSavedUrls([]); },
+    onSuccess: (data) => {
+      const poseImage = recipe.pose?.imageUrl;
+      setPlan(poseImage ? { ...data, shots: data.shots.map(s => ({ ...s, poseRef: poseImage })) } : data);
+      setBatchId(""); setSavedUrls([]);
+    },
     onError: (e) => toast({ title: "規劃失敗", description: errorText(e), variant: "destructive" }),
   });
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const note = referenceNote(mode, refsToSend.length, outfitFrom);
+      const note = referenceNote(mode, refsToSend.length, outfitFrom, !recipe.costume);
       // Image order must match referenceNote(): 情境圖 first in scene mode,
       // then the shared references, then that shot's own pose reference.
       const [first, ...rest] = mode === "scene" ? [situationPath, ...refsToSend] : refsToSend;
@@ -347,6 +379,23 @@ export default function PhotosetPage() {
             用情境圖決定場景與氛圍、用角色參考圖決定畫面裡是誰，一次生成整組可貼上社群的套圖；也可以先替角色生成九宮格定裝圖，存進角色圖庫重複使用。
           </p>
         </div>
+
+        {hasRecipe && (
+          <div className="mb-5 bg-[#6366f1]/5 border border-[#6366f1]/30 rounded-2xl p-3 flex items-center gap-3 flex-wrap" data-testid="banner-recipe">
+            <span className="text-sm font-semibold text-[#4f46e5]">已套用圖庫配方</span>
+            {RECIPE_SLOTS.filter(slot => !!recipe[slot.id]).map(slot => (
+              <span key={slot.id} className="inline-flex items-center gap-2 bg-white border border-[#e2e8f0] rounded-xl pl-1 pr-2 py-1">
+                <img src={recipe[slot.id]!.thumbUrl || recipe[slot.id]!.imageUrl || ""} alt="" className="w-8 h-8 rounded-md object-contain bg-[#f8fafc]" />
+                <span className="text-xs text-[#0f172a]"><span className="text-[#94a3b8]">{slot.label}：</span>{recipe[slot.id]!.name}</span>
+              </span>
+            ))}
+            <span className="text-[11px] text-[#64748b] flex-1 min-w-[200px]">
+              人像已放進參考圖；服裝與姿勢已寫進「風格方向」{recipe.pose ? "，規劃後每個鏡頭會自動附上姿勢參考圖" : ""}。直接按下方的規劃即可，也可以再上傳情境圖改用情境寫真。
+            </span>
+            <Link href="/library"><span className="text-xs text-[#6366f1] hover:underline cursor-pointer">回圖庫調整</span></Link>
+            <button onClick={clearRecipe} disabled={busy} className="text-xs text-[#94a3b8] hover:text-[#ef4444] disabled:opacity-40">清除配方</button>
+          </div>
+        )}
 
         {/* ── 模式 ─────────────────────────────────────────── */}
         <div className="grid sm:grid-cols-2 gap-3 mb-6">
@@ -576,9 +625,9 @@ export default function PhotosetPage() {
               <button onClick={() => planMutation.mutate("ai")} disabled={!inputsReady || busy || poseIds.length === 1}
                 className="w-full py-2.5 rounded-xl bg-[#0f172a] text-white text-sm font-semibold hover:bg-[#1e293b] disabled:opacity-40 disabled:cursor-not-allowed"
                 data-testid="button-photoset-plan">
-                {planMutation.isPending ? "AI 分析規劃中…" : plan ? "重新請 AI 分析並規劃" : mode === "scene" ? "AI 分析情境圖並規劃鏡頭（免費）" : "AI 分析角色並規劃定裝圖（免費）"}
+                {planMutation.isPending ? "AI 分析規劃中…" : plan ? "重新請 AI 分析並規劃" : mode === "scene" ? "AI 分析情境圖並規劃鏡頭（免費）" : hasRecipe ? "依配方規劃寫真鏡頭（免費）" : "AI 分析角色並規劃定裝圖（免費）"}
               </button>
-              {mode === "character" && (
+              {mode === "character" && !hasRecipe && (
                 <button onClick={() => planMutation.mutate("preset")} disabled={!inputsReady || busy}
                   className="w-full py-2.5 rounded-xl border border-[#0f172a] text-[#0f172a] text-sm font-semibold hover:bg-[#f1f5f9] disabled:opacity-40 disabled:cursor-not-allowed"
                   data-testid="button-photoset-preset">

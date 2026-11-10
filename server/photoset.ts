@@ -53,6 +53,10 @@ const planRequestSchema = z.object({
   referenceImageUrls: z.array(z.string()).max(PHOTOSET_MAX_REFERENCES).optional().default([]),
   characterName: z.string().max(60).optional(),
   characterDescription: z.string().max(1000).optional(),
+  /** Character mode: "sheet" = turnaround / expression sheet on a studio
+   *  backdrop (default); "shoot" = a photo shoot of the character in a
+   *  setting the planner picks, e.g. for a library recipe. */
+  characterGoal: z.enum(["sheet", "shoot"]).default("sheet"),
   /** Scene mode with references: whose outfit the shots should use. */
   outfitFrom: z.enum(["character", "scene"]).default("character"),
   count: z.number().int().min(PHOTOSET_MIN_SHOTS).max(PHOTOSET_MAX_SHOTS),
@@ -180,6 +184,28 @@ ${SHOT_RULES}
 ${outputFormat(req.count)}`;
 }
 
+function buildCharacterShootPrompt(req: PlanRequest, refLooks: number, poses: Pose[]): string {
+  return `你是一位資深人像寫真攝影師兼社群視覺企劃。你會看到 ${refLooks} 張同一位角色的參考圖，它們只用來確認這個人的臉部五官、髮型髮色與身形。
+
+請為這位角色規劃一組 ${req.count} 張的寫真套圖，讓整組圖貼在社群（Instagram、Threads、小紅書）時像同一次拍攝的作品集。這次沒有情境圖，請你依照角色的氣質與下方補充資訊，挑選「一個」具體且統一的拍攝地點與時段（例如午後的咖啡店、傍晚的海邊堤防、有大窗的房間），整組都在這個地點拍攝。
+
+【先分析】
+用 2–3 句繁體中文描述這位角色的外貌特徵，以及你選定的拍攝地點、時段、光線與整體氛圍。
+
+【再規劃 ${req.count} 個鏡頭】
+${SHOT_RULES}
+
+【整組的節奏】
+- 每個鏡頭都要寫出拍攝地點中的具體位置與背景元素，因為生成時沒有場景參考圖。
+- 補充資訊若指定了服裝，每一個鏡頭的提示詞都必須完整寫出這套服裝；若指定了姿勢，每一個鏡頭都以該姿勢為主，只變化景別、拍攝角度、表情、視線與在場景中的位置。
+- 沒有指定姿勢時，${req.count} 張之間的姿勢要有明顯差異。
+- 景別要有遠有近：至少包含一張環境全景、一張半身、一張臉部或細節特寫（張數不足時依序優先）。
+- 第一張適合當封面：最能代表整組氛圍、主體清楚。
+- 所有鏡頭都是同一位角色，不要改變人物身分與年齡。${poseBlock(poses)}${userExtras(req)}
+
+${outputFormat(req.count)}`;
+}
+
 /** Pull the first JSON object out of the model's text and validate it. */
 function parsePlan(text: string, count: number): PhotosetPlan {
   const match = text.match(/\{[\s\S]*\}/);
@@ -291,7 +317,9 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
 
     const promptText = body.mode === "scene"
       ? buildScenePrompt(body, refsToLook.length, poses)
-      : buildCharacterPrompt(body, refsToLook.length, poses);
+      : body.characterGoal === "shoot"
+        ? buildCharacterShootPrompt(body, refsToLook.length, poses)
+        : buildCharacterPrompt(body, refsToLook.length, poses);
 
     const anthropic = new Anthropic({
       apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
