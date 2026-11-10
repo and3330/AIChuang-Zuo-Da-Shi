@@ -285,6 +285,82 @@ export function registerAssetLibraryRoutes(
     includeUnready: z.enum(["0", "1"]).default("0"),
   });
 
+  /* ── grouped browsing: one card per pose / outfit / hairstyle, variants inside ── */
+
+  /** How many trailing parts of an id / name are the "variant" within a group. */
+  const VARIANT_DEPTH: Record<LibraryId, number> = { pose: 1, costume: 1, portrait: 2 };
+
+  const groupQuery = z.object({
+    library: z.enum(LIBRARY_IDS),
+    category: z.string().max(60).optional(),
+    q: z.string().max(60).optional(),
+    /** Only keep variants with this label (e.g. a pose view such as 正面). */
+    variant: z.string().max(30).optional(),
+    page: z.coerce.number().int().min(1).max(1000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(60).default(30),
+    includeUnready: z.enum(["0", "1"]).default("0"),
+  });
+
+  app.get("/api/library/groups", requireAuth, async (req, res) => {
+    const parsed = groupQuery.safeParse(req.query);
+    if (!parsed.success) return res.status(400).json({ error: "查詢參數有誤。" });
+    const { library, category, q, variant, page, pageSize, includeUnready } = parsed.data;
+    const isAdmin = !!(req.session as any)?.isAdmin;
+    const showUnready = isAdmin && includeUnready === "1";
+    try {
+      const base = [eq(libraryAssets.library, library)];
+      if (!isAdmin) base.push(eq(libraryAssets.adult, false));
+      if (!showUnready) base.push(eq(libraryAssets.status, "ready"));
+
+      const filters = [...base];
+      if (category) filters.push(eq(libraryAssets.category, category));
+      if (q?.trim()) filters.push(sql`(${libraryAssets.name} ILIKE ${"%" + q.trim() + "%"} OR ${q.trim()} = ANY(${libraryAssets.tags}))`);
+
+      // A library is at most a few thousand small rows: group in memory.
+      const rows = await db.select({
+        id: libraryAssets.id, category: libraryAssets.category, name: libraryAssets.name, adult: libraryAssets.adult,
+        usage: libraryAssets.usage, imageUrl: libraryAssets.imageUrl, thumbUrl: libraryAssets.thumbUrl,
+        status: libraryAssets.status, error: libraryAssets.error,
+      }).from(libraryAssets).where(and(...filters)).orderBy(asc(libraryAssets.sortOrder));
+
+      const depth = VARIANT_DEPTH[library];
+      type Variant = { id: string; label: string; usage: string; imageUrl: string | null; thumbUrl: string | null; status: string; error: string | null };
+      type Group = { key: string; title: string; category: string; adult: boolean; variants: Variant[] };
+      const groups = new Map<string, Group>();
+      const variantLabels: string[] = [];
+      for (const r of rows) {
+        const idParts = r.id.split(":");
+        const nameParts = r.name.split("・");
+        const key = idParts.slice(0, -depth).join(":");
+        const label = nameParts.slice(-depth).join("・");
+        if (!variantLabels.includes(label)) variantLabels.push(label);
+        if (variant && label !== variant) continue;
+        let g = groups.get(key);
+        if (!g) {
+          g = { key, title: nameParts.slice(0, -depth).join("・") || r.name, category: r.category, adult: r.adult, variants: [] };
+          groups.set(key, g);
+        }
+        g.variants.push({ id: r.id, label, usage: r.usage, imageUrl: r.imageUrl, thumbUrl: r.thumbUrl, status: r.status, error: r.error });
+      }
+      const all = Array.from(groups.values());
+
+      const categories = await db.select({
+        category: libraryAssets.category, adult: sql<boolean>`bool_or(${libraryAssets.adult})`, n: sql<number>`count(*)::int`,
+      }).from(libraryAssets).where(and(...base))
+        .groupBy(libraryAssets.category).orderBy(sql`min(${libraryAssets.sortOrder})`);
+
+      res.json({
+        groups: all.slice((page - 1) * pageSize, page * pageSize),
+        total: all.length,
+        page, pageSize, categories,
+        // Offer the variant filter only where it is a short, fixed list (pose views).
+        variantOptions: library === "pose" ? variantLabels : [],
+      });
+    } catch {
+      res.status(500).json({ error: "讀取圖庫失敗。" });
+    }
+  });
+
   app.get("/api/library/assets", requireAuth, async (req, res) => {
     const parsed = listQuery.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ error: "查詢參數有誤。" });

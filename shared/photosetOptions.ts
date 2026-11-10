@@ -151,7 +151,16 @@ export type PhotosetMode = "scene" | "character";
  * Note appended to every photo-set prompt so the image model knows what each
  * input image is for. Image order is always [情境圖 (scene mode), ...refs].
  */
-export function referenceNote(mode: PhotosetMode, refCount: number, outfitFrom: "character" | "scene"): string {
+export function referenceNote(
+  mode: PhotosetMode,
+  refCount: number,
+  outfitFrom: "character" | "scene",
+  /** character mode: false when the outfit comes from the prompt, not the references. */
+  keepOutfit = true,
+): string {
+  if (mode === "character" && !keepOutfit) {
+    return "（參考圖是這位角色的臉部與髮型參考，請保持臉部五官、髮型髮色與身形一致；服裝請依照提示詞的描述，不要沿用參考圖中的衣服。）";
+  }
   if (mode === "character") {
     return refCount > 1
       ? "（所有參考圖都是同一位角色，請保持臉部五官、髮型髮色、身形與服裝完全一致。）"
