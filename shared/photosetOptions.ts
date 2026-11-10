@@ -5,8 +5,9 @@
  *                 every prompt; it is what keeps skin and light from looking
  *                 over-processed ("AI 感").
  *   POSES       — an original, text-only pose library. Each pose is a plain
- *                 description the image model can follow, so no pose line-art
- *                 or third-party reference image is involved.
+ *                 description the image model can follow. No third-party
+ *                 pose image is bundled; a user may attach their own pose
+ *                 reference image to a shot on the page.
  */
 
 /* ---------- finishing looks ---------- */
@@ -140,4 +141,29 @@ export function poseById(id: string): Pose | undefined {
 export function poseShotPrompt(pose: Pose): string {
   const lens = pose.framing === "特寫" ? "85mm 淺景深" : pose.framing === "半身" ? "50mm 鏡頭" : "35mm 環境人像";
   return `${pose.framing}構圖，${pose.description}。${lens}，光線與場景自然融合。`;
+}
+
+/* ---------- reference-image notes ---------- */
+
+export type PhotosetMode = "scene" | "character";
+
+/**
+ * Note appended to every photo-set prompt so the image model knows what each
+ * input image is for. Image order is always [情境圖 (scene mode), ...refs].
+ */
+export function referenceNote(mode: PhotosetMode, refCount: number, outfitFrom: "character" | "scene"): string {
+  if (mode === "character") {
+    return refCount > 1
+      ? "（所有參考圖都是同一位角色，請保持臉部五官、髮型髮色、身形與服裝完全一致。）"
+      : "（參考圖為角色本人，請保持臉部五官、髮型髮色、身形與服裝完全一致。）";
+  }
+  if (refCount === 0) return "";
+  const refRange = refCount > 1 ? `第 2–${refCount + 1} 張圖` : "第 2 張圖";
+  const outfit = outfitFrom === "scene" ? "服裝沿用第 1 張圖中的穿著" : "服裝沿用角色參考圖中的穿著";
+  return `（第 1 張圖是情境參考，只取其場景、光線、色調與氛圍；${refRange}是角色參考圖，畫面中的人物必須是角色參考圖中的這個人，臉部五官、髮型髮色與身形以角色參考圖為準，${outfit}。）`;
+}
+
+/** Tells the image model how to use a per-shot pose reference image. */
+export function poseRefNote(imageNumber: number): string {
+  return `（第 ${imageNumber} 張圖是姿勢參考圖，只參考其身體姿態、四肢角度與鏡頭視角；不要沿用其中人物的外觀、服裝、背景與畫風，也不要畫成人偶或線稿。）`;
 }

@@ -12,7 +12,11 @@ import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
 import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
-import { registerPhotosetRoutes } from "./photoset";
+import { registerPhotosetRoutes, createPhotosetPlanner } from "./photoset";
+import { registerPartnerRoutes } from "./partnerApi";
+import { registerAssetLibraryRoutes } from "./assetLibrary";
+import { partnerStore, createPartnerImageIngestor } from "./partnerStore";
+import { atlasSizeDimensions } from "./atlasProvider";
 import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
 import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIsConfigured, ATLAS_EDIT_MODEL, ATLAS_T2I_MODEL, ATLAS_I2V_MODEL, ATLAS_T2V_MODEL, ATLAS_MAX_REFERENCE_IMAGES } from "./atlasProvider";
 
@@ -959,7 +963,9 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
   // ===== IMAGE GENERATION PROCESSING =====
 
-  async function processImageGeneration(generationId: string, baseUrl?: string) {
+  /** opts.rawPrompt: send the prompt as written, without the prompt enhancer
+   *  (used by the partner API, whose output goes to public social accounts). */
+  async function processImageGeneration(generationId: string, baseUrl?: string, opts: { rawPrompt?: boolean } = {}) {
     try {
       await storage.updateImageGeneration(generationId, { status: "processing" });
       
@@ -1008,7 +1014,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
 
       const sizeValue = generation.size || (generation.type === "text-to-image" ? "1:1" : "2K");
-      const finalPrompt = enhanceImagePrompt(generation.prompt);
+      const finalPrompt = opts.rawPrompt ? generation.prompt : enhanceImagePrompt(generation.prompt);
 
       // One Seedream 5.5 image via AtlasCloud (submit + poll). Throws on any
       // failure so the outer catch refunds the user's credits.
@@ -1282,7 +1288,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
     return fixBunnyCdnUrl(await bunnyStorage.uploadBuffer(jpeg, bunnyRemotePath)) as string;
   }
 
-  async function processVideoGeneration(generationId: string, objectStorageService: ObjectStorageService) {
+  /** opts.rawPrompt: see processImageGeneration. */
+  async function processVideoGeneration(generationId: string, objectStorageService: ObjectStorageService, opts: { rawPrompt?: boolean } = {}) {
     try {
       await storage.updateVideoGeneration(generationId, { status: "processing" });
 
@@ -1309,7 +1316,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           `users/${userFolder}/video-inputs/${generationId}.jpg`,
         );
         const { videoUrl, predictionId, processingTime } = await atlasGenerateVideo({
-          prompt: enhanceVideoPrompt(generation.prompt),
+          prompt: opts.rawPrompt ? generation.prompt : enhanceVideoPrompt(generation.prompt),
           image: firstFrameUrl,
           resolution: generation.resolution || "1080p",
           duration: generation.duration || 5,
@@ -1349,7 +1356,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         console.warn(`[Atlas] WAN 3.0 text-to-video ignores reference audio (generation ${generationId})`);
       }
       const t2v = await atlasGenerateTextVideo({
-        prompt: enhanceVideoPrompt(generation.prompt),
+        prompt: opts.rawPrompt ? generation.prompt : enhanceVideoPrompt(generation.prompt),
         resolution: generation.resolution || "1080p",
         duration: generation.duration || 5,
         aspectRatio: generation.aspectRatio || "16:9",
@@ -4186,6 +4193,36 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
   // ─── 寫真套圖：情境圖分析 + 鏡頭規劃（生成走既有批次端點）─────────────
   registerPhotosetRoutes(app, { requireAuth, objectStorageService });
+
+  // ─── 素材圖庫：清單同步、批次生成預覽圖、瀏覽 ───────────────────────────
+  registerAssetLibraryRoutes(app, { requireAuth, requireAdmin, bunnyStorage, cdnUrl: fixBunnyCdnUrl });
+
+  // ─── 對外服務 API（/api/v1/partner/*）與後台權杖管理 ─────────────────────
+  // Reuses the workers above; see server/partnerApi.ts and docs/partner-api.md.
+  registerPartnerRoutes(app, {
+    store: partnerStore,
+    core: {
+      getUser: (id) => storage.getUser(id),
+      getUserByEmail: (email) => storage.getUserByEmail(email),
+      atomicDeductCredits: (userId, amount, description) => storage.atomicDeductCredits(userId, amount, description),
+      atomicAddCredits: (userId, amount, description) => storage.atomicAddCredits(userId, amount, description),
+      createImageGeneration: (data) => storage.createImageGeneration(data as any),
+      getImageGeneration: (id) => storage.getImageGeneration(id),
+      createVideoGeneration: (data) => storage.createVideoGeneration(data as any),
+      getVideoGeneration: (id) => storage.getVideoGeneration(id),
+      getUserDailyImageCount: (userId) => storage.getUserDailyImageCount(userId),
+      getUserDailyVideoCount: (userId) => storage.getUserDailyVideoCount(userId),
+    },
+    runImage: (id, opts) => { processImageGeneration(id, undefined, opts).catch(console.error); },
+    runVideo: (id, opts) => { processVideoGeneration(id, objectStorageService, opts).catch(console.error); },
+    ingestImage: createPartnerImageIngestor(bunnyStorage, fixBunnyCdnUrl),
+    storageReady: () => bunnyStorage.isConfigured(),
+    planPhotoset: (input) => createPhotosetPlanner(objectStorageService).plan(input),
+    sizeDimensions: atlasSizeDimensions,
+    cdnUrl: fixBunnyCdnUrl,
+    requireAuth,
+    requireAdmin,
+  });
 
   const httpServer = createServer(app);
   return httpServer;

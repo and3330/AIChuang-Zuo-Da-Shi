@@ -7,7 +7,7 @@ import { useUser } from "@/App";
 import { NavigationHeader } from "./account";
 import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type ImageGeneration } from "@shared/schema";
 import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor, type ImageRatioId, type ImageTierId } from "@shared/imageSizes";
-import { PHOTO_LOOKS, POSES, POSE_CATEGORIES, photoLookSuffix, poseById, poseShotPrompt, type PhotoLookId } from "@shared/photosetOptions";
+import { PHOTO_LOOKS, POSES, POSE_CATEGORIES, photoLookSuffix, poseById, poseRefNote, poseShotPrompt, referenceNote, type PhotoLookId } from "@shared/photosetOptions";
 
 // 寫真套圖 / 角色九宮格
 //
@@ -20,7 +20,8 @@ import { PHOTO_LOOKS, POSES, POSE_CATEGORIES, photoLookSuffix, poseById, poseSho
 // 所以扣點、失敗退點、CDN 轉存都與首頁的批次編輯一致。
 
 type Mode = "scene" | "character";
-type Shot = { title: string; prompt: string };
+/** poseRef: optional pose reference image for this shot only (object path). */
+type Shot = { title: string; prompt: string; poseRef?: string };
 type Plan = { analysis: string; shots: Shot[] };
 type BatchStatus = {
   batchId: string;
@@ -36,6 +37,10 @@ const MAX_SHOTS = 10;
 const MAX_REFS = 9;
 const COUNT_OPTIONS: Record<Mode, number[]> = { scene: [4, 6, 9], character: [4, 6, 9] };
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+/** The original pose gallery by ギア. Free to use one image at a time as a
+ *  generation reference (commercial work included); bulk download and
+ *  re-hosting are not allowed, so we link out instead of mirroring it. */
+const POSE_GALLERY_URL = "https://ai-pose-gallery.pages.dev/";
 
 async function uploadToObjectStorage(file: File): Promise<string> {
   const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
@@ -70,25 +75,13 @@ function checkImageFile(file: File): string | null {
   return null;
 }
 
-/** Note appended to every prompt so the image model knows what each input
- *  image is for. Must match the order sent in generate(). */
-function referenceNote(mode: Mode, refCount: number, outfitFrom: "character" | "scene"): string {
-  if (mode === "character") {
-    return refCount > 1
-      ? "（所有參考圖都是同一位角色，請保持臉部五官、髮型髮色、身形與服裝完全一致。）"
-      : "（參考圖為角色本人，請保持臉部五官、髮型髮色、身形與服裝完全一致。）";
-  }
-  if (refCount === 0) return "";
-  const refRange = refCount > 1 ? `第 2–${refCount + 1} 張圖` : "第 2 張圖";
-  const outfit = outfitFrom === "scene" ? "服裝沿用第 1 張圖中的穿著" : "服裝沿用角色參考圖中的穿著";
-  return `（第 1 張圖是情境參考，只取其場景、光線、色調與氛圍；${refRange}是角色參考圖，畫面中的人物必須是角色參考圖中的這個人，臉部五官、髮型髮色與身形以角色參考圖為準，${outfit}。）`;
-}
-
 export default function PhotosetPage() {
   const { user } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const situationInputRef = useRef<HTMLInputElement>(null);
+  const poseRefInputRef = useRef<HTMLInputElement>(null);
+  const [poseRefTarget, setPoseRefTarget] = useState<number | null>(null);
   const refInputRef = useRef<HTMLInputElement>(null);
 
   // Deep link from the character library: /photoset?mode=character&character=<id>
@@ -141,6 +134,11 @@ export default function PhotosetPage() {
   const perImage = watermark ? 3 : 8;
   const totalCost = validShots.length * perImage;
   const credits = user?.credits ?? 0;
+
+  const anyPoseRef = validShots.some(s => !!s.poseRef);
+  // The model takes 10 images. A shot's pose reference needs one slot, so the
+  // shared references are trimmed to 8 when any shot has one.
+  const refsToSend = anyPoseRef ? allRefs.slice(0, MAX_REFS - 1) : allRefs;
 
   const inputsReady = mode === "scene" ? !!situationPath : allRefs.length > 0;
 
@@ -218,15 +216,19 @@ export default function PhotosetPage() {
 
   const generateMutation = useMutation({
     mutationFn: async () => {
-      const note = referenceNote(mode, allRefs.length, outfitFrom);
-      // Image order must match referenceNote(): 情境圖 first in scene mode.
-      const [first, ...rest] = mode === "scene" ? [situationPath, ...allRefs] : allRefs;
+      const note = referenceNote(mode, refsToSend.length, outfitFrom);
+      // Image order must match referenceNote(): 情境圖 first in scene mode,
+      // then the shared references, then that shot's own pose reference.
+      const [first, ...rest] = mode === "scene" ? [situationPath, ...refsToSend] : refsToSend;
+      const poseImageNumber = 1 + rest.length + 1;
       const res = await apiRequest("POST", "/api/image-generations", {
         type: "image-to-image",
         originalImageUrl: first,
         additionalImageUrls: rest.length > 0 ? rest : undefined,
         // Each prompt = the shot + what each input image is for + the look.
-        prompts: validShots.map(s => `${s.prompt.trim()}${note}${photoLookSuffix(lookId)}`),
+        prompts: validShots.map(s =>
+          `${s.prompt.trim()}${note}${s.poseRef ? poseRefNote(poseImageNumber) : ""}${photoLookSuffix(lookId)}`),
+        promptImageUrls: anyPoseRef ? validShots.map(s => s.poseRef ?? null) : undefined,
         watermark,
         size: outputSize,
       });
@@ -289,6 +291,22 @@ export default function PhotosetPage() {
   const removeShot = (idx: number) => {
     setPlan(p => p ? { ...p, shots: p.shots.filter((_, i) => i !== idx) } : p);
   };
+  const handlePoseRefFile = async (file: File | undefined) => {
+    const idx = poseRefTarget;
+    if (!file || idx === null) return;
+    const problem = checkImageFile(file);
+    if (problem) { toast({ title: "無法使用這個檔案", description: problem, variant: "destructive" }); return; }
+    try {
+      const path = await uploadToObjectStorage(file);
+      updateShot(idx, { poseRef: path });
+    } catch (e) {
+      toast({ title: "上傳失敗", description: errorText(e), variant: "destructive" });
+    } finally {
+      setPoseRefTarget(null);
+      if (poseRefInputRef.current) poseRefInputRef.current.value = "";
+    }
+  };
+
   const togglePose = (id: string) => {
     setPoseIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : prev.length >= MAX_SHOTS ? prev : [...prev, id]);
   };
@@ -321,7 +339,10 @@ export default function PhotosetPage() {
       <NavigationHeader />
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="mb-5">
-          <h1 className="text-2xl font-bold text-[#0f172a]">📸 寫真套圖</h1>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <h1 className="text-2xl font-bold text-[#0f172a]">📸 寫真套圖</h1>
+            <Link href="/library"><span className="text-sm text-[#6366f1] hover:underline cursor-pointer">🗂 瀏覽素材圖庫（姿勢／服裝／人像）→</span></Link>
+          </div>
           <p className="text-sm text-[#64748b] mt-1">
             用情境圖決定場景與氛圍、用角色參考圖決定畫面裡是誰，一次生成整組可貼上社群的套圖；也可以先替角色生成九宮格定裝圖，存進角色圖庫重複使用。
           </p>
@@ -608,6 +629,16 @@ export default function PhotosetPage() {
                   </div>
                 </div>
 
+                <input ref={poseRefInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden"
+                  onChange={(e) => handlePoseRefFile(e.target.files?.[0])} data-testid="input-photoset-pose-ref" />
+                <div className="text-xs text-[#475569] bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-3 leading-relaxed">
+                  想更精準控制姿勢，可以替個別鏡頭附上一張<b>姿勢參考圖</b>（素體人偶、線稿或照片皆可），模型會模仿它的身體姿態與視角。
+                  需要素材可到{" "}
+                  <a href={POSE_GALLERY_URL} target="_blank" rel="noreferrer" className="text-[#4f46e5] underline">ギア 的姿勢圖庫</a>
+                  {" "}挑選後下載，再回來上傳。該圖庫可免費用於創作（含商用），但請一次取用一張，不要批次下載或轉載圖片本身。
+                  {anyPoseRef && allRefs.length > refsToSend.length && " 有鏡頭附了姿勢參考圖，本次角色參考圖會取前 8 張。"}
+                </div>
+
                 <div className="space-y-3">
                   {shots.map((shot, idx) => (
                     <div key={idx} className="border border-[#e2e8f0] rounded-xl p-3 space-y-2" data-testid={`card-shot-${idx}`}>
@@ -620,6 +651,20 @@ export default function PhotosetPage() {
                       <textarea value={shot.prompt} onChange={(e) => updateShot(idx, { prompt: e.target.value })} disabled={busy} rows={3}
                         placeholder="描述這張的景別、角度、姿勢、表情與光線"
                         className="w-full px-3 py-2 border border-[#e2e8f0] rounded-lg text-sm leading-relaxed focus:ring-2 focus:ring-[#6366f1] focus:border-transparent disabled:bg-[#f8fafc]" />
+                      <div className="flex items-center gap-2">
+                        {shot.poseRef ? (
+                          <>
+                            <img src={shot.poseRef} alt="姿勢參考" className="w-12 h-12 rounded-md object-cover border border-[#cbd5e1] bg-[#f8fafc]" />
+                            <span className="text-xs text-[#475569]">已附姿勢參考圖</span>
+                            <button onClick={() => updateShot(idx, { poseRef: undefined })} disabled={busy} className="text-xs text-[#ef4444] hover:underline disabled:opacity-40">移除</button>
+                          </>
+                        ) : (
+                          <button onClick={() => { setPoseRefTarget(idx); poseRefInputRef.current?.click(); }} disabled={busy}
+                            className="text-xs text-[#6366f1] hover:underline disabled:opacity-40" data-testid={`button-shot-pose-ref-${idx}`}>
+                            {poseRefTarget === idx ? "上傳中…" : "＋ 附上姿勢參考圖（選填）"}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

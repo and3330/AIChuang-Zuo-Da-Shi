@@ -206,15 +206,22 @@ function parsePlan(text: string, count: number): PhotosetPlan {
   };
 }
 
-export function registerPhotosetRoutes(
-  app: Express,
-  deps: {
-    requireAuth: (req: Request, res: Response, next: NextFunction) => void;
-    objectStorageService: ObjectStorageService;
-  },
-) {
-  const { requireAuth, objectStorageService } = deps;
+/** A planning failure that is safe to show to the caller. */
+export class PhotosetPlanError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "PhotosetPlanError";
+  }
+}
 
+export type PhotosetPlanInput = z.input<typeof planRequestSchema>;
+
+/**
+ * Build the planner used by both the website route and the partner API.
+ * `plan()` validates its input and throws PhotosetPlanError for anything the
+ * caller can fix.
+ */
+export function createPhotosetPlanner(objectStorageService: ObjectStorageService) {
   /** Load a stored image (object-storage path or allow-listed CDN URL) and
    *  normalise it for vision: upright, ≤1568px on the long edge, JPEG. */
   async function loadForVision(imageUrl: string): Promise<Anthropic.ImageBlockParam> {
@@ -227,8 +234,8 @@ export function registerPhotosetRoutes(
       }
       raw = Buffer.concat(chunks);
     } else {
-      // Only our own CDN is allowed, so this endpoint can't be used to make
-      // the server fetch arbitrary hosts.
+      // Only our own CDN is allowed, so planning can't be used to make the
+      // server fetch arbitrary hosts.
       const safe = assertAllowedRemoteUrl(imageUrl);
       raw = await fetchImageWithLimits(safe.toString(), { maxBytes: 25 * 1024 * 1024, timeoutMs: 30_000 });
     }
@@ -244,73 +251,96 @@ export function registerPhotosetRoutes(
     };
   }
 
+  async function plan(input: unknown): Promise<PhotosetPlan> {
+    const parsedBody = planRequestSchema.safeParse(input);
+    if (!parsedBody.success) {
+      throw new PhotosetPlanError(400, `請求格式錯誤：${parsedBody.error.issues.map(i => i.message).join("、")}`);
+    }
+    const body = parsedBody.data;
+    // Unknown pose ids are dropped; picked poses decide the shot count.
+    const poses = body.poseIds.map(poseById).filter((p): p is Pose => !!p);
+    if (poses.length === 1) {
+      throw new PhotosetPlanError(400, `請至少選擇 ${PHOTOSET_MIN_SHOTS} 個姿勢，或清除姿勢選擇改用張數。`);
+    }
+    if (poses.length >= PHOTOSET_MIN_SHOTS) body.count = poses.length;
+
+    if (body.mode === "scene" && !body.situationImageUrl) {
+      throw new PhotosetPlanError(400, "請先上傳情境圖。");
+    }
+    if (body.mode === "character" && body.referenceImageUrls.length === 0) {
+      throw new PhotosetPlanError(400, "請先選擇角色或上傳至少一張角色參考圖。");
+    }
+
+    // Fixed character sheet: no model call needed.
+    if (body.mode === "character" && body.planner === "preset") {
+      return {
+        analysis: "標準角色九宮格：依序涵蓋正面、全身、側面、背面等視角，以及多種表情與姿勢，全部使用乾淨的攝影棚背景，方便之後當作角色參考圖庫。",
+        shots: CHARACTER_SHEET_PRESET.slice(0, body.count),
+      };
+    }
+
+    if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) {
+      throw new PhotosetPlanError(500, "規劃用的 AI 服務尚未設定。");
+    }
+
+    const refsToLook = body.referenceImageUrls.slice(0, PLANNER_REFERENCE_LOOKS);
+    const imageUrls = body.mode === "scene"
+      ? [body.situationImageUrl!, ...refsToLook]
+      : refsToLook;
+    const imageBlocks = await Promise.all(imageUrls.map(loadForVision));
+
+    const promptText = body.mode === "scene"
+      ? buildScenePrompt(body, refsToLook.length, poses)
+      : buildCharacterPrompt(body, refsToLook.length, poses);
+
+    const anthropic = new Anthropic({
+      apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+    });
+
+    const message = await anthropic.messages.create({
+      model: PLANNER_MODEL,
+      max_tokens: 4000,
+      messages: [
+        { role: "user", content: [...imageBlocks, { type: "text", text: promptText }] },
+      ],
+    });
+
+    if (message.stop_reason === "refusal") {
+      throw new PhotosetPlanError(422, "AI 無法分析這些圖片，請換一張圖再試。");
+    }
+    const text = message.content
+      .filter((b): b is Anthropic.TextBlock => b.type === "text")
+      .map(b => b.text)
+      .join("");
+
+    try {
+      return parsePlan(text, body.count);
+    } catch (e: any) {
+      throw new PhotosetPlanError(502, e?.message || "AI 規劃結果格式錯誤，請再試一次。");
+    }
+  }
+
+  return { plan };
+}
+
+export function registerPhotosetRoutes(
+  app: Express,
+  deps: {
+    requireAuth: (req: Request, res: Response, next: NextFunction) => void;
+    objectStorageService: ObjectStorageService;
+  },
+) {
+  const { requireAuth, objectStorageService } = deps;
+  const planner = createPhotosetPlanner(objectStorageService);
+
   app.post("/api/photosets/plan", requireAuth, async (req, res) => {
     try {
-      const parsedBody = planRequestSchema.safeParse(req.body);
-      if (!parsedBody.success) {
-        return res.status(400).json({ error: `請求格式錯誤：${parsedBody.error.issues.map(i => i.message).join("、")}` });
-      }
-      const body = parsedBody.data;
-      // Unknown pose ids are dropped; picked poses decide the shot count.
-      const poses = body.poseIds.map(poseById).filter((p): p is Pose => !!p);
-      if (poses.length === 1) {
-        return res.status(400).json({ error: `請至少選擇 ${PHOTOSET_MIN_SHOTS} 個姿勢，或清除姿勢選擇改用張數。` });
-      }
-      if (poses.length >= PHOTOSET_MIN_SHOTS) body.count = poses.length;
-
-      if (body.mode === "scene" && !body.situationImageUrl) {
-        return res.status(400).json({ error: "請先上傳情境圖。" });
-      }
-      if (body.mode === "character" && body.referenceImageUrls.length === 0) {
-        return res.status(400).json({ error: "請先選擇角色或上傳至少一張角色參考圖。" });
-      }
-
-      // Fixed character sheet: no model call needed.
-      if (body.mode === "character" && body.planner === "preset") {
-        const plan: PhotosetPlan = {
-          analysis: "標準角色九宮格：依序涵蓋正面、全身、側面、背面等視角，以及多種表情與姿勢，全部使用乾淨的攝影棚背景，方便之後當作角色參考圖庫。",
-          shots: CHARACTER_SHEET_PRESET.slice(0, body.count),
-        };
-        return res.json(plan);
-      }
-
-      if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) {
-        return res.status(500).json({ error: "Claude API Key 未設定（AI_INTEGRATIONS_ANTHROPIC_API_KEY）" });
-      }
-
-      const refsToLook = body.referenceImageUrls.slice(0, PLANNER_REFERENCE_LOOKS);
-      const imageUrls = body.mode === "scene"
-        ? [body.situationImageUrl!, ...refsToLook]
-        : refsToLook;
-      const imageBlocks = await Promise.all(imageUrls.map(loadForVision));
-
-      const promptText = body.mode === "scene"
-        ? buildScenePrompt(body, refsToLook.length, poses)
-        : buildCharacterPrompt(body, refsToLook.length, poses);
-
-      const anthropic = new Anthropic({
-        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-      });
-
-      const message = await anthropic.messages.create({
-        model: PLANNER_MODEL,
-        max_tokens: 4000,
-        messages: [
-          { role: "user", content: [...imageBlocks, { type: "text", text: promptText }] },
-        ],
-      });
-
-      if (message.stop_reason === "refusal") {
-        return res.status(422).json({ error: "AI 無法分析這些圖片，請換一張圖再試。" });
-      }
-      const text = message.content
-        .filter((b): b is Anthropic.TextBlock => b.type === "text")
-        .map(b => b.text)
-        .join("");
-
-      res.json(parsePlan(text, body.count));
+      res.json(await planner.plan(req.body));
     } catch (error: any) {
+      if (error instanceof PhotosetPlanError) {
+        return res.status(error.status).json({ error: error.message });
+      }
       console.error("Photoset planning failed:", error?.message || error);
       const status = error instanceof Anthropic.RateLimitError ? 429 : 500;
       res.status(status).json({ error: error?.message || "套圖規劃失敗，請稍後再試。" });

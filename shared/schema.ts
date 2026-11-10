@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, timestamp, boolean, real, integer, json, serial } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, timestamp, boolean, real, integer, json, serial, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -199,6 +199,10 @@ export const insertBatchImageToImageSchema = z.object({
   /** Extra reference images shared by every prompt (e.g. character refs).
    *  With originalImageUrl that is at most 10 images for the edit model. */
   additionalImageUrls: z.array(z.string()).max(9).optional(),
+  /** Optional reference image for ONE prompt only (same index as `prompts`,
+   *  null = none), appended after the shared references — e.g. a pose
+   *  reference that differs per shot. */
+  promptImageUrls: z.array(z.string().nullable()).max(10).optional(),
   guidanceScale: z.number().optional(),
   seed: z.number().optional(),
   watermark: z.boolean().optional(),
@@ -521,3 +525,93 @@ export type FourViewUrls = {
   side?: string;
   back?: string;
 };
+
+// ─── Partner (server-to-server) API ──────────────────────────────────────────
+// Used by /api/v1/partner/*. These are NEW tables; no existing table changes,
+// so the website keeps working even before `npm run db:push` has been run
+// (only the partner API needs them).
+
+/** Service tokens. Only the SHA-256 of a token is stored. */
+export const partnerTokens = pgTable("partner_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  /** The account whose credits are charged and that owns the generations. */
+  userId: varchar("user_id").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  /** First characters of the token, for recognising it in the admin list. */
+  tokenPrefix: text("token_prefix").notNull(),
+  /** When false (default) requests can never use the NSFW prompt enhancer. */
+  allowNsfw: boolean("allow_nsfw").notNull().default(false),
+  rateLimitPerMinute: integer("rate_limit_per_minute").notNull().default(60),
+  /** null = no daily cap for this token's account. */
+  dailyImageLimit: integer("daily_image_limit"),
+  dailyVideoLimit: integer("daily_video_limit"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  lastUsedAt: timestamp("last_used_at"),
+  revokedAt: timestamp("revoked_at"),
+});
+
+/** One row per partner request; status is derived from its generations. */
+export const partnerJobs = pgTable("partner_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tokenId: varchar("token_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  type: text("type").notNull(), // image | video | photoset
+  /** queued | planning | running | failed (failed = failed before/without generations) */
+  phase: text("phase").notNull().default("queued"),
+  /** ids in image_generations (image, photoset) or video_generations (video) */
+  generationIds: text("generation_ids").array().default([]),
+  requestedCount: integer("requested_count").notNull().default(1),
+  creditsCharged: integer("credits_charged").notNull().default(0),
+  /** Refunds made by the partner layer itself (e.g. planning failed). */
+  creditsRefundedExtra: integer("credits_refunded_extra").notNull().default(0),
+  externalRef: text("external_ref"),
+  idempotencyKey: text("idempotency_key"),
+  requestHash: text("request_hash"),
+  error: text("error"),
+  errorCode: text("error_code"),
+  /** { width, height, nsfw } — presentation details for results. */
+  meta: json("meta"),
+  createdAt: timestamp("created_at").defaultNow(),
+  finishedAt: timestamp("finished_at"),
+}, (t) => ({
+  idempotencyUnique: uniqueIndex("partner_jobs_token_idem_key").on(t.tokenId, t.idempotencyKey),
+  userIdx: index("partner_jobs_user_idx").on(t.userId),
+}));
+
+// ─── Asset library (素材圖庫) ────────────────────────────────────────────────
+// One row per catalog entry (shared/libraryCatalog.ts). NEW table; nothing
+// existing changes. Preview images live on the CDN.
+export const libraryAssets = pgTable("library_assets", {
+  /** Stable catalog id, e.g. "pose:stand-relaxed:front". */
+  id: varchar("id").primaryKey(),
+  library: text("library").notNull(), // pose | costume | portrait
+  category: text("category").notNull(),
+  name: text("name").notNull(),
+  /** Prompt used to draw the preview image. */
+  prompt: text("prompt").notNull(),
+  /** Text to use when a generator applies this asset. */
+  usage: text("usage").notNull().default(""),
+  tags: text("tags").array().default([]),
+  adult: boolean("adult").notNull().default(false),
+  size: text("size").notNull().default("1024x1536"),
+  transparent: boolean("transparent").notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  /** pending | generating | ready | failed */
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  error: text("error"),
+  imageUrl: text("image_url"),
+  thumbUrl: text("thumb_url"),
+  width: integer("width"),
+  height: integer("height"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  libraryIdx: index("library_assets_library_idx").on(t.library, t.status, t.sortOrder),
+}));
+
+export type LibraryAsset = typeof libraryAssets.$inferSelect;
+export type PartnerToken = typeof partnerTokens.$inferSelect;
+export type PartnerJob = typeof partnerJobs.$inferSelect;
