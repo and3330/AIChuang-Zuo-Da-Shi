@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationHeader } from "./account";
 import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type FourViewUrls } from "@shared/schema";
+import { CharacterWizard } from "@/components/CharacterWizard";
 
 async function uploadToObjectStorage(file: File): Promise<string> {
   const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
@@ -137,14 +138,14 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
       </button>
 
       <div className="grid grid-cols-2 gap-2">
-        <Link href={`/photoset?mode=character&character=${character.id}`}>
+        <Link href={`/character-library/sheet?character=${character.id}`}>
           <span className="block text-center text-sm border border-[#6366f1] text-[#4f46e5] hover:bg-[#6366f1]/10 py-2 rounded-lg cursor-pointer" data-testid={`link-sheet-${character.id}`}>
             🧩 角色九宮格
           </span>
         </Link>
-        <Link href={`/photoset?mode=scene&character=${character.id}`}>
+        <Link href={`/photoset?mode=kit&character=${character.id}`}>
           <span className="block text-center text-sm border border-[#e2e8f0] text-[#475569] hover:border-[#6366f1] hover:text-[#4f46e5] py-2 rounded-lg cursor-pointer" data-testid={`link-photoset-${character.id}`}>
-            📸 拍寫真套圖
+            📸 拍寫真
           </span>
         </Link>
       </div>
@@ -266,6 +267,7 @@ function CharacterFormModal({ character, onClose }: { character?: CharacterLibra
 
 export default function CharacterLibraryPage() {
   const [showCreate, setShowCreate] = useState(false);
+  const [showWizard, setShowWizard] = useState(false);
   // Lightweight client-side search across name + description + styleHint.
   // We avoid a tags column for now to skip a schema migration; users can
   // type their own keywords into description and they'll be matched here.
@@ -292,24 +294,26 @@ export default function CharacterLibraryPage() {
   return (
     <div className="min-h-screen bg-[#f8fafc] flex flex-col">
       <NavigationHeader />
-      <div className="max-w-6xl mx-auto px-6 py-8 w-full">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <div className="flex items-center gap-3">
-              <Link href="/drama">
-                <button className="text-sm text-[#64748b] hover:text-[#334155]">← 返回漫劇</button>
-              </Link>
-              <h1 className="text-2xl font-bold text-[#0f172a]">🎭 角色庫</h1>
-            </div>
-            <p className="text-sm text-[#64748b] mt-1">建立可跨專案、跨集數重複使用的角色，並一鍵生成四視圖確保連貫</p>
+      <div className="max-w-6xl mx-auto px-4 md:px-6 py-5 md:py-8 w-full">
+        <div className="flex items-start justify-between gap-3 flex-wrap mb-6">
+          <div className="min-w-0">
+            <h1 className="hidden md:block text-2xl font-bold text-[#0f172a]">角色庫</h1>
+            <p className="text-sm text-[#64748b] md:mt-1">建立固定角色，寫真與漫劇都能重複使用。角色卡片上可以生成九宮格定裝圖。</p>
           </div>
-          <button
-            onClick={() => setShowCreate(true)}
-            className="bg-[#6366f1] hover:bg-[#4338ca] text-white px-4 py-2 rounded-lg text-sm font-medium"
-            data-testid="button-create-character"
-          >
-            ＋ 新增角色
-          </button>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <button onClick={() => setShowWizard(true)}
+              className="flex-1 sm:flex-none h-11 px-4 rounded-xl bg-[#6366f1] text-white text-sm font-semibold whitespace-nowrap"
+              data-testid="button-open-wizard">
+              <i className="fas fa-camera mr-2 text-xs" />三張照片建立角色
+            </button>
+            <button
+              onClick={() => setShowCreate(true)}
+              className="h-11 px-4 rounded-xl border border-[#cbd5e1] bg-white text-[#334155] text-sm font-medium whitespace-nowrap hover:border-[#6366f1]"
+              data-testid="button-create-character"
+            >
+              ＋ 手動新增
+            </button>
+          </div>
         </div>
 
         {characters.length > 0 && (
@@ -357,6 +361,7 @@ export default function CharacterLibraryPage() {
         )}
 
         {showCreate && <CharacterFormModal onClose={() => setShowCreate(false)} />}
+        {showWizard && <CharacterWizard onClose={() => setShowWizard(false)} />}
       </div>
     </div>
   );

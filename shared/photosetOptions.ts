@@ -172,7 +172,123 @@ export function referenceNote(
   return `（第 1 張圖是情境參考，只取其場景、光線、色調與氛圍；${refRange}是角色參考圖，畫面中的人物必須是角色參考圖中的這個人，臉部五官、髮型髮色與身形以角色參考圖為準，${outfit}。）`;
 }
 
+/**
+ * How the image model's 10 input images are shared out in the photo studio.
+ * The character always keeps up to 6 so the face stays stable; the rest are
+ * one slot each for the 情境圖, a costume image and that shot's pose image.
+ */
+export const REF_BUDGET = { total: 10, character: 6, situation: 1, costume: 1, pose: 1 } as const;
+
+/**
+ * Note appended to every studio prompt. Image order must be
+ *   [情境圖?, ...character references, costume image?, (pose image per shot)]
+ */
+export function studioReferenceNote(o: {
+  hasSituation: boolean;
+  characterCount: number;
+  hasCostumeImage: boolean;
+  /** Where the outfit comes from. */
+  outfit: "character" | "scene" | "costume" | "prompt";
+}): string {
+  if (o.hasSituation && o.characterCount === 0 && !o.hasCostumeImage) return "";
+  const parts: string[] = [];
+  let n = 0;
+  if (o.hasSituation) {
+    n = 1;
+    parts.push(o.characterCount > 0
+      ? "第 1 張圖是情境參考，只取其場景、光線、色調與氛圍"
+      : "第 1 張圖是情境參考，請保持圖中同一位人物與同一個場景");
+  }
+  if (o.characterCount > 0) {
+    const from = n + 1;
+    n += o.characterCount;
+    const range = from === n ? `第 ${from} 張圖` : `第 ${from}–${n} 張圖`;
+    parts.push(`${range}是角色參考圖，畫面中的人物必須是這個人，臉部五官、髮型髮色與身形以角色參考圖為準`);
+  }
+  if (o.hasCostumeImage) {
+    n += 1;
+    parts.push(`第 ${n} 張圖是服裝參考圖，只參考其服裝的款式、顏色與材質，不要沿用其中人物的長相、姿勢與背景`);
+  }
+  parts.push({
+    character: "服裝沿用角色參考圖中的穿著",
+    scene: "服裝沿用第 1 張圖中的穿著",
+    costume: "人物請穿上服裝參考圖中的這套服裝",
+    prompt: "服裝請依照提示詞的描述，不要沿用參考圖中的衣服",
+  }[o.outfit]);
+  return `（${parts.join("；")}。）`;
+}
+
 /** Tells the image model how to use a per-shot pose reference image. */
 export function poseRefNote(imageNumber: number): string {
   return `（第 ${imageNumber} 張圖是姿勢參考圖，只參考其身體姿態、四肢角度與鏡頭視角；不要沿用其中人物的外觀、服裝、背景與畫風，也不要畫成人偶或線稿。）`;
+}
+
+/* ---------- shoot control: setting / shot style / expression / props ---------- */
+// Together with the library recipe (portrait, costume, pose) these are the
+// things a creator picks instead of writing a prompt. They are plain text and
+// are merged into the art direction handed to the planner.
+
+export type ControlOption = { id: string; label: string; text: string };
+
+export const SHOT_STYLES: ControlOption[] = [
+  { id: "candid", label: "生活抓拍", text: "像朋友隨手抓拍的生活照，構圖自然不刻意" },
+  { id: "selfie", label: "手機自拍", text: "手機前鏡頭自拍的視角，手臂伸出持機，略帶廣角" },
+  { id: "mirror", label: "鏡子自拍", text: "對著鏡子用手機自拍，鏡中可見手機與全身或半身" },
+  { id: "studio", label: "棚拍", text: "專業攝影棚拍攝，柔光箱打光，背景乾淨" },
+  { id: "ringlight", label: "環形燈", text: "環形補光燈正面打光，眼中有環形眼神光，膚色明亮均勻" },
+  { id: "film", label: "底片隨拍", text: "傻瓜底片相機直閃隨拍的質感，色彩濃郁、略帶顆粒" },
+  { id: "editorial", label: "雜誌大片", text: "時尚雜誌大片的構圖與打光，姿態有張力" },
+  { id: "cinematic", label: "電影感", text: "電影劇照般的寬幅構圖與氛圍光，淺景深" },
+];
+
+export const EXPRESSIONS: ControlOption[] = [
+  { id: "neutral", label: "自然", text: "表情自然放鬆" },
+  { id: "soft-smile", label: "淺笑", text: "嘴角微微上揚的淺笑，眼神溫柔" },
+  { id: "laugh", label: "開懷笑", text: "開懷大笑，露出牙齒，眼睛瞇起" },
+  { id: "innocent", label: "無辜", text: "眼睛微微睜大的無辜表情，嘴唇輕抿" },
+  { id: "surprised", label: "驚喜", text: "驚喜的表情，眉毛上揚、嘴巴微張" },
+  { id: "wink", label: "眨眼", text: "對鏡頭俏皮地眨一隻眼" },
+  { id: "kiss", label: "飛吻", text: "嘟嘴對鏡頭送出飛吻" },
+  { id: "cool", label: "冷酷", text: "表情冷靜疏離，眼神銳利" },
+  { id: "shy", label: "害羞", text: "害羞地低頭微笑，視線略微閃躲" },
+  { id: "thoughtful", label: "若有所思", text: "若有所思地望向遠方，神情沉靜" },
+];
+
+export const SETTINGS: ControlOption[] = [
+  { id: "cafe", label: "咖啡店", text: "有大片落地窗的咖啡店，木質桌椅與綠色植栽" },
+  { id: "bedroom", label: "臥室", text: "採光良好的臥室，白色床鋪與柔和的窗簾光" },
+  { id: "living", label: "客廳", text: "簡約風格的客廳，布沙發與落地燈" },
+  { id: "street", label: "城市街頭", text: "城市街頭，店面櫥窗與行道樹，午後斜陽" },
+  { id: "beach", label: "海邊", text: "傍晚的海邊沙灘，金色夕陽與細緻的浪花" },
+  { id: "park", label: "公園綠地", text: "綠意盎然的公園草地與樹蔭，陽光灑落" },
+  { id: "rooftop", label: "屋頂露台", text: "城市屋頂露台，遠方是天際線，黃昏時分" },
+  { id: "gym", label: "健身房", text: "明亮的健身房，鏡牆與器材" },
+  { id: "hotel", label: "飯店房間", text: "質感飯店房間，大窗外是城市夜景" },
+  { id: "studio", label: "攝影棚", text: "純色背景的攝影棚" },
+];
+
+export const PROP_PRESETS: string[] = ["咖啡杯", "手機", "手提包", "書本", "花束", "太陽眼鏡", "相機", "帽子", "耳機", "氣泡飲料"];
+
+export const MAX_PROPS = 4;
+
+export type ShootControl = {
+  settingId?: string;
+  shotStyleId?: string;
+  expressionId?: string;
+  props: string[];
+};
+
+/** One art-direction paragraph for the planner. Empty when nothing is picked. */
+export function shootControlText(control: ShootControl, opts: { hasSceneImage?: boolean } = {}): string {
+  const parts: string[] = [];
+  const setting = SETTINGS.find(o => o.id === control.settingId);
+  // A 情境圖 already fixes the location; a text setting would fight it.
+  if (setting && !opts.hasSceneImage) parts.push(`場景：${setting.text}`);
+  const style = SHOT_STYLES.find(o => o.id === control.shotStyleId);
+  if (style) parts.push(`鏡頭風格：整組都是${style.text}`);
+  const exp = EXPRESSIONS.find(o => o.id === control.expressionId);
+  if (exp) parts.push(`表情：以${exp.text}為主，可以有細微變化`);
+  const props = control.props.map(p => p.trim()).filter(Boolean).slice(0, MAX_PROPS);
+  if (props.length) parts.push(`道具：畫面中自然地出現${props.join("、")}（拿在手上或放在身旁，不必每張都有）`);
+  return parts.join("。");
 }

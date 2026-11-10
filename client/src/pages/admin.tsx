@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useUser } from "@/App";
+import { useUser } from "@/hooks/use-user";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/use-seo";
 import { Link } from "wouter";
 import { PartnerTokensPanel } from "@/components/PartnerTokensPanel";
+import { NavigationHeader } from "@/components/AppNav";
 import { LibraryAdminPanel } from "@/components/LibraryAdminPanel";
 
 interface AdminUser {
@@ -263,28 +264,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-3">
-              <Link href="/" className="flex items-center gap-2">
-                <span className="text-2xl">✨</span>
-                <span className="font-bold text-lg bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                  AI 創意工坊
-                </span>
-              </Link>
-              <span className="px-2 py-0.5 text-xs font-medium bg-red-100 text-red-700 rounded-full">管理後台</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link href="/">
-                <Button variant="outline" size="sm">
-                  <i className="fas fa-arrow-left mr-1"></i>返回前台
-                </Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
+      <NavigationHeader />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex gap-2 mb-6 flex-wrap">

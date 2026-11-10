@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor } from "@shared/imageSizes";
-import { useUser } from "@/App";
+import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "@/pages/account";
 import { UnifiedUploader } from "@/components/UnifiedUploader";
 import { Button } from "@/components/ui/button";
@@ -39,14 +39,19 @@ function InfoTooltip({ text }: { text: string }) {
   );
 }
 
-export default function Home() {
+/**
+ * Image / video workspace. The hub at "/" links here:
+ *   /create/image → section "image" (text-to-image, image editing)
+ *   /create/video → section "video" (text-to-video, image-to-video)
+ */
+export default function Home({ section = "image" }: { section?: "image" | "video" }) {
   const { user } = useUser();
   useSeo({
     title: "AI 創作工作台 - 圖片與影片生成 | AI 創意工坊",
     description: "使用 AI 創意工坊生成高品質圖片和影片。支援文字生圖、圖片編輯、多圖融合、序列生成、批次處理、AI 影片生成等功能。",
     keywords: "AI生成,文字生圖,圖片編輯,AI影片,批次生成,序列生成,多圖融合",
   });
-  const [mode, setMode] = useState<"image-to-image" | "text-to-image" | "image-to-video" | "text-to-video" | "story">("text-to-image");
+  const [mode, setMode] = useState<"image-to-image" | "text-to-image" | "image-to-video" | "text-to-video" | "story">(section === "video" ? "text-to-video" : "text-to-image");
   const [uploadedImageUrl, setUploadedImageUrl] = useState<string>("");
   const [uploadedImagePath, setUploadedImagePath] = useState<string>("");
   const [prompt, setPrompt] = useState("把泡泡變成愛心形狀");
@@ -1069,111 +1074,22 @@ export default function Home() {
         <button
           type="button"
           onClick={() => setMyVideosOpen(true)}
-          className="fixed bottom-4 right-4 z-30 px-4 py-2.5 rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-lg flex items-center gap-2 text-sm"
+          className="fixed bottom-[calc(128px+env(safe-area-inset-bottom))] md:bottom-24 right-4 z-30 px-4 py-2.5 rounded-full bg-purple-600 hover:bg-purple-700 text-white shadow-lg flex items-center gap-2 text-sm"
           data-testid="button-my-videos"
         >
           <i className="fas fa-film"></i>我的影片
         </button>
       )}
 
-      <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white py-2 overflow-hidden">
-        <div className="animate-marquee whitespace-nowrap text-sm font-medium">
-          <span className="mx-8">📢 圖片生成已升級至 Seedream 5.5，影片生成已升級至 WAN 3.0！</span>
-          <span className="mx-8">📢 圖片生成已升級至 Seedream 5.5，影片生成已升級至 WAN 3.0！</span>
-          <span className="mx-8">📢 圖片生成已升級至 Seedream 5.5，影片生成已升級至 WAN 3.0！</span>
-        </div>
-      </div>
-
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
         <div className="space-y-6">
 
-          {/* Stats Bar */}
-          <div className="grid grid-cols-3 gap-4">
-            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
-              <div className="w-10 h-10 bg-yellow-50 rounded-lg flex items-center justify-center">
-                <i className="fas fa-coins text-yellow-500"></i>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">積分餘額</p>
-                <p className="text-xl font-bold text-gray-900">{user?.credits ?? 0}</p>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
-              <div className="w-10 h-10 bg-blue-50 rounded-lg flex items-center justify-center">
-                <i className="fas fa-images text-blue-500"></i>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">已生成</p>
-                <p className="text-xl font-bold text-gray-900">{stats?.totalGenerations ?? 0} 次</p>
-              </div>
-            </div>
-            <div className="bg-white rounded-xl border border-gray-200 p-4 flex items-center gap-3">
-              <div className="w-10 h-10 bg-green-50 rounded-lg flex items-center justify-center">
-                <i className="fas fa-receipt text-green-500"></i>
-              </div>
-              <div>
-                <p className="text-xs text-gray-500">已消費</p>
-                <p className="text-xl font-bold text-gray-900">{stats?.totalCreditsUsed ?? 0} 積分</p>
-              </div>
-            </div>
-          </div>
-
           {/* Model & Mode Selection */}
           <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-            {/* Model Tabs */}
-            <div className="flex border-b border-gray-200">
-              <button
-                onClick={() => { if (isVideoMode) setMode("text-to-image"); }}
-                className={`flex-1 py-3 px-6 text-sm font-medium transition-all relative ${
-                  isImageMode 
-                    ? "text-blue-700 bg-blue-50"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-lg">🎨</span>
-                  <span className="font-semibold">Seedream 5.5</span>
-                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">圖片</span>
-                </div>
-                {isImageMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
-              </button>
-              <button
-                onClick={() => { if (!isVideoMode) setMode("text-to-video"); }}
-                className={`flex-1 py-3 px-6 text-sm font-medium transition-all relative ${
-                  isVideoMode
-                    ? "text-purple-700 bg-purple-50"
-                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
-                }`}
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-lg">🎬</span>
-                  <span className="font-semibold">WAN 3.0</span>
-                  <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">影片</span>
-                </div>
-                {isVideoMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600" />}
-              </button>
-              <a
-                href="/drama"
-                className="flex-1 py-3 px-6 text-sm font-medium transition-all relative text-gray-500 hover:text-emerald-700 hover:bg-emerald-50"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-lg">🎬</span>
-                  <span className="font-semibold">漫劇工作室</span>
-                  <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">NEW</span>
-                </div>
-              </a>
-              <a
-                href="/photoset"
-                className="flex-1 py-3 px-6 text-sm font-medium transition-all relative text-gray-500 hover:text-rose-700 hover:bg-rose-50"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <span className="text-lg">📸</span>
-                  <span className="font-semibold">寫真套圖</span>
-                  <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">NEW</span>
-                </div>
-              </a>
+            <div className="px-4 pt-4 flex items-center justify-between gap-3">
+              <h1 className="text-base font-semibold text-gray-900">{section === "video" ? "影片生成" : "圖片生成"}</h1>
+              <span className="text-xs text-gray-500">{section === "video" ? "WAN 3.0" : "Seedream 5.5"}</span>
             </div>
-
             {/* Image sub-modes */}
             {isImageMode && (
               <div className="p-4">
@@ -1713,48 +1629,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {/* 參考音訊 (omni mode for text-to-video) */}
-                <div className="border border-purple-200 bg-purple-50/40 rounded-xl p-4 space-y-2">
-                  <Label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
-                    <i className="fas fa-music text-purple-500"></i>
-                    參考音訊 <span className="text-gray-400">（選填，BGM / 配音，最大 25MB）</span>
-                  </Label>
-                  {textToVideoRefAudio ? (
-                    <div className="flex items-center justify-between gap-3 px-3 py-2 bg-white border border-purple-200 rounded-lg">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <i className="fas fa-file-audio text-purple-500"></i>
-                        <span className="text-sm text-gray-700 truncate">{textToVideoRefAudio.name}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setTextToVideoRefAudio(null)}
-                        className="text-red-500 hover:text-red-700 text-xs flex items-center gap-1 shrink-0"
-                      >
-                        <i className="fas fa-times"></i>移除
-                      </button>
-                    </div>
-                  ) : (
-                    <UnifiedUploader
-                      maxNumberOfFiles={1}
-                      maxFileSize={25 * 1024 * 1024}
-                      acceptedFileTypes={["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a", "audio/ogg"]}
-                      acceptedFormatsLabel="MP3、WAV、M4A、OGG"
-                      onGetUploadParameters={handleGetUploadParameters}
-                      onComplete={handleTextToVideoRefAudioUploadComplete}
-                      onError={handleUploadError}
-                      className="w-full"
-                    >
-                      上傳參考音訊
-                    </UnifiedUploader>
-                  )}
-                  {textToVideoRefAudio && (
-                    <div className="text-xs text-purple-700 bg-purple-100/70 rounded px-2 py-1.5 flex items-center gap-1.5">
-                      <i className="fas fa-bolt"></i>
-                      WAN 3.0 目前不支援參考音訊，此檔案不會被使用；影片會自帶 AI 音效。
-                    </div>
-                  )}
-                </div>
-
                 <div>
                   <Label className="text-sm font-medium text-gray-700">影片解析度</Label>
                   <div className="mt-1.5 grid grid-cols-2 gap-2">
@@ -1952,99 +1826,6 @@ export default function Home() {
                         className="w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                       />
                       <p className="text-xs text-gray-400 mt-1">描述您希望圖片如何變成動態影片 ・先①AI優化讓描述更豐富，再②Claude優化轉為英文專業格式</p>
-                    </div>
-
-                    {/* ── 參考素材 (omni mode) ─────────────────────────── */}
-                    <div className="border border-purple-200 bg-purple-50/40 rounded-xl p-4 space-y-4">
-                      <div className="flex items-start gap-2">
-                        <i className="fas fa-layer-group text-purple-500 mt-0.5"></i>
-                        <div className="flex-1">
-                          <div className="text-sm font-semibold text-gray-800">參考素材（WAN 3.0 暫不支援）</div>
-                          <p className="text-xs text-gray-500 mt-0.5">
-                            WAN 3.0 目前不支援參考素材：此處上傳的參考圖與參考音訊不會被使用，影片以主要圖片作為首幀生成。
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* 參考圖片 (up to 3) */}
-                      <div className="space-y-2">
-                        <Label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
-                          <i className="fas fa-images text-purple-500"></i>
-                          參考圖片 <span className="text-gray-400">（{videoReferenceImages.length}/3）</span>
-                        </Label>
-                        {videoReferenceImages.length > 0 && (
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {videoReferenceImages.map((img, idx) => (
-                              <div key={idx} className="relative group">
-                                <img src={img.url} alt={`ref-${idx}`} className="w-full h-20 object-cover rounded border border-purple-200" />
-                                <button
-                                  type="button"
-                                  onClick={() => setVideoReferenceImages(prev => prev.filter((_, i) => i !== idx))}
-                                  className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center"
-                                  aria-label="移除參考圖"
-                                >
-                                  <i className="fas fa-times text-[10px]"></i>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        {videoReferenceImages.length < 3 && (
-                          <UnifiedUploader
-                            maxNumberOfFiles={3 - videoReferenceImages.length}
-                            maxFileSize={10485760}
-                            onGetUploadParameters={handleGetUploadParameters}
-                            onComplete={handleVideoRefImageUploadComplete}
-                            onError={handleUploadError}
-                            className="w-full"
-                          >
-                            上傳參考圖片
-                          </UnifiedUploader>
-                        )}
-                      </div>
-
-                      {/* 參考音訊 */}
-                      <div className="space-y-2">
-                        <Label className="text-xs font-medium text-gray-700 flex items-center gap-1.5">
-                          <i className="fas fa-music text-purple-500"></i>
-                          參考音訊 <span className="text-gray-400">（選填，最大 20MB）</span>
-                        </Label>
-                        {videoReferenceAudio ? (
-                          <div className="flex items-center justify-between gap-3 px-3 py-2 bg-white border border-purple-200 rounded-lg">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <i className="fas fa-file-audio text-purple-500"></i>
-                              <span className="text-sm text-gray-700 truncate">{videoReferenceAudio.name}</span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setVideoReferenceAudio(null)}
-                              className="text-red-500 hover:text-red-700 text-xs flex items-center gap-1 shrink-0"
-                            >
-                              <i className="fas fa-times"></i>移除
-                            </button>
-                          </div>
-                        ) : (
-                          <UnifiedUploader
-                            maxNumberOfFiles={1}
-                            maxFileSize={20 * 1024 * 1024}
-                            acceptedFileTypes={["audio/mpeg", "audio/wav", "audio/mp4", "audio/x-m4a", "audio/ogg"]}
-                            acceptedFormatsLabel="MP3、WAV、M4A、OGG"
-                            onGetUploadParameters={handleGetUploadParameters}
-                            onComplete={handleVideoRefAudioUploadComplete}
-                            onError={handleUploadError}
-                            className="w-full"
-                          >
-                            上傳參考音訊
-                          </UnifiedUploader>
-                        )}
-                      </div>
-
-                      {(videoReferenceImages.length > 0 || videoReferenceAudio) && (
-                        <div className="text-xs text-purple-700 bg-purple-100/70 rounded px-2 py-1.5 flex items-center gap-1.5">
-                          <i className="fas fa-bolt"></i>
-                          WAN 3.0 暫不支援參考素材：影片只會以主要圖片生成，參考圖與參考音訊不會被使用。
-                        </div>
-                      )}
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">

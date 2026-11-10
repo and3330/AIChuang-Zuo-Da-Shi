@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor } from "@shared/imageSizes";
-import { useUser } from "@/App";
+import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "@/pages/account";
 import { UnifiedUploader } from "@/components/UnifiedUploader";
 import { Button } from "@/components/ui/button";
