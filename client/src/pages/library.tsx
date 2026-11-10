@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@/App";
+import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "./account";
 import { LIBRARIES, type LibraryId } from "@shared/libraryCatalog";
 import { RECIPE_SLOTS, loadRecipe, recipeCount, recipeText, saveRecipe, type Recipe, type RecipeItem } from "@/lib/recipe";
@@ -43,7 +43,11 @@ export default function LibraryPage() {
   const [, navigate] = useLocation();
   const isAdmin = !!user?.isAdmin;
 
-  const [library, setLibrary] = useState<LibraryId>("pose");
+  // /library?tab=portrait|costume|pose opens that tab (links from the hub).
+  const [library, setLibrary] = useState<LibraryId>(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    return LIBRARIES.some(l => l.id === tab) ? tab as LibraryId : "portrait";
+  });
   const [layout, setLayout] = useState<"group" | "single">("group");
   const [category, setCategory] = useState("");
   const [variant, setVariant] = useState("");
@@ -114,8 +118,8 @@ export default function LibraryPage() {
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
           <div>
-            <h1 className="text-2xl font-bold text-[#0f172a]">🗂 素材圖庫</h1>
-            <p className="text-sm text-[#64748b] mt-1">挑一張人像、一套服裝、一個姿勢加入配方，再帶到寫真套圖生成。點圖可以放大。</p>
+            <h1 className="hidden md:block text-2xl font-bold text-[#0f172a]">素材圖庫</h1>
+            <p className="text-sm text-[#64748b] mt-1">挑一張人像、一套服裝、一個姿勢，按「生成寫真」就會帶進寫真工作室。點圖可以放大。</p>
           </div>
           <div className="flex rounded-lg border border-[#e2e8f0] overflow-hidden bg-white">
             {(["group", "single"] as const).map(l => (
@@ -280,12 +284,12 @@ export default function LibraryPage() {
       </div>
 
       {/* ── 配方槽 ─────────────────────────────────────────── */}
-      <div className="fixed bottom-[72px] sm:bottom-4 inset-x-0 z-40 px-3 pointer-events-none">
+      <div className="fixed bottom-[calc(64px+env(safe-area-inset-bottom))] md:bottom-4 inset-x-0 z-30 pl-3 pr-16 md:px-24 pointer-events-none">
         <div className="max-w-4xl mx-auto bg-white border border-[#e2e8f0] shadow-lg rounded-2xl p-2.5 flex items-center gap-2 flex-wrap pointer-events-auto" data-testid="bar-recipe">
           {RECIPE_SLOTS.map(slot => {
             const it = recipe[slot.id];
             return (
-              <div key={slot.id} className={`flex items-center gap-2 flex-1 min-w-[150px] rounded-xl border px-2 py-1.5 ${it ? "border-[#6366f1]/40 bg-[#6366f1]/5" : "border-dashed border-[#cbd5e1]"}`}>
+              <div key={slot.id} className={`flex items-center gap-2 flex-1 min-w-[96px] sm:min-w-[150px] rounded-xl border px-2 py-1.5 ${it ? "border-[#6366f1]/40 bg-[#6366f1]/5" : "border-dashed border-[#cbd5e1]"}`}>
                 {it ? (
                   <>
                     <img src={it.thumbUrl || it.imageUrl || ""} alt={it.name} className="w-9 h-9 rounded-md object-contain bg-[#f8fafc] shrink-0" />
@@ -310,8 +314,8 @@ export default function LibraryPage() {
             <button onClick={() => updateRecipe({})} disabled={count === 0}
               className="px-2 py-2 rounded-lg border border-[#e2e8f0] text-xs text-[#94a3b8] hover:text-[#ef4444] disabled:opacity-40" title="清空配方">清空</button>
             <button onClick={() => navigate("/photoset?recipe=1")} disabled={count === 0}
-              className="px-4 py-2 rounded-lg bg-[#0f172a] text-white text-xs font-semibold hover:bg-[#1e293b] disabled:opacity-40" data-testid="button-recipe-use">
-              帶到寫真套圖（{count}/3）
+              className="px-4 py-2 rounded-lg bg-[#6366f1] text-white text-xs font-semibold disabled:opacity-40" data-testid="button-recipe-use">
+              <i className="fas fa-bolt mr-1.5" />生成寫真（{count}/3）
             </button>
           </div>
         </div>

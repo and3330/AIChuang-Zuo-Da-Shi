@@ -4,8 +4,8 @@
   "description": "AI 圖片與影片生成平台 - 文字生圖、圖片編輯、AI 影片製作",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#f5f3ff",
-  "theme_color": "#7c3aed",
+  "background_color": "#f8fafc",
+  "theme_color": "#ffffff",
   "orientation": "any",
   "lang": "zh-TW",
   "icons": [

@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import colors from "tailwindcss/colors";
 
 export default {
   darkMode: ["class"],
@@ -11,6 +12,20 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       colors: {
+        // Palette for the whole site (tech look):
+        //   brand   violet -> indigo -> blue gradient (bg-brand, see index.css)
+        //   sky     light-blue secondary          fuchsia  pop accent
+        //   indigo  solid brand / primary actions slate    neutrals
+        //   amber   credits and warnings         emerald success
+        //   red     errors and destructive       rose    adult-only areas
+        // Older pages were written with purple-* / blue-* / gray-* classes;
+        // aliasing those names makes every page render the same brand colour
+        // and neutral without touching each file. Use sky-* where a second
+        // accent is really needed.
+        purple: colors.indigo,
+        blue: colors.indigo,
+        violet: colors.indigo,
+        gray: colors.slate,
         background: "var(--background)",
         foreground: "var(--foreground)",
         card: {
@@ -22,7 +37,7 @@ export default {
           foreground: "var(--popover-foreground)",
         },
         primary: {
-          DEFAULT: "#1976D2", // hsl(207 90% 54%)
+          DEFAULT: "#4f46e5", // indigo-600, the brand colour
           foreground: "var(--primary-foreground)",
         },
         secondary: {
@@ -34,7 +49,7 @@ export default {
           foreground: "var(--muted-foreground)",
         },
         accent: {
-          DEFAULT: "#FF4081", // hsl(334 86% 64%)
+          DEFAULT: "#f1f5f9", // slate-100: hover / focus background of menus
           foreground: "var(--accent-foreground)",
         },
         destructive: {
@@ -62,6 +77,15 @@ export default {
           ring: "var(--sidebar-ring)",
         },
         surface: "#FFFFFF",
+      },
+      backgroundImage: {
+        brand: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 48%, #2563eb 100%)",
+        "brand-soft": "linear-gradient(135deg, #f5f3ff 0%, #eef2ff 50%, #e0f2fe 100%)",
+        "brand-night": "linear-gradient(135deg, #1e1b4b 0%, #312e81 45%, #1e3a8a 100%)",
+      },
+      boxShadow: {
+        glow: "0 10px 28px -10px rgba(99, 70, 229, 0.55)",
+        "glow-sky": "0 10px 28px -10px rgba(14, 165, 233, 0.5)",
       },
       fontFamily: {
         sans: ["var(--font-sans)"],

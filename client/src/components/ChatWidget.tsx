@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useUser } from "@/App";
+import { useUser } from "@/hooks/use-user";
 import { apiRequest } from "@/lib/queryClient";
 
 interface ChatMsg {
@@ -315,7 +315,7 @@ export default function ChatWidget() {
 
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`fixed bottom-4 sm:bottom-4 right-4 z-50 w-14 h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 max-sm:bottom-[76px] ${
+        className={`fixed bottom-[calc(68px+env(safe-area-inset-bottom))] md:bottom-4 right-4 z-40 w-12 h-12 md:w-14 md:h-14 rounded-full shadow-lg flex items-center justify-center transition-all duration-300 hover:scale-110 max-sm:bottom-[76px] ${
           isOpen
             ? "bg-gray-600 hover:bg-gray-700"
             : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"

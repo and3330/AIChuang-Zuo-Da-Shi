@@ -15,6 +15,7 @@ import { registerDramaLibraryRoutes } from "./dramaLibrary";
 import { registerPhotosetRoutes, createPhotosetPlanner } from "./photoset";
 import { registerPartnerRoutes } from "./partnerApi";
 import { registerAssetLibraryRoutes } from "./assetLibrary";
+import { registerVaultRoutes } from "./vault";
 import { partnerStore, createPartnerImageIngestor } from "./partnerStore";
 import { atlasSizeDimensions } from "./atlasProvider";
 import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
@@ -4193,6 +4194,14 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
   // ─── 寫真套圖：情境圖分析 + 鏡頭規劃（生成走既有批次端點）─────────────
   registerPhotosetRoutes(app, { requireAuth, objectStorageService });
+
+  // ─── 作品庫：使用者所有完成的圖片與影片 ───────────────────────────────
+  registerVaultRoutes(app, {
+    requireAuth,
+    getUserImageGenerations: (userId) => storage.getUserImageGenerations(userId),
+    getUserVideoGenerations: (userId) => storage.getUserVideoGenerations(userId),
+    cdnUrl: fixBunnyCdnUrl,
+  });
 
   // ─── 素材圖庫：清單同步、批次生成預覽圖、瀏覽 ───────────────────────────
   registerAssetLibraryRoutes(app, { requireAuth, requireAdmin, bunnyStorage, cdnUrl: fixBunnyCdnUrl });

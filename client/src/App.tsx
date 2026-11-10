@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
 import Home from "@/pages/home";
+import CreateHub from "@/pages/create-hub";
 import AccountPage from "@/pages/account";
 import TransactionsPage from "@/pages/transactions";
 import LandingPage from "@/pages/landing";
@@ -21,19 +22,17 @@ import SceneLibraryPage from "@/pages/scene-library";
 import NsfwPage from "@/pages/nsfw";
 import PhotosetPage from "@/pages/photoset";
 import LibraryPage from "@/pages/library";
+import VaultPage from "@/pages/vault";
+import EditPage from "@/pages/edit";
 import NotFound from "@/pages/not-found";
 import ChatWidget from "@/components/ChatWidget";
 import MobileTabBar from "@/components/MobileTabBar";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import type { User } from "@shared/schema";
 
-export function useUser() {
-  const { data: user, isLoading, error } = useQuery<User | null>({
-    queryKey: ["/api/auth/me"],
-    queryFn: getQueryFn({ on401: "returnNull" }),
-  });
-  return { user, isLoading };
-}
+// Kept as a re-export so existing imports from "@/App" keep working.
+export { useUser } from "@/hooks/use-user";
+import { useUser } from "@/hooks/use-user";
 
 function AuthPage() {
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
@@ -326,12 +325,17 @@ function AdminOnly({ children }: { children: ReactNode }) {
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={Home} />
+      <Route path="/" component={CreateHub} />
+      <Route path="/create/image">{() => <Home key="image" section="image" />}</Route>
+      <Route path="/create/video">{() => <Home key="video" section="video" />}</Route>
       <Route path="/drama" component={DramaPage} />
+      <Route path="/character-library/sheet">{() => <PhotosetPage variant="sheet" />}</Route>
       <Route path="/character-library" component={CharacterLibraryPage} />
       <Route path="/scene-library" component={SceneLibraryPage} />
-      <Route path="/photoset" component={PhotosetPage} />
+      <Route path="/photoset">{() => <PhotosetPage />}</Route>
       <Route path="/library" component={LibraryPage} />
+      <Route path="/vault" component={VaultPage} />
+      <Route path="/edit" component={EditPage} />
       <Route path="/nsfw">
         {() => <AdminOnly><NsfwPage /></AdminOnly>}
       </Route>
@@ -374,7 +378,10 @@ function AppContent() {
   return (
     <TooltipProvider>
       <Toaster />
-      <Router />
+      {/* On phones every page ends above the bottom tab bar. */}
+      <div className="pb-[calc(56px+env(safe-area-inset-bottom))] md:pb-0">
+        <Router />
+      </div>
     </TooltipProvider>
   );
 }

@@ -63,11 +63,17 @@ const planRequestSchema = z.object({
   /** Poses picked from the pose library. When given, the plan has exactly
    *  one shot per pose, in this order, and `count` is ignored. */
   poseIds: z.array(z.string().max(60)).max(PHOTOSET_MAX_SHOTS).optional().default([]),
+  /** Poses picked from the asset library (free text). Same rule as poseIds:
+   *  one shot per pose, in order; they follow any poseIds. */
+  customPoses: z.array(z.object({
+    name: z.string().min(1).max(80),
+    description: z.string().min(1).max(600),
+  })).max(PHOTOSET_MAX_SHOTS).optional().default([]),
   /** Finishing look id (see PHOTO_LOOKS). The client appends the look's own
    *  wording to each prompt; the planner only needs to stay out of its way. */
   look: z.string().max(20).optional(),
   /** Optional art direction from the user, e.g. "日系清新、多一點特寫". */
-  direction: z.string().max(500).optional(),
+  direction: z.string().max(1200).optional(),
   /** Target aspect ratio label, only used to steer composition. */
   aspectRatio: z.string().max(10).optional(),
 });
@@ -107,10 +113,12 @@ const SHOT_RULES = `每個鏡頭的提示詞必須：
 7. 不要描述膚質、修圖或畫質（系統會另外附上質感設定），也不要使用「完美」「無瑕」「精緻」「夢幻」「唯美」「絕美」這類會讓畫面過度修飾的形容詞；用具體、平實的攝影語言描述真實的瞬間。`;
 
 /** Planner instructions for user-picked poses: one shot per pose, in order. */
-function poseBlock(poses: Pose[]): string {
+type PlanPose = Pick<Pose, "name" | "description"> & { framing?: string };
+
+function poseBlock(poses: PlanPose[]): string {
   if (poses.length === 0) return "";
   const list = poses
-    .map((p, i) => `${i + 1}. 【${p.name}】${p.description}（建議${p.framing}）`)
+    .map((p, i) => `${i + 1}. 【${p.name}】${p.description}${p.framing ? `（建議${p.framing}）` : ""}`)
     .join("\n");
   return `
 
@@ -137,7 +145,7 @@ function userExtras(req: PlanRequest): string {
   return parts.length ? `\n\n【補充資訊】\n${parts.join("\n")}` : "";
 }
 
-function buildScenePrompt(req: PlanRequest, refLooks: number, poses: Pose[]): string {
+function buildScenePrompt(req: PlanRequest, refLooks: number, poses: PlanPose[]): string {
   const hasRefs = req.referenceImageUrls.length > 0;
   const imageIntro = hasRefs
     ? `你會看到 ${1 + refLooks} 張圖：第一張是「情境圖」，決定這次拍攝的場景、光線、色調與氛圍；其餘 ${refLooks} 張是「角色參考圖」，決定畫面中的人物是誰（臉部五官、髮型髮色、身形）。成品要讓「角色參考圖中的這個人」出現在「情境圖的場景」裡；情境圖裡原本的人物只當作姿勢與構圖的參考，不要保留他的長相。${
@@ -165,7 +173,7 @@ ${SHOT_RULES}
 ${outputFormat(req.count)}`;
 }
 
-function buildCharacterPrompt(req: PlanRequest, refLooks: number, poses: Pose[]): string {
+function buildCharacterPrompt(req: PlanRequest, refLooks: number, poses: PlanPose[]): string {
   return `你是一位資深角色設計師兼人像攝影師。你會看到 ${refLooks} 張同一個角色的參考圖。請為這個角色規劃一組 ${req.count} 張的「角色定裝圖庫」，目的是把這個角色完整建立起來，之後可以拿這組圖當參考，在任何場景中穩定重現同一個人。
 
 【先分析】
@@ -184,7 +192,7 @@ ${SHOT_RULES}
 ${outputFormat(req.count)}`;
 }
 
-function buildCharacterShootPrompt(req: PlanRequest, refLooks: number, poses: Pose[]): string {
+function buildCharacterShootPrompt(req: PlanRequest, refLooks: number, poses: PlanPose[]): string {
   return `你是一位資深人像寫真攝影師兼社群視覺企劃。你會看到 ${refLooks} 張同一位角色的參考圖，它們只用來確認這個人的臉部五官、髮型髮色與身形。
 
 請為這位角色規劃一組 ${req.count} 張的寫真套圖，讓整組圖貼在社群（Instagram、Threads、小紅書）時像同一次拍攝的作品集。這次沒有情境圖，請你依照角色的氣質與下方補充資訊，挑選「一個」具體且統一的拍攝地點與時段（例如午後的咖啡店、傍晚的海邊堤防、有大窗的房間），整組都在這個地點拍攝。
@@ -284,7 +292,10 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
     }
     const body = parsedBody.data;
     // Unknown pose ids are dropped; picked poses decide the shot count.
-    const poses = body.poseIds.map(poseById).filter((p): p is Pose => !!p);
+    const poses: PlanPose[] = [
+      ...body.poseIds.map(poseById).filter((p): p is Pose => !!p),
+      ...body.customPoses.map(p => ({ name: p.name.trim(), description: p.description.trim() })),
+    ].slice(0, PHOTOSET_MAX_SHOTS);
     if (poses.length === 1) {
       throw new PhotosetPlanError(400, `請至少選擇 ${PHOTOSET_MIN_SHOTS} 個姿勢，或清除姿勢選擇改用張數。`);
     }

@@ -11,19 +11,19 @@
   --card-foreground: hsl(220 9% 26%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(220 9% 26%);
-  --primary: hsl(207 90% 54%);
+  --primary: hsl(243 75% 59%);
   --primary-foreground: hsl(0 0% 100%);
   --secondary: hsl(220 9% 26%);
   --secondary-foreground: hsl(0 0% 100%);
   --muted: hsl(220 4% 90%);
   --muted-foreground: hsl(220 9% 26%);
-  --accent: hsl(334 86% 64%);
-  --accent-foreground: hsl(0 0% 100%);
+  --accent: hsl(210 40% 96%);
+  --accent-foreground: hsl(222 47% 11%);
   --destructive: hsl(356 91% 54%);
   --destructive-foreground: hsl(0 0% 100%);
   --border: hsl(220 6% 87%);
   --input: hsl(220 6% 96%);
-  --ring: hsl(207 90% 54%);
+  --ring: hsl(243 75% 59%);
   --chart-1: hsl(207 90% 54%);
   --chart-2: hsl(159 100% 36%);
   --chart-3: hsl(42 93% 56%);
@@ -37,7 +37,7 @@
   --sidebar-accent-foreground: hsl(207 90% 54%);
   --sidebar-border: hsl(220 6% 91%);
   --sidebar-ring: hsl(207 90% 54%);
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Menlo, monospace;
   --radius: 0.75rem;
@@ -88,7 +88,7 @@
   --sidebar-accent-foreground: hsl(207 87% 53%);
   --sidebar-border: hsl(206 16% 26%);
   --sidebar-ring: hsl(207 89% 53%);
-  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-sans: 'Inter', 'PingFang TC', 'Noto Sans TC', 'Microsoft JhengHei', system-ui, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Menlo, monospace;
   --radius: 0.75rem;
@@ -217,5 +217,85 @@
   @keyframes mobileSlideIn {
     from { opacity: 0.8; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
+  }
+}
+
+/* ── App-like behaviour on phones ───────────────────────────────────────── */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+}
+body {
+  overscroll-behavior-y: contain; /* no rubber-band bounce revealing the page behind */
+  background: #f8fafc;
+}
+a, button, [role="button"], label, summary {
+  touch-action: manipulation; /* no 300 ms double-tap delay */
+}
+@media (max-width: 767px) {
+  /* iOS zooms the page when a focused field's text is under 16px. */
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea {
+    font-size: 16px !important;
+  }
+  /* Comfortable touch targets for the small text buttons used on desktop. */
+  button, [role="button"] {
+    min-height: 32px;
+  }
+}
+
+/* ───────────────────────── Tech theme ─────────────────────────
+   Violet -> indigo -> blue brand gradient, sky as the light-blue secondary,
+   fuchsia / amber as pop accents. These rules restyle every page at once:
+   the page canvas, and every solid brand fill (old pages wrote them as
+   indigo / purple / blue / #6366f1), so no page keeps a flat, older look. */
+body {
+  background-color: #f5f6ff;
+  background-image:
+    radial-gradient(900px 520px at -5% -10%, rgba(124, 58, 237, 0.11), transparent 60%),
+    radial-gradient(820px 480px at 105% -5%, rgba(14, 165, 233, 0.11), transparent 60%);
+  background-attachment: fixed;
+}
+/* Page wrappers used a flat grey; let the canvas show through. */
+.min-h-screen.bg-slate-50,
+.min-h-screen.bg-gray-50,
+.min-h-screen.bg-\[\#f8fafc\] {
+  background-color: transparent;
+}
+/* Solid brand fills become the brand gradient. */
+.bg-indigo-600,
+.bg-purple-600,
+.bg-blue-600,
+.bg-violet-600,
+.bg-primary,
+.bg-\[\#6366f1\] {
+  background-image: linear-gradient(135deg, #7c3aed 0%, #4f46e5 48%, #2563eb 100%);
+}
+button.bg-indigo-600:not(:disabled):hover,
+button.bg-purple-600:not(:disabled):hover,
+button.bg-blue-600:not(:disabled):hover,
+button.bg-primary:not(:disabled):hover,
+button.bg-\[\#6366f1\]:not(:disabled):hover {
+  filter: brightness(1.1);
+  box-shadow: 0 10px 28px -10px rgba(99, 70, 229, 0.55);
+}
+
+@layer utilities {
+  .text-brand {
+    background-image: linear-gradient(120deg, #7c3aed, #2563eb 60%, #0ea5e9);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  /* Faint grid, for dark hero panels. */
+  .tech-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+    background-size: 28px 28px;
+  }
+  .glass {
+    background-color: rgba(255, 255, 255, 0.82);
+    -webkit-backdrop-filter: blur(14px);
+    backdrop-filter: blur(14px);
   }
 }

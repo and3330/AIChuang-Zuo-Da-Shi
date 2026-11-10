@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { useUser } from "@/App";
+import { useUser } from "@/hooks/use-user";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,140 +10,10 @@ import { useSeo } from "@/hooks/use-seo";
 import { Link, useLocation } from "wouter";
 import type { User } from "@shared/schema";
 
-function NavigationHeader() {
-  const { user } = useUser();
-  const [, setLocation] = useLocation();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const queryClient = useQueryClient();
-
-  const handleLogout = async () => {
-    await apiRequest("POST", "/api/auth/logout");
-    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-    setLocation("/");
-  };
-
-  if (!user) return null;
-
-  return (
-    <header className="bg-white shadow-sm border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
-          <Link href="/" className="flex items-center gap-2">
-            <span className="text-2xl">✨</span>
-            <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-              AI 創意工坊
-            </span>
-          </Link>
-          <div className="flex items-center gap-4">
-            <nav className="hidden sm:flex items-center gap-1">
-              <Link href="/">
-                <Button variant="ghost" size="sm" className="text-gray-600 hover:text-purple-600">
-                  <i className="fas fa-home mr-1"></i> 首頁
-                </Button>
-              </Link>
-              <Link href="/drama">
-                <Button variant="ghost" size="sm" className="text-emerald-600 hover:text-emerald-700 font-medium">
-                  🎬 漫劇工作室
-                </Button>
-              </Link>
-              <Link href="/character-library">
-                <Button variant="ghost" size="sm" className="text-indigo-600 hover:text-indigo-700 font-medium">
-                  🎭 角色庫
-                </Button>
-              </Link>
-              <Link href="/scene-library">
-                <Button variant="ghost" size="sm" className="text-amber-600 hover:text-amber-700 font-medium">
-                  🏞 場景庫
-                </Button>
-              </Link>
-              {user.isAdmin && (
-                <Link href="/nsfw">
-                  <Button variant="ghost" size="sm" className="text-rose-600 hover:text-rose-700 font-medium">
-                    🔞 NSFW
-                  </Button>
-                </Link>
-              )}
-              <Link href="/account">
-                <Button variant="ghost" size="sm" className="text-purple-600 font-medium">
-                  <i className="fas fa-user mr-1"></i> 帳戶
-                </Button>
-              </Link>
-              <Link href="/transactions">
-                <Button variant="ghost" size="sm" className="text-gray-600 hover:text-purple-600">
-                  <i className="fas fa-history mr-1"></i> 交易記錄
-                </Button>
-              </Link>
-              {user.isAdmin && (
-                <Link href="/admin">
-                  <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700">
-                    <i className="fas fa-cog mr-1"></i> 管理後台
-                  </Button>
-                </Link>
-              )}
-            </nav>
-            <div className="flex items-center gap-2 sm:gap-3 sm:pl-3 sm:border-l border-gray-200">
-              <span className="hidden sm:inline text-sm text-gray-600">{user.username}</span>
-              <Link href="/account">
-                <span className="flex items-center gap-1 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 text-yellow-700 px-3 py-1 rounded-full text-sm font-medium cursor-pointer hover:border-yellow-300">
-                  <i className="fas fa-coins text-yellow-500"></i>
-                  {user.credits ?? 0}
-                </span>
-              </Link>
-              <Button variant="ghost" size="sm" className="sm:hidden text-gray-600" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-                <i className={`fas ${mobileMenuOpen ? 'fa-times' : 'fa-bars'} text-lg`}></i>
-              </Button>
-              <Button variant="outline" size="sm" onClick={handleLogout} className="hidden sm:flex text-gray-500 hover:text-red-500">
-                <i className="fas fa-sign-out-alt mr-1"></i> 登出
-              </Button>
-            </div>
-          </div>
-        </div>
-      </div>
-      {mobileMenuOpen && (
-        <div className="sm:hidden border-t border-gray-200 bg-white">
-          <div className="px-4 py-3 space-y-1">
-            <Link href="/" onClick={() => setMobileMenuOpen(false)}>
-              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-600">
-                <i className="fas fa-home w-5 text-center"></i>
-                <span>首頁</span>
-              </div>
-            </Link>
-            <Link href="/account" onClick={() => setMobileMenuOpen(false)}>
-              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-purple-600 bg-purple-50 font-medium">
-                <i className="fas fa-user w-5 text-center"></i>
-                <span>帳戶 / 充值積分</span>
-              </div>
-            </Link>
-            <Link href="/transactions" onClick={() => setMobileMenuOpen(false)}>
-              <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-gray-700 hover:bg-purple-50 hover:text-purple-600">
-                <i className="fas fa-history w-5 text-center"></i>
-                <span>交易記錄</span>
-              </div>
-            </Link>
-            {user.isAdmin && (
-              <Link href="/admin" onClick={() => setMobileMenuOpen(false)}>
-                <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-red-600 hover:bg-red-50">
-                  <i className="fas fa-cog w-5 text-center"></i>
-                  <span>管理後台</span>
-                </div>
-              </Link>
-            )}
-            <div className="border-t border-gray-100 pt-2 mt-2">
-              <div className="flex items-center justify-between px-3 py-2">
-                <span className="text-sm text-gray-500">{user.username}</span>
-                <Button variant="outline" size="sm" onClick={handleLogout} className="text-red-500 hover:text-red-600 hover:bg-red-50">
-                  <i className="fas fa-sign-out-alt mr-1"></i> 登出
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </header>
-  );
-}
-
-export { NavigationHeader };
+// The header is shared by every page; it lives in components/AppNav.tsx.
+// Re-exported here because older pages import it from this module.
+export { NavigationHeader } from "@/components/AppNav";
+import { NavigationHeader } from "@/components/AppNav";
 
 export default function AccountPage() {
   const { user } = useUser();
