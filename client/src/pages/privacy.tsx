@@ -57,7 +57,7 @@ export default function PrivacyPage() {
               <ul className="list-disc pl-6 space-y-2 mt-2">
                 <li>提供、維護及改善本平台的 AI 圖片與影片生成服務。</li>
                 <li>處理您的帳戶註冊、登入驗證及積分交易。</li>
-                <li>透過第三方 AI API（BytePlus ARK）處理您的生成請求。</li>
+                <li>透過第三方 AI API（AtlasCloud）處理您的生成請求。</li>
                 <li>透過 Stripe 處理您的付款交易。</li>
                 <li>偵測、防範並處理技術問題或安全事件。</li>
                 <li>依法律要求或政府機關合法請求提供資料。</li>
@@ -69,7 +69,7 @@ export default function PrivacyPage() {
               <ul className="list-disc pl-6 space-y-2">
                 <li>您的密碼經過 bcrypt 加密演算法雜湊處理後儲存，本平台無法還原您的原始密碼。</li>
                 <li>付款資訊由 Stripe 安全處理，本平台不直接儲存您的信用卡或金融卡資料。</li>
-                <li>AI 生成的圖片及影片以暫存 URL 形式存在，由 BytePlus API 提供，本平台不永久保存生成結果。</li>
+                <li>AI 生成的圖片及影片以暫存 URL 形式存在，由 AtlasCloud API 提供，本平台不永久保存生成結果。</li>
                 <li>您上傳的原始圖片儲存於雲端物件儲存服務中，並採取適當的存取控制措施。</li>
                 <li>我們採用業界標準的安全措施保護您的資料，包括 HTTPS 加密傳輸及安全的伺服器環境。</li>
               </ul>
@@ -79,7 +79,7 @@ export default function PrivacyPage() {
               <h2 className="text-lg font-semibold text-gray-800 mt-6 mb-3">五、第三方服務</h2>
               <p>本平台使用以下第三方服務，這些服務可能會收集或處理您的部分資料：</p>
               <ul className="list-disc pl-6 space-y-2 mt-2">
-                <li><strong>BytePlus ARK API：</strong>處理 AI 圖片及影片生成請求，包括您提供的提示詞及上傳的圖片。</li>
+                <li><strong>AtlasCloud API：</strong>處理 AI 圖片及影片生成請求，包括您提供的提示詞及上傳的圖片。</li>
                 <li><strong>Stripe：</strong>處理積分充值的付款交易。Stripe 的隱私政策請參閱其官方網站。</li>
                 <li><strong>雲端儲存服務：</strong>用於儲存您上傳的圖片檔案。</li>
               </ul>

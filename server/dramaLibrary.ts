@@ -23,10 +23,9 @@ import {
 import Anthropic from "@anthropic-ai/sdk";
 import archiver from "archiver";
 import mammoth from "mammoth";
-import { assertAllowedRemoteUrl } from "./ssrfGuard";
+import { assertAllowedRemoteUrl, assertPublicHttpsUrl } from "./ssrfGuard";
+import { atlasGenerateImage, atlasIsConfigured } from "./atlasProvider";
 
-const ARK_IMAGE_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
-const SEEDREAM_MODEL = "ep-20260720160902-zmphq";
 
 // Four-view image presets (all share the same base portrait so we get a
 // consistent character rotated around — the prompt does the work of
@@ -135,8 +134,7 @@ export function registerDramaLibraryRoutes(
         return res.status(400).json({ error: "請先上傳至少一張角色參考圖" });
       }
 
-      const apiKey = process.env.ARK_API_KEY;
-      if (!apiKey) return res.status(500).json({ error: "ARK_API_KEY 未設定" });
+      if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
 
       // Atomic compare-and-set: claim the in-flight slot before deducting
       // credits. Concurrent duplicate requests get rejected here without ever
@@ -184,30 +182,16 @@ export function registerDramaLibraryRoutes(
                 `${baseDescription}${preset.promptZh}${styleHint}（保持與第 1 張參考圖完全一致的角色外貌、髮色、五官、年齡與服裝）`
               );
               const requestBody: any = {
-                model: SEEDREAM_MODEL,
                 prompt: fullPrompt,
                 image: refBase64s.length === 1 ? refBase64s[0] : refBase64s,
-                response_format: "url",
                 size: "1440x2560",
-                watermark: true,
               };
-              const apiResp = await fetch(ARK_IMAGE_ENDPOINT, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-                body: JSON.stringify(requestBody),
-              });
-              if (!apiResp.ok) {
-                const err = await apiResp.text();
-                throw new Error(`API ${apiResp.status}: ${err.slice(0, 200)}`);
-              }
-              const apiResult = await apiResp.json();
-              const imageUrl = apiResult.data?.[0]?.url;
-              if (!imageUrl) throw new Error("API 未回傳圖片 URL");
+              const imageUrl = await atlasGenerateImage({ prompt: requestBody.prompt, images: requestBody.image, size: requestBody.size });
 
               let storedUrl = imageUrl;
               if (bunnyStorage.isConfigured()) {
                 try {
-                  const safe = assertAllowedRemoteUrl(imageUrl);
+                  const safe = assertPublicHttpsUrl(imageUrl);
                   const imgResp = await fetch(safe.toString(), { redirect: "error" });
                   const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
                   const remotePath = `users/${userFolder}/character-library/${character.id}_${preset.key}.jpg`;
@@ -367,12 +351,11 @@ export function registerDramaLibraryRoutes(
         });
       }
 
-      const apiKey = process.env.ARK_API_KEY;
-      if (!apiKey) return res.status(500).json({ error: "ARK_API_KEY 未設定（Claude）" });
+      if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) return res.status(500).json({ error: "Claude API Key 未設定（AI_INTEGRATIONS_ANTHROPIC_API_KEY）" });
 
       const anthropic = new Anthropic({
-        apiKey,
-        baseURL: "https://ark.ap-southeast.bytepluses.com/api/v3/anthropic",
+        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
       });
 
       const prompt = `你是抖音/TikTok 直式短劇（漫劇）的資深編劇與分鏡導演。請把以下故事原文改寫為可拍的短劇分鏡腳本。
@@ -505,12 +488,11 @@ ${rawText}`;
       if (sceneIdx < 0 || sceneIdx >= scenes.length) return res.status(400).json({ error: "幕索引超出範圍" });
       const scene = scenes[sceneIdx];
 
-      const apiKey = process.env.ARK_API_KEY;
-      if (!apiKey) return res.status(500).json({ error: "ARK_API_KEY 未設定" });
+      if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) return res.status(500).json({ error: "Claude API Key 未設定（AI_INTEGRATIONS_ANTHROPIC_API_KEY）" });
 
       const anthropic = new Anthropic({
-        apiKey,
-        baseURL: "https://ark.ap-southeast.bytepluses.com/api/v3/anthropic",
+        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
       });
 
       // Always pass prev/next scene context to Claude so rewriter understands
@@ -533,7 +515,7 @@ ${sceneChainOn ? `
 - 鏡頭起手與收尾的構圖／角色站位需與相鄰幕一致` : `
 請參考前後幕的劇情走向，避免動作或情緒與相鄰幕互相矛盾。`}`;
 
-      const prompt = `你是 SeedDance 2.0 圖生影片的提示詞專家。請根據以下分鏡資訊，寫出一段精煉、專業的視頻生成提示詞（限 100 字內，繁中）：
+      const prompt = `你是 WAN 3.0 圖生影片的提示詞專家。請根據以下分鏡資訊，寫出一段精煉、專業的視頻生成提示詞（限 100 字內，繁中）：
 
 【本幕場景描述】${scene.description ?? ""}
 【台詞】${scene.dialogue ?? "（無）"}
@@ -579,8 +561,7 @@ ${sceneChainOn ? `
       if (sceneIdx < 0 || sceneIdx >= scenes.length) return res.status(400).json({ error: "幕索引超出範圍" });
       const scene = scenes[sceneIdx];
 
-      const apiKey = process.env.ARK_API_KEY;
-      if (!apiKey) return res.status(500).json({ error: "ARK_API_KEY 未設定" });
+      if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
 
       const FRAME_COST = 6; // 2 frames × 3 credits
 
@@ -705,28 +686,16 @@ ${sceneChainOn ? `
           const genOne = async (framePrompt: string, label: "first" | "last"): Promise<string | null> => {
             try {
               const requestBody: any = {
-                model: SEEDREAM_MODEL,
                 prompt: enhanceImagePrompt(framePrompt),
-                response_format: "url",
                 size: imageSize,
-                watermark: true,
-                ...(episode.globalSeed ? { seed: episode.globalSeed } : {}),
               };
               if (allRefs.length > 0) {
                 requestBody.image = allRefs.length === 1 ? allRefs[0] : allRefs;
               }
-              const apiResp = await fetch(ARK_IMAGE_ENDPOINT, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-                body: JSON.stringify(requestBody),
-              });
-              if (!apiResp.ok) throw new Error(`API ${apiResp.status}`);
-              const apiResult = await apiResp.json();
-              const imageUrl = apiResult.data?.[0]?.url;
-              if (!imageUrl) throw new Error("API 未回傳圖片");
+              const imageUrl = await atlasGenerateImage({ prompt: requestBody.prompt, images: requestBody.image, size: requestBody.size });
 
               if (bunnyStorage.isConfigured()) {
-                const safe = assertAllowedRemoteUrl(imageUrl);
+                const safe = assertPublicHttpsUrl(imageUrl);
                 const imgResp = await fetch(safe.toString(), { redirect: "error" });
                 const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
                 const remotePath = `users/${userFolder}/drama/${episode.projectId}_ep${episode.episodeNumber}_scene${sceneIdx}_${label}.jpg`;

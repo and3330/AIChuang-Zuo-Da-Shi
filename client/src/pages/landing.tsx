@@ -6,8 +6,8 @@ import { useSeo } from "@/hooks/use-seo";
 export default function LandingPage() {
   useSeo({
     title: "AI 創意工坊 - AI 圖片與影片生成平台 | 文字生圖、圖片編輯、AI 影片製作",
-    description: "AI 創意工坊是專業級 AI 圖片與影片生成平台，支援文字生圖、圖片編輯、AI 影片生成、多圖融合、序列生成。使用 Seedream 5.0 與 SeedDance 2.0 原生 API，註冊即送 10 積分。",
-    keywords: "AI圖片生成,AI影片生成,文字生圖,圖片編輯,AI創作,SeedDance,Seedream,AI繪圖,人工智慧,AI創意工坊",
+    description: "AI 創意工坊是專業級 AI 圖片與影片生成平台，支援文字生圖、圖片編輯、AI 影片生成、多圖融合、序列生成。使用 Seedream 5.5 與 WAN 3.0 原生 API，註冊即送 10 積分。",
+    keywords: "AI圖片生成,AI影片生成,文字生圖,圖片編輯,AI創作,WAN,Seedream,AI繪圖,人工智慧,AI創意工坊",
   });
 
   return (
@@ -33,9 +33,9 @@ export default function LandingPage() {
 
       <div className="fixed top-16 left-0 right-0 z-40 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white py-2 overflow-hidden">
         <div className="animate-marquee whitespace-nowrap text-sm font-medium">
-          <span className="mx-8">📢 圖片生影片、文字生影片功能正在更新中，預計 2/24 更新至 SeedDance 2.0，敬請期待！</span>
-          <span className="mx-8">📢 圖片生影片、文字生影片功能正在更新中，預計 2/24 更新至 SeedDance 2.0，敬請期待！</span>
-          <span className="mx-8">📢 圖片生影片、文字生影片功能正在更新中，預計 2/24 更新至 SeedDance 2.0，敬請期待！</span>
+          <span className="mx-8">📢 圖片生成已升級至 Seedream 5.5，影片生成已升級至 WAN 3.0！</span>
+          <span className="mx-8">📢 圖片生成已升級至 Seedream 5.5，影片生成已升級至 WAN 3.0！</span>
+          <span className="mx-8">📢 圖片生成已升級至 Seedream 5.5，影片生成已升級至 WAN 3.0！</span>
         </div>
       </div>
 
@@ -60,10 +60,10 @@ export default function LandingPage() {
           </h1>
 
           <p className="text-xl sm:text-2xl text-gray-300 mb-4 font-medium">
-            基於 Seedream 5.0 與 SeedDance 2.0 的專業級 AI 創作平台
+            基於 Seedream 5.5 與 WAN 3.0 的專業級 AI 創作平台
           </p>
           <p className="text-gray-400 mb-10 max-w-2xl mx-auto">
-            直接使用 BytePlus ARK 原生 API，無中間層，無延遲損耗。從圖片編輯、文字生圖到 AI 影片生成，一站式完成所有創意需求。
+            直接使用 AtlasCloud 原生 API，無中間層，無延遲損耗。從圖片編輯、文字生圖到 AI 影片生成，一站式完成所有創意需求。
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -118,7 +118,7 @@ export default function LandingPage() {
                       <i className="fas fa-image text-white text-xl"></i>
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">Seedream 5.0</h3>
+                      <h3 className="text-xl font-bold text-white">Seedream 5.5</h3>
                       <p className="text-sm text-gray-400">圖片編輯與生成模型</p>
                     </div>
                   </div>
@@ -167,7 +167,7 @@ export default function LandingPage() {
                       <i className="fas fa-video text-white text-xl"></i>
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">SeedDance 2.0</h3>
+                      <h3 className="text-xl font-bold text-white">WAN 3.0</h3>
                       <p className="text-sm text-gray-400">AI 影片生成模型</p>
                     </div>
                   </div>
@@ -225,7 +225,7 @@ export default function LandingPage() {
                 color: "text-purple-600",
                 bg: "bg-purple-100",
                 title: "完全原生 API",
-                desc: "直接呼叫 BytePlus ARK API，無中間層封裝，確保最佳效能與最低延遲",
+                desc: "直接呼叫 AtlasCloud API，無中間層封裝，確保最佳效能與最低延遲",
               },
               {
                 icon: "fas fa-layer-group",
@@ -361,7 +361,7 @@ export default function LandingPage() {
             <a href="/privacy" className="hover:text-purple-400 transition-colors">隱私政策</a>
             <a href="/terms" className="hover:text-purple-400 transition-colors">服務條款</a>
           </div>
-          <p className="text-gray-700 text-xs">使用模型：SeedDance 2.0 · Seedream 5.0</p>
+          <p className="text-gray-700 text-xs">使用模型：WAN 3.0 · Seedream 5.5</p>
         </div>
       </footer>
     </div>

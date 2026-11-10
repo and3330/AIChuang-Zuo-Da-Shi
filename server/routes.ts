@@ -12,9 +12,9 @@ import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
 import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
+import { registerPhotosetRoutes } from "./photoset";
 import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
-import { GMI_IMAGE_MODELS, GMI_IMAGE_MODEL_LIST, gmiGenerateImage } from "./gmiProvider";
-import { ATLAS_IMAGE_MODELS, ATLAS_IMAGE_MODEL_LIST, atlasGenerateImage } from "./atlasProvider";
+import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIsConfigured, ATLAS_EDIT_MODEL, ATLAS_T2I_MODEL, ATLAS_I2V_MODEL, ATLAS_T2V_MODEL, ATLAS_MAX_REFERENCE_IMAGES } from "./atlasProvider";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -87,16 +87,6 @@ declare module "express-session" {
     isAdmin: boolean;
   }
 }
-
-function convertAspectRatioToSize(size: string): string {
-  return size;
-}
-
-const SEEDDANCE_MODEL = "ep-20260720160902-zmphq";
-const ARK_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/images/generations";
-
-const VIDEO_MODEL = process.env.ARK_VIDEO_MODEL || "ep-20250813120833-g4mpb";
-const VIDEO_API_ENDPOINT = "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   if (!req.session.userId) {
@@ -807,52 +797,12 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           : insertImageToImageSchema.parse(req.body);
       }
 
-      // Provider routing. Only single requests can opt into GMI; batch is a
-      // BytePlus-only flow today. We also enforce server-side that GMI must
-      // be text-to-image (the registered models don't take an image input).
-      const rawProvider = !isBatch ? (singleValidated as any)?.provider : undefined;
-      const requestedProvider: "gmi" | "atlas" | "byteplus" =
-        !isBatch && rawProvider === "gmi" ? "gmi"
-        : !isBatch && rawProvider === "atlas" ? "atlas"
-        : "byteplus";
-      const requestedModel: string = !isBatch
-        ? (typeof (singleValidated as any)?.model === "string" ? (singleValidated as any).model.trim() : "")
-        : "";
-      if (requestedProvider === "gmi") {
-        if ((singleValidated as any).type !== "text-to-image") {
-          return res.status(400).json({ error: "GMI 模型目前僅支援文字生圖，請改用 Seedream。" });
-        }
-        if (!GMI_IMAGE_MODELS[requestedModel]) {
-          return res.status(400).json({ error: `未支援的 GMI 模型：${requestedModel || "(空白)"}` });
-        }
-      }
-      if (requestedProvider === "atlas") {
-        // AtlasCloud flux-dev-lora supports both text-to-image and
-        // image-to-image, so we only reject unknown models.
-        if (!ATLAS_IMAGE_MODELS[requestedModel]) {
-          return res.status(400).json({ error: `未支援的 AtlasCloud 模型：${requestedModel || "(空白)"}` });
-        }
-      }
-      // Both GMI and Atlas registries generate exactly one image per request.
-      // Reject sequential / maxImages so the charge (perImageCost × N) can
-      // never exceed what is actually produced — that would overcharge on
-      // success and under-refund on failure (refund uses the row creditsUsed).
-      if (requestedProvider !== "byteplus") {
-        const sv = singleValidated as any;
-        if (sv?.sequentialGeneration || (typeof sv?.maxImages === "number" && sv.maxImages > 1)) {
-          return res.status(400).json({ error: "此模型一次僅能生成 1 張圖片，請關閉連續生成。" });
-        }
-      }
-
-      // Per-image credit cost. GMI / Atlas use the registry price flat;
-      // BytePlus still honours the watermark removal premium.
+      // All image generation runs on AtlasCloud Seedream 5.5. Any legacy
+      // `provider` / `model` fields sent by an old client are ignored.
+      // Per-image credit cost honours the watermark removal premium.
       const WATERMARK_REMOVAL_COST = 5;
       const hasWatermark = req.body.watermark !== false;
-      const perImageCost = requestedProvider === "gmi"
-        ? GMI_IMAGE_MODELS[requestedModel].creditsPerImage
-        : requestedProvider === "atlas"
-        ? ATLAS_IMAGE_MODELS[requestedModel].creditsPerImage
-        : (hasWatermark ? 3 : 3 + WATERMARK_REMOVAL_COST);
+      const perImageCost = hasWatermark ? 3 : 3 + WATERMARK_REMOVAL_COST;
 
       let creditsNeeded: number;
       if (batchValidated) {
@@ -873,9 +823,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       const newBalance = (user.credits || 0) - creditsNeeded;
       await storage.updateUserCredits(userId, newBalance);
-      const watermarkNote = requestedProvider === "gmi"
-        ? `（${requestedModel}）`
-        : (hasWatermark ? "" : "（含去浮水印）");
+      const watermarkNote = hasWatermark ? "" : "（含去浮水印）";
       await storage.createCreditTransaction({
         userId,
         type: "consume",
@@ -886,6 +834,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       if (batchValidated) {
         const generations = await storage.createBatchImageGenerations({ ...batchValidated, userId });
+        await Promise.all(generations.map(gen =>
+          storage.updateImageGeneration(gen.id, { provider: "atlas", model: ATLAS_EDIT_MODEL } as any)));
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         generations.forEach(gen => {
@@ -904,9 +854,9 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         const generation = await storage.createImageGeneration({
           ...(singleValidated as any),
           userId,
-          provider: requestedProvider,
-          model: requestedProvider !== "byteplus" ? requestedModel : undefined,
-          // Store the actual amount charged (which for BytePlus sequential
+          provider: "atlas",
+          model: (singleValidated as any).type === "text-to-image" ? ATLAS_T2I_MODEL : ATLAS_EDIT_MODEL,
+          // Store the actual amount charged (which for sequential
           // generation is perImageCost × maxImages) so a failure refunds
           // exactly what was deducted.
           creditsUsed: creditsNeeded,
@@ -1021,255 +971,49 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       const startTime = Date.now();
 
-      // === GMI Cloud branch ===
-      // When the row was created with provider="gmi" (currently only from the
-      // /nsfw page) we bypass the entire BytePlus ARK request/streaming code
-      // below and just submit the job to GMI, poll, then funnel the resulting
-      // image URL through the same Bunny upload + DB update path used for the
-      // single (non-sequential) case.
-      if (generation.provider === "gmi") {
-        const modelId = generation.model || "Z-Image";
-        try {
-          const { imageUrl } = await gmiGenerateImage({
-            modelId,
-            prompt: enhanceImagePrompt(generation.prompt),
-            size: generation.size || undefined,
-            seed: typeof generation.seed === "number" ? generation.seed : undefined,
-            guidanceScale: typeof generation.guidanceScale === "number" ? generation.guidanceScale : undefined,
-          });
-
-          const processingTime = (Date.now() - startTime) / 1000;
-          // SSRF + abuse guards: GMI image URLs are signed CDN links whose
-          // exact host we cannot enumerate, so we use the looser public-https
-          // check (still blocks loopback/private/.internal) and then download
-          // through a helper that enforces content-type=image/*, a 25 MB byte
-          // cap and a 30s timeout. Anything off-spec raises and refunds.
-          assertPublicHttpsUrl(imageUrl);
-          let bunnyImageUrl: string | undefined;
-          if (bunnyStorage.isConfigured()) {
-            for (let attempt = 1; attempt <= 2; attempt++) {
-              try {
-                const imgBuffer = await fetchImageWithLimits(imageUrl, { maxBytes: 25 * 1024 * 1024, timeoutMs: 30_000 });
-                // GMI models don't carry our brand watermark, so skip
-                // addWatermark() entirely — the watermark toggle is a
-                // ByteDance-only concept here.
-                const remotePath = `users/${userFolder}/images/${generationId}.jpg`;
-                bunnyImageUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
-                console.log(`✅ [GMI:${modelId}] uploaded to Bunny: ${bunnyImageUrl}`);
-                break;
-              } catch (e) {
-                console.error(`[GMI] Bunny upload failed (attempt ${attempt}):`, e);
-                if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
-              }
-            }
-          }
-
-          await storage.updateImageGeneration(generationId, {
-            status: "completed",
-            generatedImageUrl: imageUrl,
-            bunnyImageUrl,
-            processingTime,
-            cost: 0.05,
-          });
-          return;
-        } catch (e: any) {
-          console.error(`[GMI:${modelId}] generation failed:`, e?.message || e);
-          throw e; // outer catch handles refund + status update
-        }
+      if (!atlasIsConfigured()) {
+        throw new Error("ATLASCLOUD_API_KEY environment variable is not set. Please configure your AtlasCloud API key for Seedream 5.5.");
       }
 
-      // === AtlasCloud branch (flux-dev-lora, NSFW page) ===
-      // flux-dev-lora supports both text-to-image and image-to-image. For i2i
-      // we read the uploaded source from object storage and pass it as a
-      // base64 data URI. Result is funnelled through the same Bunny upload +
-      // DB update path used elsewhere.
-      if (generation.provider === "atlas") {
-        const modelId = generation.model || "black-forest-labs/flux-dev-lora";
-        try {
-          let refImageDataUri: string | undefined;
-          if (generation.type === "image-to-image" && generation.originalImageUrl) {
-            const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
-            const chunks: Buffer[] = [];
-            for await (const chunk of objectFile.createReadStream()) {
-              chunks.push(Buffer.from(chunk));
-            }
-            refImageDataUri = `data:image/jpeg;base64,${Buffer.concat(chunks).toString("base64")}`;
-          }
-
-          const { imageUrl } = await atlasGenerateImage({
-            modelId,
-            prompt: enhanceImagePrompt(generation.prompt),
-            size: generation.size || undefined,
-            seed: typeof generation.seed === "number" ? generation.seed : undefined,
-            guidanceScale: typeof generation.guidanceScale === "number" ? generation.guidanceScale : undefined,
-            image: refImageDataUri,
-          });
-
-          const processingTime = (Date.now() - startTime) / 1000;
-          // Same SSRF + abuse guards as the GMI path: public-https check then a
-          // limited download (image/* content-type, 25 MB cap, 30s timeout).
-          assertPublicHttpsUrl(imageUrl);
-          let bunnyImageUrl: string | undefined;
-          if (bunnyStorage.isConfigured()) {
-            for (let attempt = 1; attempt <= 2; attempt++) {
-              try {
-                const imgBuffer = await fetchImageWithLimits(imageUrl, { maxBytes: 25 * 1024 * 1024, timeoutMs: 30_000 });
-                const remotePath = `users/${userFolder}/images/${generationId}.jpg`;
-                bunnyImageUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
-                console.log(`✅ [Atlas:${modelId}] uploaded to Bunny: ${bunnyImageUrl}`);
-                break;
-              } catch (e) {
-                console.error(`[Atlas] Bunny upload failed (attempt ${attempt}):`, e);
-                if (attempt < 2) await new Promise(r => setTimeout(r, 3000));
-              }
-            }
-          }
-
-          await storage.updateImageGeneration(generationId, {
-            status: "completed",
-            generatedImageUrl: imageUrl,
-            bunnyImageUrl,
-            processingTime,
-            cost: 0.05,
-          });
-          return;
-        } catch (e: any) {
-          console.error(`[Atlas:${modelId}] generation failed:`, e?.message || e);
-          throw e; // outer catch handles refund + status update
-        }
-      }
-
-      let requestBody: any;
-      let apiKey: string | undefined;
-      
-      apiKey = process.env.ARK_API_KEY;
-      
-      if (generation.type === "text-to-image") {
-        const aspectRatio = generation.size || "1:1";
-        const sizeValue = convertAspectRatioToSize(aspectRatio);
-        
-        const isSequential = generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
-        
-        // Seedream 5.0 Pro does not support the sequential_image_generation
-        // parameter (even "disabled" is rejected with InvalidParameter).
-        // Multi-image ("sequential") requests are handled below by issuing
-        // N parallel single-image calls instead.
-        void isSequential;
-        requestBody = {
-          model: SEEDDANCE_MODEL,
-          prompt: enhanceImagePrompt(generation.prompt),
-          response_format: "url",
-          size: sizeValue,
-          stream: false,
-          watermark: generation.watermark !== false
-        };
-      } else {
+      // Reference images (image-to-image). Seedream 5.5 edit takes 1–10
+      // references as base64 data URIs; text-to-image sends none.
+      let referenceImages: string[] = [];
+      if (generation.type !== "text-to-image") {
         if (!generation.originalImageUrl) {
           throw new Error("Original image URL is required for image-to-image generation");
         }
-        
+
         const getImageAsDataUri = async (imageUrl: string): Promise<string> => {
           console.log(`Getting image from object storage: ${imageUrl}`);
           const objectFile = await objectStorageService.getObjectEntityFile(imageUrl);
           const chunks: Buffer[] = [];
-          const stream = objectFile.createReadStream();
-          
-          for await (const chunk of stream) {
+          for await (const chunk of objectFile.createReadStream()) {
             chunks.push(Buffer.from(chunk));
           }
-          
-          const imageBuffer = Buffer.concat(chunks);
-          const base64Image = imageBuffer.toString('base64');
-          return `data:image/jpeg;base64,${base64Image}`;
+          return `data:image/jpeg;base64,${Buffer.concat(chunks).toString("base64")}`;
         };
-        
-        const primaryDataUri = await getImageAsDataUri(generation.originalImageUrl);
-        console.log(`✅ Primary image converted to base64`);
-        
-        const hasMultipleImages = generation.additionalImageUrls && generation.additionalImageUrls.length > 0;
-        
-        let imageParam: string | string[];
-        
-        if (hasMultipleImages) {
-          const additionalDataUris: string[] = [];
-          for (const additionalUrl of generation.additionalImageUrls!) {
-            const dataUri = await getImageAsDataUri(additionalUrl);
-            additionalDataUris.push(dataUri);
-            console.log(`✅ Additional image converted to base64`);
-          }
-          imageParam = [primaryDataUri, ...additionalDataUris];
-          console.log(`Using multi-image input with ${imageParam.length} images`);
-        } else {
-          imageParam = primaryDataUri;
+
+        const sourceUrls = [generation.originalImageUrl, ...(generation.additionalImageUrls ?? [])]
+          .slice(0, ATLAS_MAX_REFERENCE_IMAGES);
+        for (const url of sourceUrls) {
+          referenceImages.push(await getImageAsDataUri(url));
         }
-        
-        const aspectRatio = generation.size || "2K";
-        const sizeValue = convertAspectRatioToSize(aspectRatio);
-        
-        const isSequentialI2I = generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
-        
-        // See note above: sequential_image_generation is not supported by
-        // Seedream 5.0 Pro; multi-image is handled via parallel calls below.
-        void isSequentialI2I;
-        requestBody = {
-          model: SEEDDANCE_MODEL,
-          prompt: enhanceImagePrompt(generation.prompt),
-          image: imageParam,
-          response_format: "url",
-          size: sizeValue,
-          stream: false,
-          watermark: generation.watermark !== false
-        };
+        console.log(`Using ${referenceImages.length} reference image(s)`);
       }
 
-      console.log(`API Request Body:`, JSON.stringify(requestBody, null, 2));
+      const sizeValue = generation.size || (generation.type === "text-to-image" ? "1:1" : "2K");
+      const finalPrompt = enhanceImagePrompt(generation.prompt);
 
-      console.log(`Using ARK_API_KEY for ${generation.type}: ${apiKey ? 'SET' : 'NOT SET'}`);
-      
-      if (!apiKey) {
-        throw new Error(`ARK_API_KEY environment variable is not set. Please configure your API key for Seedream 5.0.`);
-      }
-      
-      // Single-image synchronous call to Seedream 5.0 Pro. Throws on any
+      // One Seedream 5.5 image via AtlasCloud (submit + poll). Throws on any
       // failure so the outer catch refunds the user's credits.
-      const generateOneImage = async (): Promise<string> => {
-        const response = await fetch(ARK_API_ENDPOINT, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`
-          },
-          body: JSON.stringify(requestBody)
-        });
-
-        console.log(`API response status: ${response.status}`);
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.log(`❌ BytePlus API Error ${response.status}:`);
-          console.log(errorText);
-          throw new Error(`API Error: ${response.status} ${errorText}`);
-        }
-
-        const result = await response.json();
-        console.log(`📋 API response model info:`, JSON.stringify({
-          model: result.model,
-          created: result.created,
-          object: result.object,
-          usage: result.usage
-        }, null, 2));
-        const url = result.data?.[0]?.url;
-        if (!url) {
-          throw new Error("No generated image URL in response");
-        }
-        return url.replace(/&amp;/g, '&');
-      };
+      const generateOneImage = (): Promise<string> =>
+        atlasGenerateImage({ prompt: finalPrompt, images: referenceImages, size: sizeValue });
 
       const isSequential = generation.sequentialGeneration && generation.maxImages && generation.maxImages > 1;
       
       if (isSequential) {
-        // Seedream 5.0 Pro dropped the sequential/streaming API, so fan out
-        // N parallel single-image requests and collect whatever succeeds.
+        // Seedream 5.5 generates one image per request, so fan out N
+        // parallel single-image requests and collect whatever succeeds.
         const count = generation.maxImages!;
         console.log(`Sequential mode: issuing ${count} parallel single-image requests`);
         const settled = await Promise.allSettled(
@@ -1430,30 +1174,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         ? insertTextToVideoSchema.parse(req.body)
         : insertImageToVideoSchema.parse(req.body);
 
-      // Provider routing. GMI route is only valid for image-to-video and the
-      // model id must be in the GMI_VIDEO_MODELS whitelist. Pricing is now
-      // pulled per-model from the registry so each Wan variant can have its
-      // own rate (e.g. Wan 2.2 = 6/10, Wan 2.7 = 8/14).
-      const provider = (validatedData as any).provider === "gmi" ? "gmi" : "byteplus";
-      const modelId = (validatedData as any).model as string | undefined;
-      let gmiPer720 = 6;
-      let gmiPer1080 = 10;
-      if (provider === "gmi") {
-        const { GMI_VIDEO_MODELS } = await import("./gmiProvider");
-        if (videoType !== "image-to-video") {
-          return res.status(400).json({ error: "GMI 影片模型目前僅支援『圖生影片』。" });
-        }
-        if (!modelId || !GMI_VIDEO_MODELS[modelId]) {
-          return res.status(400).json({ error: `不支援的 GMI 影片模型：${modelId ?? "(未指定)"}` });
-        }
-        gmiPer720 = GMI_VIDEO_MODELS[modelId].creditsPerSecond720p;
-        gmiPer1080 = GMI_VIDEO_MODELS[modelId].creditsPerSecond1080p;
-      }
+      // All video generation runs on AtlasCloud WAN 3.0. Any legacy
+      // `provider` / `model` fields sent by an old client are ignored.
+      const provider = "atlas";
+      const modelId = videoType === "image-to-video" ? ATLAS_I2V_MODEL : ATLAS_T2V_MODEL;
       const duration = Math.max(4, Math.min(12, req.body.duration || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
-      const VIDEO_CREDITS_PER_SECOND = provider === "gmi"
-        ? (resolution === "720p" ? gmiPer720 : gmiPer1080)
-        : (resolution === "720p" ? 8 : 15);
+      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 8 : 15;
       const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
 
       if ((user.credits || 0) < creditsNeeded) {
@@ -1526,6 +1253,29 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
     }
   });
 
+  /**
+   * WAN image-to-video needs a publicly reachable image URL. Public https
+   * URLs pass through; object-storage paths are copied to Bunny CDN first.
+   */
+  async function toPublicImageUrl(
+    urlOrPath: string,
+    objectStorageService: ObjectStorageService,
+    bunnyRemotePath: string,
+  ): Promise<string> {
+    if (/^https:\/\//i.test(urlOrPath)) return urlOrPath;
+    if (!bunnyStorage.isConfigured()) {
+      throw new Error("圖生影片需要可公開存取的圖片網址，但 Bunny CDN 尚未設定，無法轉存上傳的圖片。");
+    }
+    const objectFile = await objectStorageService.getObjectEntityFile(urlOrPath);
+    const chunks: Buffer[] = [];
+    for await (const chunk of objectFile.createReadStream()) {
+      chunks.push(Buffer.from(chunk));
+    }
+    // Normalise to JPEG: WAN rejects alpha channels and exotic formats.
+    const jpeg = await sharp(Buffer.concat(chunks)).rotate().flatten({ background: "#ffffff" }).jpeg({ quality: 92 }).toBuffer();
+    return fixBunnyCdnUrl(await bunnyStorage.uploadBuffer(jpeg, bunnyRemotePath)) as string;
+  }
+
   async function processVideoGeneration(generationId: string, objectStorageService: ObjectStorageService) {
     try {
       await storage.updateVideoGeneration(generationId, { status: "processing" });
@@ -1536,357 +1286,89 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const videoUser = await storage.getUser(generation.userId);
       const userFolder = videoUser?.username || generation.userId;
 
-      // ---- GMI Cloud branch (NSFW Wan 2.x image-to-video) ----
-      if (generation.provider === "gmi") {
-        const startTimeGmi = Date.now();
-        try {
-          if (!generation.originalImageUrl) {
-            throw new Error("GMI 圖生影片需要原始圖片");
-          }
-          if (!generation.model) {
-            throw new Error("GMI 影片缺少 model 欄位");
-          }
-          // Reuse the SeedDance helper below — we extract it inline because
-          // it's only defined after this point in the function. Duplicate
-          // here is small enough; later refactor can dedupe.
-          const objectFile = await objectStorageService.getObjectEntityFile(generation.originalImageUrl);
-          const chunks: Buffer[] = [];
-          for await (const chunk of objectFile.createReadStream()) {
-            chunks.push(Buffer.from(chunk));
-          }
-          const imageBuffer = Buffer.concat(chunks);
-          const imageDataUri = `data:image/jpeg;base64,${imageBuffer.toString("base64")}`;
+      // ---- Image-to-video: AtlasCloud WAN 3.0 ----
+      // WAN takes exactly one first frame as a PUBLIC URL, so the uploaded
+      // image is re-hosted on Bunny first. It has no extra-reference-image or
+      // reference-audio inputs — those fields are ignored for image-to-video.
+      if (generation.originalImageUrl) {
+        if (!atlasIsConfigured()) {
+          throw new Error("ATLASCLOUD_API_KEY environment variable is not set");
+        }
+        if ((generation.additionalImageUrls?.length ?? 0) > 0 || generation.referenceAudioUrl) {
+          console.warn(`[Atlas] WAN 3.0 image-to-video ignores extra reference images / reference audio (generation ${generationId})`);
+        }
+        const firstFrameUrl = await toPublicImageUrl(
+          generation.originalImageUrl,
+          objectStorageService,
+          `users/${userFolder}/video-inputs/${generationId}.jpg`,
+        );
+        const { videoUrl, predictionId, processingTime } = await atlasGenerateVideo({
+          prompt: enhanceVideoPrompt(generation.prompt),
+          image: firstFrameUrl,
+          resolution: generation.resolution || "1080p",
+          duration: generation.duration || 5,
+        });
+        await storage.updateVideoGeneration(generationId, { taskId: predictionId });
+        console.log(`✅ WAN video generation completed: ${videoUrl}`);
 
-          const { gmiGenerateVideo } = await import("./gmiProvider");
-          const { videoUrl } = await gmiGenerateVideo({
-            modelId: generation.model,
-            imageDataOrUrl: imageDataUri,
-            prompt: generation.prompt,
-            aspectRatio: (generation.aspectRatio as any) || "9:16",
-            seconds: generation.duration || 5,
-            resolution: (generation.resolution as any) || "720p",
-          });
-          console.log(`✅ GMI video generation completed: ${videoUrl}`);
-
-          // Re-host on Bunny CDN so the original short-lived GMI URL doesn't
-          // 404 once their cache expires. Same pattern as SeedDance below.
-          const { assertPublicHttpsUrl, fetchImageWithLimits } = await import("./ssrfGuard");
-          assertPublicHttpsUrl(videoUrl);
-          let bunnyVideoUrl: string | undefined;
+        // Re-host on Bunny CDN so the provider's short-lived URL doesn't 404.
+        assertPublicHttpsUrl(videoUrl);
+        let bunnyVideoUrl: string | undefined;
+        if (bunnyStorage.isConfigured()) {
           try {
             bunnyVideoUrl = await bunnyStorage.uploadVideoFromUrl(videoUrl, userFolder, generationId);
-            console.log(`✅ GMI video re-hosted on Bunny: ${bunnyVideoUrl}`);
+            console.log(`✅ WAN video re-hosted on Bunny: ${bunnyVideoUrl}`);
           } catch (e) {
-            console.error("Bunny upload of GMI video failed (will keep original URL):", e);
+            console.error("Bunny upload of WAN video failed (will keep original URL):", e);
           }
-
-          const processingTime = (Date.now() - startTimeGmi) / 1000;
-          await storage.updateVideoGeneration(generationId, {
-            status: "completed",
-            generatedVideoUrl: videoUrl,
-            bunnyVideoUrl,
-            processingTime,
-          });
-          return;
-        } catch (e: any) {
-          console.error("GMI video generation failed:", e?.message || e);
-          throw e;
-        }
-      }
-
-      const startTime = Date.now();
-      const apiKey = process.env.ARK_API_KEY;
-
-      if (!apiKey) {
-        throw new Error("ARK_API_KEY environment variable is not set");
-      }
-
-      const promptText = enhanceVideoPrompt(generation.prompt);
-
-      const contentItems: any[] = [
-        {
-          type: "text",
-          text: promptText
-        }
-      ];
-
-      const loadImageAsBase64 = async (imagePath: string): Promise<string> => {
-        const objectFile = await objectStorageService.getObjectEntityFile(imagePath);
-        const chunks: Buffer[] = [];
-        const stream = objectFile.createReadStream();
-        for await (const chunk of stream) {
-          chunks.push(Buffer.from(chunk));
-        }
-        let imageBuffer = Buffer.concat(chunks);
-
-        const MIN_RATIO = 0.40;
-        const MAX_RATIO = 2.50;
-
-        const meta = await sharp(imageBuffer).metadata();
-        const w = meta.width || 1;
-        const h = meta.height || 1;
-        const ratio = w / h;
-
-        if (ratio > MAX_RATIO) {
-          const newW = Math.floor(h * MAX_RATIO);
-          const offsetX = Math.floor((w - newW) / 2);
-          console.log(`⚠️ Image aspect ratio ${ratio.toFixed(2)} > 2.50, cropping width ${w} → ${newW}`);
-          imageBuffer = await sharp(imageBuffer)
-            .extract({ left: offsetX, top: 0, width: newW, height: h })
-            .jpeg()
-            .toBuffer();
-        } else if (ratio < MIN_RATIO) {
-          const newH = Math.floor(w / MIN_RATIO);
-          const offsetY = Math.floor((h - newH) / 2);
-          console.log(`⚠️ Image aspect ratio ${ratio.toFixed(2)} < 0.40, cropping height ${h} → ${newH}`);
-          imageBuffer = await sharp(imageBuffer)
-            .extract({ left: 0, top: offsetY, width: w, height: newH })
-            .jpeg()
-            .toBuffer();
         }
 
-        return `data:image/jpeg;base64,${imageBuffer.toString('base64')}`;
-      };
-
-      if (generation.originalImageUrl) {
-        console.log(`Getting main image from object storage: ${generation.originalImageUrl}`);
-        const imageDataUri = await loadImageAsBase64(generation.originalImageUrl);
-        contentItems.push({
-          type: "image_url",
-          image_url: { url: imageDataUri },
-          // role:"reference_image" is only meaningful in omni mode; the
-          // standard endpoint ignores it. Tagging is harmless either way.
-          role: "reference_image",
+        const costPerSec = (generation.resolution || "1080p") === "720p" ? 5.5 : 11;
+        await storage.updateVideoGeneration(generationId, {
+          status: "completed",
+          generatedVideoUrl: videoUrl,
+          bunnyVideoUrl,
+          processingTime,
+          cost: parseFloat(((generation.duration || 5) * costPerSec).toFixed(4)),
         });
+        return;
       }
 
-      // Extra reference images (omni mode). Loaded sequentially so a single
-      // failed reference logs clearly without aborting the whole job.
-      const additionalRefs = generation.additionalImageUrls || [];
-      for (const refPath of additionalRefs) {
-        try {
-          const refDataUri = await loadImageAsBase64(refPath);
-          contentItems.push({
-            type: "image_url",
-            image_url: { url: refDataUri },
-            role: "reference_image",
-          });
-          console.log(`✅ Added reference image: ${refPath}`);
-        } catch (e: any) {
-          console.warn(`⚠️ Skipping reference image ${refPath}: ${e?.message}`);
-        }
+      // ---- Text-to-video: AtlasCloud WAN 3.0 ----
+      // WAN has no reference-audio input; the native audio track is on.
+      if (!atlasIsConfigured()) {
+        throw new Error("ATLASCLOUD_API_KEY environment variable is not set");
       }
-
-      // Optional reference audio (omni mode). NOTE: we do NOT swallow errors
-      // here — if the user attached audio, they expect it to drive the
-      // soundtrack; silently dropping it would also flip useOmni back to
-      // standard mode and produce a totally different (and unpaid-for) result.
-      let audioAttached = false;
-      const REFERENCE_AUDIO_MAX_BYTES = 25 * 1024 * 1024; // 25MB hard cap
-      const guessAudioMime = (p: string): string => {
-        const ext = p.split("?")[0].split(".").pop()?.toLowerCase() || "mp3";
-        return ext === "wav" ? "audio/wav"
-          : ext === "m4a" ? "audio/mp4"
-          : ext === "ogg" ? "audio/ogg"
-          : "audio/mpeg";
-      };
-      const streamToCappedBuffer = async (
-        stream: NodeJS.ReadableStream,
-        cap: number,
-        label: string,
-      ): Promise<Buffer> => {
-        const chunks: Buffer[] = [];
-        let total = 0;
-        for await (const chunk of stream) {
-          const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as any);
-          total += buf.length;
-          if (total > cap) {
-            throw new Error(`${label} 超過 ${Math.round(cap / 1024 / 1024)}MB 上限`);
-          }
-          chunks.push(buf);
-        }
-        return Buffer.concat(chunks);
-      };
       if (generation.referenceAudioUrl) {
-        const audioPath = generation.referenceAudioUrl;
-        let audioBuffer: Buffer;
-        let mime = guessAudioMime(audioPath);
-        if (/^https?:\/\//i.test(audioPath)) {
-          // SSRF-guard remote URL fetches; reject redirects to keep the
-          // resolved IP equal to the asserted one.
-          ssrfAssertAllowedRemoteUrl(audioPath);
-          const resp = await fetch(audioPath, { redirect: "error" as any });
-          if (!resp.ok || !resp.body) {
-            throw new Error(`下載參考音訊失敗：HTTP ${resp.status}`);
-          }
-          const cl = Number(resp.headers.get("content-length") || 0);
-          if (cl && cl > REFERENCE_AUDIO_MAX_BYTES) {
-            throw new Error(`參考音訊超過 ${REFERENCE_AUDIO_MAX_BYTES / 1024 / 1024}MB 上限`);
-          }
-          const ct = resp.headers.get("content-type")?.split(";")[0]?.trim();
-          if (ct && /^audio\//i.test(ct)) mime = ct;
-          audioBuffer = await streamToCappedBuffer(
-            resp.body as any,
-            REFERENCE_AUDIO_MAX_BYTES,
-            "參考音訊",
-          );
-        } else {
-          const objectFile = await objectStorageService.getObjectEntityFile(audioPath);
-          audioBuffer = await streamToCappedBuffer(
-            objectFile.createReadStream(),
-            REFERENCE_AUDIO_MAX_BYTES,
-            "參考音訊",
-          );
-        }
-        const audioDataUri = `data:${mime};base64,${audioBuffer.toString("base64")}`;
-        contentItems.push({
-          type: "audio_url",
-          audio_url: { url: audioDataUri },
-          role: "reference_audio",
-        });
-        audioAttached = true;
-        console.log(
-          `✅ Added reference audio: ${generation.referenceAudioUrl} ` +
-          `(${(audioBuffer.length / 1024).toFixed(1)} KB, ${mime})`,
-        );
+        console.warn(`[Atlas] WAN 3.0 text-to-video ignores reference audio (generation ${generationId})`);
       }
-
-      // Route through the omni endpoint whenever extra references / audio
-      // are present. Falls back to the standard endpoint for vanilla single-
-      // image (or text-only) jobs to preserve previous behaviour & cost.
-      const useOmni = additionalRefs.length > 0 || audioAttached;
-      const { SEEDDANCE_OMNI_ENDPOINT } = await import("./seedDanceV2");
-      if (useOmni && !SEEDDANCE_OMNI_ENDPOINT) {
-        throw new Error("全能模式未啟用：請在環境變數設定 ARK_VIDEO_OMNI_MODEL 後再使用參考圖/參考音訊功能。");
-      }
-      const modelId = useOmni ? SEEDDANCE_OMNI_ENDPOINT! : VIDEO_MODEL;
-
-      const aspectRatio = generation.aspectRatio || "16:9";
-      const requestBody: any = {
-        model: modelId,
-        content: contentItems,
+      const t2v = await atlasGenerateTextVideo({
+        prompt: enhanceVideoPrompt(generation.prompt),
+        resolution: generation.resolution || "1080p",
         duration: generation.duration || 5,
-        ratio: aspectRatio,
-        watermark: false,
-      };
-      // Omni endpoint defaults generate_audio=true so that a reference audio
-      // can actually drive the soundtrack; standard mode keeps existing
-      // silent-video behaviour unless the caller explicitly opts in later.
-      if (useOmni) requestBody.generate_audio = true;
-
-      console.log(`Creating video generation task...`);
-      console.log(`Prompt: ${promptText} | duration: ${requestBody.duration}s | ratio: ${aspectRatio}`);
-
-      const createResponse = await fetch(VIDEO_API_ENDPOINT, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(requestBody)
+        aspectRatio: generation.aspectRatio || "16:9",
       });
+      await storage.updateVideoGeneration(generationId, { taskId: t2v.predictionId });
+      console.log(`✅ WAN text-to-video completed: ${t2v.videoUrl}`);
 
-      if (!createResponse.ok) {
-        const errorText = await createResponse.text();
-        console.log(`❌ Video API Error ${createResponse.status}:`, errorText);
-        throw new Error(translateApiError(errorText));
-      }
-
-      const createResult = await createResponse.json();
-      const taskId = createResult.id;
-      
-      if (!taskId) {
-        throw new Error("No task ID returned from video generation API");
-      }
-
-      console.log(`✅ Video task created with ID: ${taskId}`);
-      await storage.updateVideoGeneration(generationId, { taskId });
-
-      let attempts = 0;
-      const maxAttempts = 180;
-      let videoUrl: string | null = null;
-
-      while (attempts < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        attempts++;
-
-        const pollResponse = await fetch(`${VIDEO_API_ENDPOINT}/${taskId}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`
-          }
-        });
-
-        if (!pollResponse.ok) {
-          console.log(`Poll attempt ${attempts} failed: ${pollResponse.status}`);
-          continue;
-        }
-
-        const pollResult = await pollResponse.json();
-        console.log(`Poll attempt ${attempts}: status = ${pollResult.status}`);
-
-        if (pollResult.status === "succeeded") {
-          console.log("Video task succeeded, full response:", JSON.stringify(pollResult, null, 2));
-          
-          if (pollResult.content?.video_url && typeof pollResult.content.video_url === "string") {
-            videoUrl = pollResult.content.video_url.replace(/&amp;/g, '&');
-          }
-          else if (pollResult.content && Array.isArray(pollResult.content)) {
-            for (const item of pollResult.content) {
-              if (item.type === "video_url" && item.video_url?.url) {
-                videoUrl = item.video_url.url.replace(/&amp;/g, '&');
-                break;
-              }
-            }
-          }
-          
-          console.log("Extracted video URL:", videoUrl);
-          break;
-        } else if (pollResult.status === "failed") {
-          throw new Error(pollResult.error?.message || "Video generation failed");
-        }
-      }
-
-      const processingTime = (Date.now() - startTime) / 1000;
-
-      if (!videoUrl) {
-        throw new Error("Video generation timed out or no video URL returned");
-      }
-
-      console.log(`✅ Video generation completed: ${videoUrl}`);
-
-      let bunnyVideoUrl: string | undefined;
+      assertPublicHttpsUrl(t2v.videoUrl);
+      let t2vBunnyUrl: string | undefined;
       if (bunnyStorage.isConfigured()) {
         try {
-          bunnyVideoUrl = await bunnyStorage.uploadVideoFromUrl(videoUrl, userFolder, generationId);
-          console.log(`✅ Uploaded video to Bunny.net for user ${userFolder}: ${bunnyVideoUrl}`);
+          t2vBunnyUrl = await bunnyStorage.uploadVideoFromUrl(t2v.videoUrl, userFolder, generationId);
+          console.log(`✅ Uploaded video to Bunny.net for user ${userFolder}: ${t2vBunnyUrl}`);
         } catch (e) {
           console.error("Bunny video upload failed:", e);
         }
       }
-      
-      const duration = generation.duration || 5;
-      const vidRes = generation.resolution || '1080p';
-      const vidAspect = generation.aspectRatio || '16:9';
-      let vidW: number, vidH: number;
-      if (vidRes === '720p') {
-        if (vidAspect === '16:9') { vidW = 1280; vidH = 720; }
-        else if (vidAspect === '9:16') { vidW = 720; vidH = 1280; }
-        else { vidW = 720; vidH = 720; }
-      } else {
-        if (vidAspect === '16:9') { vidW = 1920; vidH = 1080; }
-        else if (vidAspect === '9:16') { vidW = 1080; vidH = 1920; }
-        else { vidW = 1080; vidH = 1080; }
-      }
-      const costPerSec = vidRes === "720p" ? 5.5 : 11;
-      const videoCostTwd = duration * costPerSec;
+
+      const t2vCostPerSec = (generation.resolution || "1080p") === "720p" ? 5.5 : 11;
       await storage.updateVideoGeneration(generationId, {
         status: "completed",
-        generatedVideoUrl: videoUrl,
-        bunnyVideoUrl,
-        processingTime,
-        cost: parseFloat(videoCostTwd.toFixed(4))
+        generatedVideoUrl: t2v.videoUrl,
+        bunnyVideoUrl: t2vBunnyUrl,
+        processingTime: t2v.processingTime,
+        cost: parseFloat(((generation.duration || 5) * t2vCostPerSec).toFixed(4)),
       });
 
     } catch (error) {
@@ -1991,32 +1473,16 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const generation = await storage.getVideoGeneration(videoId);
       if (!generation) return;
 
-      const apiKey = process.env.ARK_API_KEY;
-      if (!apiKey) throw new Error("ARK_API_KEY 未設定");
+      if (!atlasIsConfigured()) throw new Error("ATLASCLOUD_API_KEY 未設定");
 
       const imgResponse = await fetch(imageUrl);
       if (!imgResponse.ok) throw new Error(`無法下載場景圖片: ${imgResponse.status}`);
-      let imageBuffer = Buffer.from(await imgResponse.arrayBuffer());
+      const imageBuffer = Buffer.from(await imgResponse.arrayBuffer());
 
-      // Detect actual image ratio and keep it intact — only enforce API limits (0.40–2.50)
+      // Detect the actual image ratio (WAN output follows the first frame).
       const meta = await sharp(imageBuffer).metadata();
-      let w = meta.width || 1;
-      let h = meta.height || 1;
-      const currentRatio = w / h;
-
-      const MIN_RATIO = 0.40;
-      const MAX_RATIO = 2.50;
-      if (currentRatio > MAX_RATIO) {
-        const newW = Math.floor(h * MAX_RATIO);
-        const offsetX = Math.floor((w - newW) / 2);
-        imageBuffer = await sharp(imageBuffer).extract({ left: offsetX, top: 0, width: newW, height: h }).jpeg().toBuffer();
-        w = newW;
-      } else if (currentRatio < MIN_RATIO) {
-        const newH = Math.floor(w / MIN_RATIO);
-        const offsetY = Math.floor((h - newH) / 2);
-        imageBuffer = await sharp(imageBuffer).extract({ left: 0, top: offsetY, width: w, height: newH }).jpeg().toBuffer();
-        h = newH;
-      }
+      const w = meta.width || 1;
+      const h = meta.height || 1;
 
       // Auto-detect closest standard ratio from actual image dimensions
       const detectedRatio = w / h;
@@ -2029,99 +1495,22 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       await storage.updateVideoGeneration(videoId, { aspectRatio: autoAspect });
       console.log(`🎬 Scene animation: image ${w}x${h} (ratio ${detectedRatio.toFixed(2)}) → auto aspect ${autoAspect}`);
 
-      const imageDataUri = `data:image/jpeg;base64,${imageBuffer.toString("base64")}`;
-
-      let tailDataUri: string | undefined;
-      if (tailImageUrl) {
-        // tailImageUrl is server-resolved from the story's own DB record (not user input), so it's trusted
-        try {
-          const tailResp = await fetch(tailImageUrl);
-          if (tailResp.ok) {
-            const tailBuffer = Buffer.from(await tailResp.arrayBuffer());
-            tailDataUri = `data:image/jpeg;base64,${tailBuffer.toString("base64")}`;
-            console.log(`🎬 Scene ${sceneIdx}: tail_image included for video transition`);
-          } else {
-            console.warn(`Tail image fetch returned ${tailResp.status} for scene ${sceneIdx}`);
-          }
-        } catch (e) {
-          console.error(`Failed to download tail image for scene ${sceneIdx}:`, e);
-        }
-      }
-
       const promptText = enhanceVideoPrompt(generation.prompt || "");
-      console.log(`🎬 Story scene ${sceneIdx}: prompt="${promptText.substring(0, 100)}..." | duration=${generation.duration}s | ratio=${autoAspect}`);
+      console.log(`🎬 Story scene ${sceneIdx}: prompt="${promptText.substring(0, 100)}..." | duration=${generation.duration}s | ratio=${autoAspect} | tail=${!!tailImageUrl}`);
 
-      type VideoContentItem =
-        | { type: "text"; text: string }
-        | { type: "image_url"; image_url: { url: string } };
-
-      const contentItems: VideoContentItem[] = [
-        { type: "text", text: promptText },
-        { type: "image_url", image_url: { url: imageDataUri } },
-      ];
-      if (tailDataUri) {
-        contentItems.push({ type: "image_url", image_url: { url: tailDataUri } });
-      }
-
-      const requestBody: any = {
-        model: VIDEO_MODEL,
-        content: contentItems,
+      // AtlasCloud WAN 3.0: scene image is the first frame; the next scene's
+      // image (when supplied) is the last frame for a smooth transition.
+      // Both are already public CDN / provider URLs.
+      const wan = await atlasGenerateVideo({
+        prompt: promptText,
+        image: imageUrl,
+        lastImage: tailImageUrl,
+        resolution: generation.resolution || "720p",
         duration: generation.duration || 5,
-        ratio: autoAspect,
-        watermark: false,
-      };
-
-      const createResponse = await fetch(VIDEO_API_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify(requestBody),
       });
-
-      if (!createResponse.ok) {
-        const errText = await createResponse.text();
-        throw new Error(translateApiError(errText));
-      }
-
-      const createResult = await createResponse.json();
-      const taskId = createResult.id;
-      if (!taskId) throw new Error("API 未回傳 taskId");
-      await storage.updateVideoGeneration(videoId, { taskId });
-      console.log(`✅ Story scene animation task created: ${taskId} (scene ${sceneIdx})`);
-
-      let videoUrl: string | null = null;
-      let attempts = 0;
-      const maxAttempts = 180;
-
-      while (attempts < maxAttempts) {
-        await new Promise(r => setTimeout(r, 5000));
-        attempts++;
-
-        const pollResponse = await fetch(`${VIDEO_API_ENDPOINT}/${taskId}`, {
-          headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        });
-        if (!pollResponse.ok) { console.log(`Poll ${attempts} failed`); continue; }
-
-        const pollResult = await pollResponse.json();
-        console.log(`Story scene ${sceneIdx} poll ${attempts}: ${pollResult.status}`);
-
-        if (pollResult.status === "succeeded") {
-          if (pollResult.content?.video_url && typeof pollResult.content.video_url === "string") {
-            videoUrl = pollResult.content.video_url.replace(/&amp;/g, "&");
-          } else if (pollResult.content && Array.isArray(pollResult.content)) {
-            for (const item of pollResult.content) {
-              if (item.type === "video_url" && item.video_url?.url) {
-                videoUrl = item.video_url.url.replace(/&amp;/g, "&");
-                break;
-              }
-            }
-          }
-          break;
-        } else if (pollResult.status === "failed") {
-          throw new Error(pollResult.error?.message || "影片生成 API 失敗");
-        }
-      }
-
-      if (!videoUrl) throw new Error("影片生成超時");
+      const videoUrl = wan.videoUrl;
+      await storage.updateVideoGeneration(videoId, { taskId: wan.predictionId });
+      console.log(`✅ Story scene animation done: ${wan.predictionId} (scene ${sceneIdx})`);
 
       const processingTime = (Date.now() - startTime) / 1000;
       let bunnyVideoUrl: string | undefined;
@@ -2991,8 +2380,7 @@ Requirements:
 
       const storyUser = await storage.getUser(story.userId);
       const userFolder = storyUser?.username || story.userId;
-      const apiKey = process.env.ARK_API_KEY;
-      if (!apiKey) throw new Error("圖片生成 API Key 未設定");
+      if (!atlasIsConfigured()) throw new Error("圖片生成 API Key 未設定 (ATLASCLOUD_API_KEY)");
 
       const scenes: StoryScene[] = JSON.parse(story.scenes);
 
@@ -3041,39 +2429,18 @@ Requirements:
       const enhancedScenePrompt = enhanceImagePrompt(scenePrompt);
       if (globalBase64s.length > 0) {
         requestBody = {
-          model: "ep-20260720160902-zmphq",
           prompt: enhancedScenePrompt,
           image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
-          response_format: "url",
           size: imageSize,
-          watermark: true,
-          ...(seedValue ? { seed: seedValue } : {}),
         };
       } else {
         requestBody = {
-          model: "ep-20260720160902-zmphq",
           prompt: enhancedScenePrompt,
-          response_format: "url",
           size: imageSize,
-          watermark: true,
-          ...(seedValue ? { seed: seedValue } : {}),
         };
       }
 
-      const apiResp = await fetch(ARK_API_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!apiResp.ok) {
-        const errText = await apiResp.text();
-        throw new Error(`API error ${apiResp.status}: ${errText}`);
-      }
-
-      const apiResult = await apiResp.json();
-      const imageUrl = apiResult.data?.[0]?.url;
-      if (!imageUrl) throw new Error("API 未回傳圖片 URL");
+      const imageUrl = await atlasGenerateImage({ prompt: requestBody.prompt, images: requestBody.image, size: requestBody.size });
 
       scenes[sceneIdx].imageUrl = imageUrl;
 
@@ -3224,8 +2591,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
       const storyUser = await storage.getUser(story.userId);
       const userFolder = storyUser?.username || story.userId;
-      const apiKey = process.env.ARK_API_KEY;
-      if (!apiKey) throw new Error("圖片生成 API Key 未設定");
+      if (!atlasIsConfigured()) throw new Error("圖片生成 API Key 未設定 (ATLASCLOUD_API_KEY)");
 
       const scenes: StoryScene[] = JSON.parse(story.scenes);
       const referenceImageUrls = story.referenceImageUrls ?? [];
@@ -3311,39 +2677,18 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
             const fullPrompt = `${scenePrompt}${labelNote}`;
             requestBody = {
-              model: "ep-20260720160902-zmphq",
               prompt: enhanceImagePrompt(fullPrompt),
               image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
-              response_format: "url",
               size: imageSize,
-              watermark: true,
-              ...(story.globalSeed ? { seed: story.globalSeed } : {}),
             };
           } else {
             requestBody = {
-              model: "ep-20260720160902-zmphq",
               prompt: enhanceImagePrompt(scenePrompt),
-              response_format: "url",
               size: imageSize,
-              watermark: true,
-              ...(story.globalSeed ? { seed: story.globalSeed } : {}),
             };
           }
 
-          const apiResp = await fetch(ARK_API_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
-            body: JSON.stringify(requestBody),
-          });
-
-          if (!apiResp.ok) {
-            const errText = await apiResp.text();
-            throw new Error(`API error ${apiResp.status}: ${errText}`);
-          }
-
-          const apiResult = await apiResp.json();
-          const imageUrl = apiResult.data?.[0]?.url;
-          if (!imageUrl) throw new Error("API 未回傳圖片 URL");
+          const imageUrl = await atlasGenerateImage({ prompt: requestBody.prompt, images: requestBody.image, size: requestBody.size });
 
           totalCost += 0.05;
           scenes[i].imageUrl = imageUrl;
@@ -3546,7 +2891,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const charB = characterBName?.trim() || "角色B";
       const genreText = genre?.trim() || "短劇";
 
-      const prompt = `你是 SeedDance 2.0 與 Seedream 5.0 的資深短劇分鏡編劇，熟悉抖音/TikTok 直式短劇（漫劇）的爆款敘事節奏與 BytePlus ARK 圖生影片的提示詞最佳實踐。
+      const prompt = `你是 WAN 3.0 與 Seedream 5.5 的資深短劇分鏡編劇，熟悉抖音/TikTok 直式短劇（漫劇）的爆款敘事節奏與 BytePlus ARK 圖生影片的提示詞最佳實踐。
 
 請依下列概念，產出一集完整 ${count} 幕的短劇分鏡腳本：
 
@@ -4200,7 +3545,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     }
   });
 
-  // ─── Animate Scene with SeedDance 2.0 ─────────────────────────────────────
+  // ─── Animate Scene with WAN 3.0 ─────────────────────────────────────
 
   app.post("/api/drama/episodes/:episodeId/animate-scene/:sceneIdx", requireAuth, async (req, res) => {
     try {
@@ -4270,8 +3615,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
       const user = await storage.getUser(episode.userId);
       const userFolder = user?.username || episode.userId;
-      const apiKey = process.env.ARK_API_KEY;
-      if (!apiKey) throw new Error("ARK_API_KEY 未設定");
+      if (!atlasIsConfigured()) throw new Error("ATLASCLOUD_API_KEY 未設定");
 
       const scenes: any[] = JSON.parse(episode.scenes);
       const sceneSizeMap: Record<string, string> = {
@@ -4330,7 +3674,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       };
       // NOTE: image generation has always been sequential here and remains so
       // — chain mode strictly REQUIRES sequential ordering (scene N+1 reads
-      // scene N's last frame), and the BytePlus ARK rate limits make parallel
+      // scene N's last frame), and provider rate limits make parallel
       // batching risky. Conditional parallelism is intentionally out of scope
       // for the chain-mode feature.
       // Resolves the continuity reference image for `curr` based on its
@@ -4477,40 +3821,18 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             }
             const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
             requestBody = {
-              model: "ep-20260720160902-zmphq",
               prompt: enhanceImagePrompt(`${scenePrompt}${labelNote}`),
               image: allRefs.length === 1 ? allRefs[0] : allRefs,
-              response_format: "url",
               size: imageSize,
-              watermark: true,
-              ...(episode.globalSeed ? { seed: episode.globalSeed } :
-                scenes[i]._tempSeed ? { seed: scenes[i]._tempSeed } : {}),
             };
           } else {
             requestBody = {
-              model: "ep-20260720160902-zmphq",
               prompt: enhanceImagePrompt(scenePrompt),
-              response_format: "url",
               size: imageSize,
-              watermark: true,
-              ...(episode.globalSeed ? { seed: episode.globalSeed } : {}),
             };
           }
 
-          const apiResp = await fetch(ARK_API_ENDPOINT, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-            body: JSON.stringify(requestBody),
-          });
-
-          if (!apiResp.ok) {
-            const errText = await apiResp.text();
-            throw new Error(`API error ${apiResp.status}: ${errText}`);
-          }
-
-          const apiResult = await apiResp.json();
-          const imageUrl = apiResult.data?.[0]?.url;
-          if (!imageUrl) throw new Error("API 未回傳圖片 URL");
+          const imageUrl = await atlasGenerateImage({ prompt: requestBody.prompt, images: requestBody.image, size: requestBody.size });
 
           totalCost += 0.05;
           scenes[i].imageUrl = imageUrl;
@@ -4574,8 +3896,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
       const user = await storage.getUser(episode.userId);
       const userFolder = user?.username || episode.userId;
-      const apiKey = process.env.ARK_API_KEY;
-      if (!apiKey) throw new Error("ARK_API_KEY 未設定");
+      if (!atlasIsConfigured()) throw new Error("ATLASCLOUD_API_KEY 未設定");
 
       const scenes: any[] = JSON.parse(episode.scenes);
       const scene = scenes[sceneIdx];
@@ -4678,39 +3999,18 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         if (sceneRefList.length > 0) { labelParts.push(`第 ${idx} 張圖為場景構圖參考`); idx += sceneRefList.length; }
         if (styleList.length > 0) { labelParts.push(`第 ${idx}${styleList.length > 1 ? `-${idx + styleList.length - 1}` : ""} 張圖為畫風風格參考`); }
         requestBody = {
-          model: "ep-20260720160902-zmphq",
           prompt: enhanceImagePrompt(`${scenePrompt}（${labelParts.join("；")}）`),
           image: allRefs.length === 1 ? allRefs[0] : allRefs,
-          response_format: "url",
           size: imageSize,
-          watermark: true,
-          ...(useSeed ? { seed: useSeed } : {}),
         };
       } else {
         requestBody = {
-          model: "ep-20260720160902-zmphq",
           prompt: enhanceImagePrompt(scenePrompt),
-          response_format: "url",
           size: imageSize,
-          watermark: true,
-          ...(useSeed ? { seed: useSeed } : {}),
         };
       }
 
-      const apiResp = await fetch(ARK_API_ENDPOINT, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!apiResp.ok) {
-        const errText = await apiResp.text();
-        throw new Error(`API error ${apiResp.status}: ${errText}`);
-      }
-
-      const apiResult = await apiResp.json();
-      const imageUrl = apiResult.data?.[0]?.url;
-      if (!imageUrl) throw new Error("API 未回傳圖片 URL");
+      const imageUrl = await atlasGenerateImage({ prompt: requestBody.prompt, images: requestBody.image, size: requestBody.size });
 
       scenes[sceneIdx].imageUrl = imageUrl;
       delete scenes[sceneIdx]._tempSeed;
@@ -4777,7 +4077,6 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     bunny: BunnyStorageService
   ) {
     try {
-      const { generateSeedDanceVideo, urlToBase64, buildDramaOmniReferenceImages } = await import("./seedDanceV2");
       const episode = await storage.getDramaEpisode(episodeId);
       if (!episode) return;
       const project = await storage.getDramaProject(projectId);
@@ -4796,50 +4095,29 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const useFirstLast = (opts.useFirstLastFrame ?? scene.useFirstLastFrame ?? false) && hasBothFrames;
 
       const mainImageUrl = scene.bunnyUrl?.split("?")[0] || scene.imageUrl;
-      const mainImageBase64 = useFirstLast ? "" : await urlToBase64(mainImageUrl);
 
       // Prefer AI-generated video prompt → caller-supplied prompt → description
       const videoPrompt = opts.prompt || scene.videoPrompt || scene.description || "電影感鏡頭，角色自然動作";
-      const aspectRatioMap: Record<string, "16:9" | "9:16" | "1:1"> = {
-        "9:16": "9:16", "16:9": "16:9", "1:1": "1:1",
-      };
-      const aspectRatio = aspectRatioMap[project.sceneSize ?? "9:16"] || "9:16";
-      const isOmni = useFirstLast || (opts.useOmniMode ?? false);
 
-      // Build reference images for omni mode: character A → character B → scene ref
-      // Logic extracted to seedDanceV2.buildDramaOmniReferenceImages so it can
-      // be unit-tested in isolation (see scripts/verify-seeddance-omni.ts).
-      const referenceImages: { url: string }[] = isOmni
-        ? await buildDramaOmniReferenceImages({
-            project,
-            scene,
-            loadImage: urlToBase64,
-          })
-        : [];
-      if (isOmni) {
-        console.log(`[Drama] Omni mode: ${referenceImages.length} extra reference images, first/last=${useFirstLast}`);
-      }
-
-      // Build first/last frame refs if mode is on
-      let firstFrameRef: { url: string } | undefined;
-      let lastFrameRef: { url: string } | undefined;
+      // AtlasCloud WAN 3.0 image-to-video: one first frame plus an optional
+      // last frame, both public URLs; output ratio follows the first frame.
+      // WAN has no multi-reference ("omni") input, so opts.useOmniMode no
+      // longer adds character / scene reference images.
+      let firstImageUrl: string = mainImageUrl;
+      let lastImageUrl: string | undefined;
       if (useFirstLast) {
-        const ffUrl = (scene.firstFrameBunnyUrl || scene.firstFrameUrl).split("?")[0];
-        const lfUrl = (scene.lastFrameBunnyUrl || scene.lastFrameUrl).split("?")[0];
-        firstFrameRef = { url: await urlToBase64(ffUrl) };
-        lastFrameRef = { url: await urlToBase64(lfUrl) };
+        firstImageUrl = (scene.firstFrameBunnyUrl || scene.firstFrameUrl).split("?")[0];
+        lastImageUrl = (scene.lastFrameBunnyUrl || scene.lastFrameUrl).split("?")[0];
       }
+      if (!firstImageUrl) throw new Error("此幕尚未生成圖片，無法製作動畫");
 
-      const result = await generateSeedDanceVideo({
+      const result = await atlasGenerateVideo({
         prompt: enhanceVideoPrompt(videoPrompt),
-        mainImage: useFirstLast ? undefined : { url: mainImageBase64 },
-        referenceImages: isOmni ? referenceImages : undefined,
-        firstFrame: firstFrameRef,
-        lastFrame: lastFrameRef,
+        image: firstImageUrl,
+        lastImage: lastImageUrl,
+        resolution: opts.resolution,
         duration: opts.duration,
-        aspectRatio,
-        useOmniMode: isOmni,
-        generateAudio: opts.generateAudio ?? true,
+        audio: opts.generateAudio ?? true,
       });
 
       let videoBunnyUrl: string | undefined;
@@ -4899,6 +4177,9 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
   // ─── Drama Studio extensions: character/scene library, script import,
   //     AI video prompt, first/last frames, ZIP download ─────────────────────
   registerDramaLibraryRoutes(app, { requireAuth, objectStorageService, bunnyStorage });
+
+  // ─── 寫真套圖：情境圖分析 + 鏡頭規劃（生成走既有批次端點）─────────────
+  registerPhotosetRoutes(app, { requireAuth, objectStorageService });
 
   const httpServer = createServer(app);
   return httpServer;

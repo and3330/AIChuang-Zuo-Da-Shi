@@ -1,26 +1,34 @@
 /**
- * AtlasCloud image provider.
+ * AtlasCloud provider — the ONLY image AND video generation backend of the
+ * app (Seedream 5.5 for images, Alibaba WAN 3.0 for video, see bottom of file).
  *
- * Wraps the async image API documented at
- *   https://console.atlascloud.ai  (black-forest-labs/flux-dev-lora)
+ * Models (ByteDance Seedream 5.5):
+ *   bytedance/seedream-v5.5/edit           1–10 reference images + prompt
+ *   bytedance/seedream-v5.5/text-to-image  prompt only (edit requires ≥1 image)
  *
  * Auth header:   Authorization: Bearer ATLASCLOUD_API_KEY
  * Submit job:    POST  {BASE}/api/v1/model/generateImage
- *                body { model, prompt, size, guidance_scale, seed, num_images,
- *                       image?, strength?, mask_image?, loras[] }
- *                returns { data: { id } }
- * Observe job:   GET   {BASE}/api/v1/model/prediction/{id}
- *                returns { data: { status, outputs?[], output?[], error } }
- *                status reaches "completed" / "succeeded" on done,
- *                "failed" on failure, otherwise "queued" / "processing".
+ *                body { model, prompt, reference_images?, size, output_format }
+ *                returns { code, data: { id, status } }
+ * Poll job:      GET   {BASE}/api/v1/model/prediction/{id}
+ *                returns { data: { status, outputs[], error } }
+ *                status reaches "completed" / "succeeded" on done, "failed" on
+ *                failure, otherwise "queued" / "processing".
  *
- * The model is FLUX.1 [dev] with LoRA support. It is NSFW-friendly: the
- * response carries a `has_nsfw_contents` flag for detection but does NOT
- * block generation. It supports text-to-image and image-to-image (via the
- * `image` + `strength` params) plus inpainting (`mask_image`).
+ * Notes for callers:
+ *   - `size` is "W*H" and must be one of the official presets (see below).
+ *   - No `seed` and no `watermark` params. The app's own brand watermark is
+ *     still applied locally via addWatermark() where the caller asks for it.
  */
 
 const ATLAS_BASE = "https://api.atlascloud.ai";
+
+export const ATLAS_EDIT_MODEL = "bytedance/seedream-v5.5/edit";
+export const ATLAS_T2I_MODEL = "bytedance/seedream-v5.5/text-to-image";
+/** Friendly name for logs / UI. */
+export const ATLAS_IMAGE_MODEL_LABEL = "Seedream 5.5";
+/** The edit model accepts at most 10 reference images. */
+export const ATLAS_MAX_REFERENCE_IMAGES = 10;
 
 function authHeader(): Record<string, string> {
   const key = process.env.ATLASCLOUD_API_KEY;
@@ -28,111 +36,64 @@ function authHeader(): Record<string, string> {
   return { Authorization: `Bearer ${key}` };
 }
 
-/* ---------- size helpers ---------- */
-
-function sizeToWH(size: string | undefined): { width: number; height: number } {
-  if (!size) return { width: 1024, height: 1024 };
-  if (size === "2K") return { width: 2048, height: 2048 };
-  if (size === "4K") return { width: 4096, height: 4096 };
-  const m = size.match(/^(\d+)x(\d+)$/);
-  if (m) return { width: parseInt(m[1], 10), height: parseInt(m[2], 10) };
-  return { width: 1024, height: 1024 };
+/** True when the Atlas key is configured (for early 500s in route handlers). */
+export function atlasIsConfigured(): boolean {
+  return !!process.env.ATLASCLOUD_API_KEY;
 }
 
-function sizeToAspect(size: string | undefined): "1:1" | "16:9" | "9:16" | "4:3" | "3:4" {
-  const { width, height } = sizeToWH(size);
-  const r = width / height;
-  if (Math.abs(r - 16 / 9) < 0.15) return "16:9";
-  if (Math.abs(r - 9 / 16) < 0.15) return "9:16";
-  if (Math.abs(r - 4 / 3) < 0.1) return "4:3";
-  if (Math.abs(r - 3 / 4) < 0.1) return "3:4";
-  return "1:1";
-}
+/* ---------- size mapping ---------- */
 
-/** Map an app-level size to a FLUX-friendly "W*H" (asterisk) string. FLUX.1
- *  [dev] is trained around ~1MP, so we keep each dimension near that budget
- *  instead of honouring 2K/4K literally (which slows generation and can OOM). */
-function sizeToAtlasWH(size: string | undefined): string {
-  const aspect = sizeToAspect(size);
-  switch (aspect) {
-    case "16:9": return "1344*768";
-    case "9:16": return "768*1344";
-    case "4:3":  return "1152*896";
-    case "3:4":  return "896*1152";
-    default:     return "1024*1024";
+/** Official Seedream 5.5 size presets (2k / 1.5k / 1k tiers). */
+const ATLAS_SIZE_PRESETS: Array<[number, number]> = [
+  [2048, 2048], [2368, 1776], [1776, 2368], [2816, 1584], [1584, 2816],
+  [2496, 1664], [1664, 2496], [3136, 1344],
+  [1536, 1536], [1792, 1344], [1344, 1792], [2048, 1152], [1152, 2048],
+  [1872, 1248], [1248, 1872], [2352, 1008],
+  [1024, 1024], [1152, 864], [864, 1152], [1424, 800], [800, 1424],
+  [1248, 832], [832, 1248], [1568, 672],
+];
+
+const DEFAULT_AREA = 2048 * 2048;
+
+/**
+ * Map any app-level size ("2K", "4K", "1440x2560", "1024*1024", "16:9", …)
+ * to the closest official preset: aspect ratio first, then pixel budget.
+ */
+export function toAtlasSize(size: string | null | undefined): string {
+  let ratio = 1;
+  let area = DEFAULT_AREA;
+  const s = (size || "").trim();
+  const wh = s.match(/^(\d+)\s*[x*×]\s*(\d+)$/i);
+  const ar = s.match(/^(\d+(?:\.\d+)?)\s*:\s*(\d+(?:\.\d+)?)$/);
+  if (wh) {
+    const w = parseInt(wh[1], 10);
+    const h = parseInt(wh[2], 10);
+    if (w > 0 && h > 0) { ratio = w / h; area = w * h; }
+  } else if (ar) {
+    const a = parseFloat(ar[1]);
+    const b = parseFloat(ar[2]);
+    if (a > 0 && b > 0) ratio = a / b;
+  } else if (/^1k$/i.test(s)) {
+    area = 1024 * 1024;
   }
+  let best = ATLAS_SIZE_PRESETS[0];
+  let bestScore = Infinity;
+  for (const p of ATLAS_SIZE_PRESETS) {
+    const score =
+      Math.abs(Math.log((p[0] / p[1]) / ratio)) * 10 +
+      Math.abs(Math.log((p[0] * p[1]) / area));
+    if (score < bestScore) { bestScore = score; best = p; }
+  }
+  return `${best[0]}*${best[1]}`;
 }
-
-/* ---------- model registry (NSFW-friendly) ---------- */
-
-export type AtlasImageBuildArgs = {
-  prompt: string;
-  size?: string;            // app-level size like "2K", "1920x1920"
-  seed?: number;
-  guidanceScale?: number;
-  /** Public HTTPS URL or base64 data URI of the reference image (i2i). */
-  image?: string;
-  /** i2i transform strength (0 keeps original .. 1 fully reimagines). */
-  strength?: number;
-};
-
-export type AtlasImageModelConfig = {
-  /** AtlasCloud model id, e.g. "black-forest-labs/flux-dev-lora" */
-  id: string;
-  /** Friendly Chinese label shown in the UI */
-  label: string;
-  /** Short description, used as the dropdown subtitle */
-  description: string;
-  /** Whole-number credits charged per generated image */
-  creditsPerImage: number;
-  /** Whether this model accepts a reference image (image-to-image). */
-  supportsI2I: boolean;
-  buildPayload: (args: AtlasImageBuildArgs) => Record<string, any>;
-};
-
-export const ATLAS_IMAGE_MODELS: Record<string, AtlasImageModelConfig> = {
-  "black-forest-labs/flux-dev-lora": {
-    id: "black-forest-labs/flux-dev-lora",
-    label: "FLUX.1 dev + LoRA (Black Forest · 寫實 LoRA)",
-    description: "FLUX.1 [dev] 開源高畫質，內建超寫實 LoRA，支援文字生圖與圖片編輯，NSFW 友善",
-    creditsPerImage: 5,
-    supportsI2I: true,
-    buildPayload: ({ prompt, size, seed, guidanceScale, image, strength }) => {
-      const payload: Record<string, any> = {
-        model: "black-forest-labs/flux-dev-lora",
-        prompt,
-        size: sizeToAtlasWH(size),
-        num_images: 1,
-        // Bake in the Super-Realism LoRA the model ships with — it is what
-        // gives flux-dev-lora its photoreal look.
-        loras: [{ path: "strangerzonehf/Flux-Super-Realism-LoRA", scale: 1 }],
-      };
-      payload.guidance_scale = typeof guidanceScale === "number" ? guidanceScale : 3.5;
-      payload.seed = typeof seed === "number" ? seed : -1;
-      // Image-to-image: only send `image`/`strength` when a reference was
-      // supplied, otherwise the API treats it as text-to-image.
-      if (image) {
-        payload.image = image;
-        payload.strength = typeof strength === "number" ? strength : 0.8;
-      }
-      return payload;
-    },
-  },
-};
-
-/** Lightweight list for the frontend dropdown. */
-export const ATLAS_IMAGE_MODEL_LIST = Object.values(ATLAS_IMAGE_MODELS).map((c) => ({
-  id: c.id,
-  label: c.label,
-  description: c.description,
-  creditsPerImage: c.creditsPerImage,
-  supportsI2I: c.supportsI2I,
-}));
 
 /* ---------- HTTP helpers ---------- */
 
-export async function atlasSubmitJob(payload: Record<string, any>): Promise<string> {
-  const resp = await fetch(`${ATLAS_BASE}/api/v1/model/generateImage`, {
+async function atlasSubmitJob(
+  payload: Record<string, any>,
+  endpoint: "generateImage" | "generateVideo" = "generateImage",
+): Promise<string> {
+  const resp = await fetch(`${ATLAS_BASE}/api/v1/model/${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeader() },
     body: JSON.stringify(payload),
@@ -157,11 +118,11 @@ export async function atlasSubmitJob(payload: Record<string, any>): Promise<stri
 const TERMINAL_OK = new Set(["completed", "succeeded", "success", "finished"]);
 const TERMINAL_FAIL = new Set(["failed", "error", "cancelled", "canceled"]);
 
-export async function atlasPollUntilDone(
+async function atlasPollUntilDone(
   predictionId: string,
   opts: { timeoutMs?: number; intervalMs?: number } = {},
 ): Promise<any> {
-  const timeoutMs = opts.timeoutMs ?? 6 * 60 * 1000; // 6min default for images
+  const timeoutMs = opts.timeoutMs ?? 6 * 60 * 1000;
   const intervalMs = opts.intervalMs ?? 2000;
   const started = Date.now();
   let lastStatus = "(no response yet)";
@@ -198,57 +159,162 @@ export async function atlasPollUntilDone(
   throw new Error(`AtlasCloud 任務輪詢逾時 (last status: ${lastStatus})`);
 }
 
-/* ---------- image URL extraction ---------- */
-
-/**
- * Pull a single image URL out of an AtlasCloud prediction `data` dict. The
- * docs are inconsistent — the code example reads `outputs[0]` while the output
- * schema lists `output[]`. We try both, plus a few generic shapes.
- */
+/** Pull the first output URL (image or video) out of a prediction `data` dict. */
 function extractFirstImageUrl(data: any): string | undefined {
-  if (!data) return undefined;
-  if (typeof data === "string" && /^https?:\/\//.test(data)) return data;
-  if (typeof data !== "object") return undefined;
-
-  for (const key of ["outputs", "output", "images", "result", "results"]) {
+  if (!data || typeof data !== "object") return undefined;
+  for (const key of ["outputs", "output", "image_results", "images", "videos"]) {
     const arr = data[key];
+    if (typeof arr === "string" && /^https?:\/\//.test(arr)) return arr;
     if (Array.isArray(arr) && arr.length > 0) {
       const first = arr[0];
       if (typeof first === "string" && /^https?:\/\//.test(first)) return first;
       if (first && typeof first === "object") {
-        const nested = first.url || first.image_url || first.image;
+        const nested = first.url || first.image_url || first.image || first.video_url;
         if (typeof nested === "string" && /^https?:\/\//.test(nested)) return nested;
       }
     }
-    if (typeof arr === "string" && /^https?:\/\//.test(arr)) return arr;
   }
-
-  if (typeof data.url === "string" && /^https?:\/\//.test(data.url)) return data.url;
-  if (typeof data.image_url === "string") return data.image_url;
   return undefined;
 }
 
 /* ---------- end-to-end helper ---------- */
 
-/** Submit, poll, return final image URL. Caller downloads + re-hosts on Bunny. */
+/**
+ * Generate one image with Seedream 5.5 on AtlasCloud and return its URL.
+ *
+ * `images` are reference images (public URL or base64 data URI). With at
+ * least one image the edit model is used; with none, the text-to-image
+ * sibling. Throws on any failure so callers can refund credits.
+ */
 export async function atlasGenerateImage(args: {
-  modelId: string;
   prompt: string;
-  size?: string;
-  seed?: number;
-  guidanceScale?: number;
-  image?: string;
-  strength?: number;
-}): Promise<{ imageUrl: string; creditsPerImage: number; modelId: string }> {
-  const cfg = ATLAS_IMAGE_MODELS[args.modelId];
-  if (!cfg) throw new Error(`未支援的 AtlasCloud 模型：${args.modelId}`);
-  const payload = cfg.buildPayload(args);
+  images?: string | string[] | null;
+  /** App-level size; mapped to the nearest official preset. */
+  size?: string | null;
+}): Promise<string> {
+  const refs = (Array.isArray(args.images) ? args.images : args.images ? [args.images] : [])
+    .filter((x): x is string => typeof x === "string" && x.length > 0);
+  if (refs.length > ATLAS_MAX_REFERENCE_IMAGES) {
+    console.warn(`[Atlas] ${refs.length} reference images supplied, keeping the first ${ATLAS_MAX_REFERENCE_IMAGES}`);
+  }
+  const referenceImages = refs.slice(0, ATLAS_MAX_REFERENCE_IMAGES);
+
+  const payload: Record<string, any> = {
+    model: referenceImages.length > 0 ? ATLAS_EDIT_MODEL : ATLAS_T2I_MODEL,
+    prompt: args.prompt,
+    size: toAtlasSize(args.size),
+    // Results are re-hosted as .jpg and never need an alpha channel.
+    output_format: "jpeg",
+  };
+  if (referenceImages.length > 0) payload.reference_images = referenceImages;
+
   const predictionId = await atlasSubmitJob(payload);
-  console.log(`[Atlas] submitted ${cfg.id} prediction ${predictionId}, payload keys:`, Object.keys(payload));
+  console.log(`[Atlas] submitted ${payload.model} prediction ${predictionId} (size ${payload.size}, refs ${referenceImages.length})`);
   const done = await atlasPollUntilDone(predictionId);
   const url = extractFirstImageUrl(done);
   if (!url) {
     throw new Error(`AtlasCloud 完成但無法擷取圖片 URL：${JSON.stringify(done).slice(0, 400)}`);
   }
-  return { imageUrl: url, creditsPerImage: cfg.creditsPerImage, modelId: cfg.id };
+  return url.replace(/&amp;/g, "&");
+}
+
+/* ---------- video (Alibaba WAN 3.0) ---------- */
+
+export const ATLAS_I2V_MODEL = "alibaba/wan-3.0/image-to-video";
+export const ATLAS_T2V_MODEL = "alibaba/wan-3.0/text-to-video";
+/** Friendly name for logs / UI. */
+export const ATLAS_VIDEO_MODEL_LABEL = "WAN 3.0";
+
+export type AtlasVideoResult = { videoUrl: string; predictionId: string; processingTime: number };
+
+function wanResolution(r: string | null | undefined): string {
+  return r === "720p" ? "720p" : r === "480p" ? "480p" : "1080p";
+}
+
+function wanDuration(d: number | null | undefined): number {
+  return Math.max(2, Math.min(30, Math.round(d || 5)));
+}
+
+/** Submit a WAN job, poll until done, return the video URL. */
+async function runWanVideo(payload: Record<string, any>): Promise<AtlasVideoResult> {
+  const started = Date.now();
+  const predictionId = await atlasSubmitJob(payload, "generateVideo");
+  console.log(`[Atlas] submitted ${payload.model} prediction ${predictionId} (${payload.resolution}, ${payload.duration}s, ratio=${payload.ratio ?? "first-frame"}, last_image=${!!payload.last_image}, audio=${payload.audio})`);
+  // Videos take minutes; allow 20 min with a 5 s poll interval.
+  const done = await atlasPollUntilDone(predictionId, { timeoutMs: 20 * 60 * 1000, intervalMs: 5000 });
+  const url = extractFirstImageUrl(done);
+  if (!url) {
+    throw new Error(`AtlasCloud 完成但無法擷取影片 URL：${JSON.stringify(done).slice(0, 400)}`);
+  }
+  return {
+    videoUrl: url.replace(/&amp;/g, "&"),
+    predictionId,
+    processingTime: (Date.now() - started) / 1000,
+  };
+}
+
+/**
+ * Text-to-video with WAN 3.0 on AtlasCloud. Throws on any failure so callers
+ * can refund credits.
+ *
+ *   POST {BASE}/api/v1/model/generateVideo
+ *   body { model, prompt, resolution, duration, ratio, audio }
+ *
+ * WAN 3.0 takes no reference audio; `audio` only toggles the native track.
+ */
+export async function atlasGenerateTextVideo(args: {
+  prompt: string;
+  resolution?: string | null;
+  /** Seconds, clamped to the model's 2–30 range. */
+  duration?: number | null;
+  /** "16:9" | "9:16" | "1:1" | "4:3" | "3:4"; anything else → "adaptive". */
+  aspectRatio?: string | null;
+  audio?: boolean;
+}): Promise<AtlasVideoResult> {
+  const ratio = ["16:9", "9:16", "1:1", "4:3", "3:4"].includes(args.aspectRatio || "")
+    ? args.aspectRatio
+    : "adaptive";
+  return runWanVideo({
+    model: ATLAS_T2V_MODEL,
+    prompt: args.prompt,
+    resolution: wanResolution(args.resolution),
+    duration: wanDuration(args.duration),
+    ratio,
+    audio: args.audio ?? true,
+  });
+}
+
+/**
+ * Animate a first frame (optionally towards a last frame) with WAN 3.0 on
+ * AtlasCloud and return the video URL. Throws on any failure so callers can
+ * refund credits.
+ *
+ *   POST {BASE}/api/v1/model/generateVideo
+ *   body { model, prompt, image, last_image?, resolution, duration, audio }
+ *
+ * `image` / `lastImage` must be PUBLIC URLs (the API does not document base64
+ * input). There is no aspect-ratio parameter: the output follows the first
+ * frame. WAN 3.0 takes no extra reference images and no reference audio.
+ */
+export async function atlasGenerateVideo(args: {
+  prompt: string;
+  image: string;
+  lastImage?: string | null;
+  resolution?: string | null;
+  /** Seconds, clamped to the model's 2–30 range. */
+  duration?: number | null;
+  /** Native audio track. Same price either way; defaults to true. */
+  audio?: boolean;
+}): Promise<AtlasVideoResult> {
+  if (!args.image) throw new Error("WAN 圖生影片需要首幀圖片");
+  const payload: Record<string, any> = {
+    model: ATLAS_I2V_MODEL,
+    prompt: args.prompt,
+    image: args.image,
+    resolution: wanResolution(args.resolution),
+    duration: wanDuration(args.duration),
+    audio: args.audio ?? true,
+  };
+  if (args.lastImage) payload.last_image = args.lastImage;
+  return runWanVideo(payload);
 }

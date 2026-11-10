@@ -354,7 +354,7 @@ export class DatabaseStorage implements IStorage {
     additionalImageUrls?: string[];
     /** Persisted so processImageGeneration() can branch on it. */
     provider?: string;
-    /** Provider-specific model id (e.g. GMI "Z-Image"). */
+    /** Provider-specific model id (e.g. "bytedance/seedream-v5.5/edit"). */
     model?: string;
     /** True per-row credit cost. Used by failImageGenerationAndRefund so
      *  the user gets back exactly what they paid (not a hard-coded 3). */
@@ -377,7 +377,7 @@ export class DatabaseStorage implements IStorage {
       status: "pending",
       cost: 0.05,
       creditsUsed: insertGeneration.creditsUsed ?? 3,
-      provider: insertGeneration.provider ?? "byteplus",
+      provider: insertGeneration.provider ?? "atlas",
       model: insertGeneration.model ?? null,
     }).returning();
 
@@ -492,14 +492,12 @@ export class DatabaseStorage implements IStorage {
     const duration = insertGeneration.duration ?? 5;
     const resolution = insertGeneration.resolution ?? "1080p";
     const aspectRatio = insertGeneration.aspectRatio ?? "16:9";
-    // Provider-aware pricing. GMI Wan i2v is cheaper than SeedDance.
-    // Keep these tables in sync with server/gmiProvider.ts GMI_VIDEO_MODELS
-    // and the /api/video-generations route handler.
-    const provider = (insertGeneration as any).provider === "gmi" ? "gmi" : "byteplus";
-    const model = (insertGeneration as any).model ?? null;
-    const creditsPerSecond = provider === "gmi"
-      ? (resolution === "720p" ? 6 : 10)
-      : (resolution === "720p" ? 8 : 15);
+    // All video runs on AtlasCloud WAN 3.0. Keep pricing in sync with the
+    // /api/video-generations route handler.
+    const provider = "atlas";
+    const model = (insertGeneration as any).model
+      ?? (insertGeneration.type === "image-to-video" ? "alibaba/wan-3.0/image-to-video" : "alibaba/wan-3.0/text-to-video");
+    const creditsPerSecond = resolution === "720p" ? 8 : 15;
 
     const fps = 24;
     let width: number, height: number;

@@ -1,13 +1,11 @@
 // Shared SSRF allowlist used by every server-side image fetch we make.
-// Only Bunny CDN (the user-configured pull zone + storage host) and BytePlus
-// ARK image hosts are permitted. Internal/private hosts are explicitly blocked.
+// Only Bunny CDN (the user-configured pull zone + storage host) is permitted.
+// Internal/private hosts are explicitly blocked.
 
 const ALLOWED_REMOTE_HOSTS = new Set<string>(
   [
     process.env.BUNNY_CDN_HOST,
     "storage.bunnycdn.com",
-    "ark-content-generation-v2-ap-southeast.tos-ap-southeast-1.bytepluses.com",
-    "tos-ap-southeast-1.bytepluses.com",
   ].filter((h): h is string => !!h && h.length > 0)
 );
 
@@ -44,8 +42,7 @@ export function safeRemoteUrl(rawUrl: string): URL | null {
 
 /**
  * Looser variant for providers whose CDN hosts we cannot enumerate ahead of
- * time (e.g. GMI Cloud, which hands back signed object-storage URLs across
- * many AWS/GCS regions). We still block internal/private targets and require
+ * time (AtlasCloud hands back signed object-storage URLs). We still block internal/private targets and require
  * https, but skip the allowlist. Use this only with output URLs that come
  * from a trusted upstream API response — never from user input.
  */

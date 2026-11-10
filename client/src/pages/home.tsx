@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor } from "@shared/imageSizes";
 import { useUser } from "@/App";
 import { NavigationHeader } from "@/pages/account";
 import { UnifiedUploader } from "@/components/UnifiedUploader";
@@ -55,7 +56,7 @@ export default function Home() {
   const [watermark, setWatermark] = useState(true);
   const [showWatermarkDisclaimer, setShowWatermarkDisclaimer] = useState(false);
   const [disclaimerAgreed, setDisclaimerAgreed] = useState(false);
-  const [size, setSize] = useState("2K");
+  const [size, setSize] = useState("2048x2048");
   const [currentGenerationId, setCurrentGenerationId] = useState<string>("");
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
@@ -77,7 +78,7 @@ export default function Home() {
   const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
   // Reference materials for image-to-video (omni mode): up to 3 extra images
   // (角色/風格/構圖) and an optional reference audio (driver track / 配音 / BGM
-  // sample). When any of these is present the request goes to the SeedDance
+  // sample). NOTE: WAN 3.0 ignores these; they were used by the old SeedDance
   // 2.0 omni endpoint; otherwise the standard endpoint is used as before.
   const [videoReferenceImages, setVideoReferenceImages] = useState<{ url: string; path: string }[]>([]);
   const [videoReferenceAudio, setVideoReferenceAudio] = useState<{ path: string; name: string } | null>(null);
@@ -87,23 +88,19 @@ export default function Home() {
   const [textToVideoRefAudio, setTextToVideoRefAudio] = useState<{ path: string; name: string } | null>(null);
   // Elapsed-time tick for the active video poll. Populated by an effect
   // below so the progress card can show "已生成 32s" instead of just a
-  // spinner during the 1–3 minute SeedDance run.
+  // spinner during the 1–3 minute video run.
   const [videoElapsedSec, setVideoElapsedSec] = useState(0);
   // "我的影片" history sheet open state.
   const [myVideosOpen, setMyVideosOpen] = useState(false);
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
-  // Image-to-video model picker. Same registry pattern as /nsfw — must be
-  // kept in sync with server/gmiProvider.ts GMI_VIDEO_MODELS. Default is
-  // SeedDance (BytePlus) for backward compatibility.
-  // wan2.7-i2v is Aliyun-hosted so it's fine to surface on /home (this page
-  // is general-purpose SFW); NSFW prompts would be moderated server-side.
+  // Image-to-video model. Every image-to-video job runs on AtlasCloud
+  // WAN 3.0 (the server ignores any provider/model sent by the client).
+  // WAN takes one first frame only — no extra reference images / audio.
   const I2V_MODELS = [
-    { id: "seeddance",              label: "SeedDance 2.0 (BytePlus · 預設)",          desc: "穩定快速，支援參考素材全能模式", provider: "byteplus" as const, per720: 8,  per1080: 15, supportsOmni: true  },
-    { id: "wan2.7-i2v",             label: "Wan 2.7 i2v (阿里雲 · 高細節)",            desc: "Aliyun Wan 2.7，畫質與時序最佳", provider: "gmi"      as const, per720: 8,  per1080: 14, supportsOmni: false },
-    { id: "Wan-AI_Wan2.2-I2V-A14B", label: "Wan 2.2 i2v 14B (GMI 自託管 · 經濟)", desc: "Wan 2.2 開源版，便宜但無審查",   provider: "gmi"      as const, per720: 6,  per1080: 10, supportsOmni: false },
+    { id: "wan-3.0", label: "WAN 3.0 (AtlasCloud)", desc: "阿里 WAN 3.0 圖生影片，原生音訊，畫面比例跟隨上傳圖片", per720: 8, per1080: 15, supportsOmni: false as boolean },
   ];
-  const [selectedI2VModel, setSelectedI2VModel] = useState<string>("seeddance");
+  const [selectedI2VModel, setSelectedI2VModel] = useState<string>("wan-3.0");
   const selectedI2VMeta = I2V_MODELS.find(m => m.id === selectedI2VModel) ?? I2V_MODELS[0];
 
   const getNarrativeInfo = (idx: number, total: number): { label: string; short: string; color: string; bg: string; border: string; icon: string } => {
@@ -804,14 +801,9 @@ export default function Home() {
         aspectRatio: videoAspectRatio,
         resolution: videoResolution,
       };
-      // GMI route: attach provider+model. Omni refs/audio are ignored by
-      // the server for GMI models (gmiGenerateVideo doesn't read them);
-      // the picker UI already hides the omni section when a GMI model is
-      // selected so the user isn't misled.
-      if (selectedI2VMeta.provider === "gmi") {
-        videoData.provider = "gmi";
-        videoData.model = selectedI2VMeta.id;
-      } else {
+      // Extra reference images / audio are only sent for models that
+      // support them (WAN 3.0 does not).
+      if (selectedI2VMeta.supportsOmni) {
         if (videoReferenceImages.length > 0) {
           videoData.additionalImageUrls = videoReferenceImages.map(r => r.path);
         }
@@ -981,7 +973,7 @@ export default function Home() {
   const creditsNeeded = getCreditsNeeded();
   const hasEnoughCredits = (user?.credits ?? 0) >= creditsNeeded;
 
-  const isSeedDanceMode = mode === "image-to-image" || mode === "text-to-image";
+  const isImageMode = mode === "image-to-image" || mode === "text-to-image";
   const isVideoMode = mode === "image-to-video" || mode === "text-to-video";
   const isStoryMode = mode === "story";
 
@@ -1086,9 +1078,9 @@ export default function Home() {
 
       <div className="bg-gradient-to-r from-amber-500 via-orange-500 to-amber-500 text-white py-2 overflow-hidden">
         <div className="animate-marquee whitespace-nowrap text-sm font-medium">
-          <span className="mx-8">📢 圖片生影片、文字生影片功能正在更新中，預計 2/24 更新至 SeedDance 2.0，敬請期待！</span>
-          <span className="mx-8">📢 圖片生影片、文字生影片功能正在更新中，預計 2/24 更新至 SeedDance 2.0，敬請期待！</span>
-          <span className="mx-8">📢 圖片生影片、文字生影片功能正在更新中，預計 2/24 更新至 SeedDance 2.0，敬請期待！</span>
+          <span className="mx-8">📢 圖片生成已升級至 Seedream 5.5，影片生成已升級至 WAN 3.0！</span>
+          <span className="mx-8">📢 圖片生成已升級至 Seedream 5.5，影片生成已升級至 WAN 3.0！</span>
+          <span className="mx-8">📢 圖片生成已升級至 Seedream 5.5，影片生成已升級至 WAN 3.0！</span>
         </div>
       </div>
 
@@ -1133,17 +1125,17 @@ export default function Home() {
               <button
                 onClick={() => { if (isVideoMode) setMode("text-to-image"); }}
                 className={`flex-1 py-3 px-6 text-sm font-medium transition-all relative ${
-                  isSeedDanceMode 
+                  isImageMode 
                     ? "text-blue-700 bg-blue-50"
                     : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
                 }`}
               >
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-lg">🎨</span>
-                  <span className="font-semibold">Seedream 5.0</span>
+                  <span className="font-semibold">Seedream 5.5</span>
                   <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">圖片</span>
                 </div>
-                {isSeedDanceMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
+                {isImageMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-600" />}
               </button>
               <button
                 onClick={() => { if (!isVideoMode) setMode("text-to-video"); }}
@@ -1155,7 +1147,7 @@ export default function Home() {
               >
                 <div className="flex items-center justify-center gap-2">
                   <span className="text-lg">🎬</span>
-                  <span className="font-semibold">SeedDance 2.0</span>
+                  <span className="font-semibold">WAN 3.0</span>
                   <span className="text-xs bg-purple-100 text-purple-700 px-2 py-0.5 rounded-full">影片</span>
                 </div>
                 {isVideoMode && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-purple-600" />}
@@ -1170,10 +1162,20 @@ export default function Home() {
                   <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">NEW</span>
                 </div>
               </a>
+              <a
+                href="/photoset"
+                className="flex-1 py-3 px-6 text-sm font-medium transition-all relative text-gray-500 hover:text-rose-700 hover:bg-rose-50"
+              >
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-lg">📸</span>
+                  <span className="font-semibold">寫真套圖</span>
+                  <span className="text-xs bg-rose-100 text-rose-700 px-2 py-0.5 rounded-full">NEW</span>
+                </div>
+              </a>
             </div>
 
-            {/* SeedDance Sub-modes */}
-            {isSeedDanceMode && (
+            {/* Image sub-modes */}
+            {isImageMode && (
               <div className="p-4">
                 <div className="grid grid-cols-2 gap-3">
                   <button
@@ -1384,13 +1386,15 @@ export default function Home() {
                       value={size} onChange={(e) => setSize(e.target.value)}
                       className="mt-1.5 w-full px-3 py-2 border border-gray-200 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
                     >
-                      <option value="2K">2K 高清 (推薦)</option>
-                      <option value="4K">4K 超高清</option>
-                      <option value="1920x1920">1:1 正方形</option>
-                      <option value="2560x1440">16:9 橫向</option>
-                      <option value="1440x2560">9:16 直向</option>
-                      <option value="2048x1536">4:3 橫向</option>
-                      <option value="1536x2048">3:4 直向</option>
+                      {IMAGE_TIERS.map(t => (
+                        <optgroup key={t.id} label={t.label}>
+                          {IMAGE_RATIOS.map(r => (
+                            <option key={r.id} value={imageSizeFor(r.id, t.id)}>
+                              {r.label}（{r.sizes[t.id][0]}×{r.sizes[t.id][1]}）
+                            </option>
+                          ))}
+                        </optgroup>
+                      ))}
                     </select>
                   </div>
                   <div>
@@ -1746,7 +1750,7 @@ export default function Home() {
                   {textToVideoRefAudio && (
                     <div className="text-xs text-purple-700 bg-purple-100/70 rounded px-2 py-1.5 flex items-center gap-1.5">
                       <i className="fas fa-bolt"></i>
-                      已啟用全能模式：將以您的參考音訊作為影片配樂/配音生成。
+                      WAN 3.0 目前不支援參考音訊，此檔案不會被使用；影片會自帶 AI 音效。
                     </div>
                   )}
                 </div>
@@ -1906,7 +1910,7 @@ export default function Home() {
                       {!selectedI2VMeta.supportsOmni && (
                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 flex items-start gap-1.5">
                           <i className="fas fa-info-circle mt-0.5"></i>
-                          <span>此模型不支援「參考素材全能模式」，下方的參考圖片與參考音訊將被忽略。若需要多參考素材請選擇 SeedDance 2.0。</span>
+                          <span>WAN 3.0 以上傳圖片作為首幀生成影片，不支援額外的參考圖片與參考音訊；影片比例會跟隨上傳圖片。</span>
                         </p>
                       )}
                     </div>
@@ -1955,9 +1959,9 @@ export default function Home() {
                       <div className="flex items-start gap-2">
                         <i className="fas fa-layer-group text-purple-500 mt-0.5"></i>
                         <div className="flex-1">
-                          <div className="text-sm font-semibold text-gray-800">參考素材（選填，全能模式）</div>
+                          <div className="text-sm font-semibold text-gray-800">參考素材（WAN 3.0 暫不支援）</div>
                           <p className="text-xs text-gray-500 mt-0.5">
-                            最多 3 張參考圖（角色 / 風格 / 構圖）＋ 1 段參考音訊（配音 / BGM / 節奏）。任一項上傳後會自動切到 SeedDance 2.0 全能模式。
+                            WAN 3.0 目前不支援參考素材：此處上傳的參考圖與參考音訊不會被使用，影片以主要圖片作為首幀生成。
                           </p>
                         </div>
                       </div>
@@ -2038,8 +2042,7 @@ export default function Home() {
                       {(videoReferenceImages.length > 0 || videoReferenceAudio) && (
                         <div className="text-xs text-purple-700 bg-purple-100/70 rounded px-2 py-1.5 flex items-center gap-1.5">
                           <i className="fas fa-bolt"></i>
-                          已啟用全能模式：將以主要圖片 + {videoReferenceImages.length} 張參考圖
-                          {videoReferenceAudio ? " + 參考音訊" : ""} 生成影片。
+                          WAN 3.0 暫不支援參考素材：影片只會以主要圖片生成，參考圖與參考音訊不會被使用。
                         </div>
                       )}
                     </div>
@@ -3139,7 +3142,7 @@ export default function Home() {
                       <i className="fas fa-chevron-down text-xs transform group-open:rotate-180 transition-transform"></i>
                     </summary>
                     <div className="mt-3 text-sm text-gray-600 space-y-1.5 bg-gray-50 rounded-lg p-3">
-                      <div className="flex justify-between"><span>模型</span><span className="font-mono text-xs">Seedream 5.0</span></div>
+                      <div className="flex justify-between"><span>模型</span><span className="font-mono text-xs">Seedream 5.5</span></div>
                       <div className="flex justify-between"><span>描述</span><span className="text-xs max-w-[60%] text-right truncate">"{generation.prompt}"</span></div>
                       <div className="flex justify-between"><span>引導強度</span><span>{generation.guidanceScale}</span></div>
                       <div className="flex justify-between"><span>種子值</span><span>{generation.seed}</span></div>
@@ -4076,7 +4079,7 @@ export default function Home() {
               <a href="/terms" className="hover:text-blue-600 transition-colors">服務條款</a>
             </div>
             <p className="text-xs text-gray-300">
-              使用模型：SeedDance 2.0 · Seedream 5.0
+              使用模型：WAN 3.0 · Seedream 5.5
             </p>
           </div>
         </div>

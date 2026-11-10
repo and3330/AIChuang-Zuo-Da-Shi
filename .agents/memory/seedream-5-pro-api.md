@@ -8,3 +8,5 @@ description: BytePlus Seedream 5.0 Pro image endpoint differences vs older Seedr
 - **How to apply:** any new BytePlus image call site must omit sequential/stream params; if pre-charging credits for N images, refund per-image cost for failed attempts on partial success (`storage.atomicAddCredits`).
 - Generation is slow: ~135 s per 2K image (synchronous). Node fetch default header timeout (300 s) is fine, but never add a short AbortController timeout to these calls.
 - Accepts `size: "2K"` (uppercase); older endpoint accepted lowercase `'2k'/'3k'/'4k'` and rejected `"1K"`.
+
+> **OUTDATED (2026-11):** image generation no longer uses BytePlus. It runs on AtlasCloud Seedream 5.5 via `server/atlasProvider.ts` (async submit + poll, one image per request, sizes limited to the presets in `shared/imageSizes.ts`). The partial-refund rule for multi-image requests still applies.

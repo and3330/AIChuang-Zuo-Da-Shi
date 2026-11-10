@@ -1,3 +1,5 @@
+> **注意（2026-11）**：本文件描述的是舊版 BytePlus ARK（Seedream 5.0／SeedDance 2.0）實作，僅供歷史參考。現行生成全部走 AtlasCloud（Seedream 5.5／WAN 3.0），請以 `server/atlasProvider.ts` 與 `replit.md` 為準。
+
 # AI 故事生成系統 — 完整開發架構
 
 ## 系統概述

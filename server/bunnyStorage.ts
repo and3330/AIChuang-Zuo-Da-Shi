@@ -15,7 +15,7 @@ export async function addWatermark(imageBuffer: Buffer): Promise<Buffer> {
   const lineHeight = Math.floor(fontSize * 1.5);
   const lines = [
     "本圖片為 AI 生成",
-    "使用 Seedream 5.0"
+    "使用 Seedream 5.5"
   ];
   const blockHeight = lines.length * lineHeight + padding * 2;
   const blockWidth = Math.floor(fontSize * 14);

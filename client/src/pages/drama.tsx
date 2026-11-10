@@ -40,7 +40,7 @@ const SIZE_LABELS: Record<string, string> = {
   "1:1": "正方形 1:1",
 };
 
-// ─── Prompt Snippets Library (依 SeedDance 2.0 提示詞指南分類) ─────────────
+// ─── Prompt Snippets Library (依 WAN 3.0 提示詞指南分類) ─────────────
 type SnippetCategory = {
   key: string; emoji: string; label: string; color: string;
   snippets: { label: string; text: string }[];
@@ -1214,7 +1214,7 @@ function AIScriptDialog({
     <Modal open={open} onClose={onClose} title="🤖 AI 智慧腳本助手">
       <div className="space-y-4">
         <div className="bg-[#6366f1]/5 border border-[#6366f1]/20 rounded-xl p-3 text-xs text-[#4f46e5] leading-relaxed">
-          💡 用一兩句話描述劇情概念，AI 會依 SeedDance 2.0 提示詞最佳實踐自動產出整集分鏡（含場景描述、台詞、運鏡）。
+          💡 用一兩句話描述劇情概念，AI 會依 WAN 3.0 提示詞最佳實踐自動產出整集分鏡（含場景描述、台詞、運鏡）。
         </div>
 
         <div>
@@ -2460,7 +2460,7 @@ function EpisodeView({
             <div className="relative z-10">
               {/* Pipeline labels */}
               <div className="flex items-center gap-2 mb-4">
-                {["📝 分鏡描述", "→", "🖼 SeedDream 出圖", "→", "🎬 SeedDance 動畫"].map((s, i) => (
+                {["📝 分鏡描述", "→", "🖼 Seedream 出圖", "→", "🎬 WAN 動畫"].map((s, i) => (
                   <span key={i} className={`text-xs ${s === "→" ? "text-[#cbd5e1]" : "bg-[#ffffff] border border-[#e2e8f0] px-3 py-1 rounded-full text-[#64748b]"}`}>
                     {s}
                   </span>
@@ -3001,8 +3001,8 @@ function EpisodeView({
             <div onClick={() => setAnimUseOmni(!animUseOmni)}
               className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${animUseOmni ? "border-[#6366f1] bg-[#6366f1]/5" : "border-[#e2e8f0] hover:border-[#6366f1]/30"}`}>
               <div>
-                <p className="text-sm font-semibold text-[#0f172a]">🌟 SeedDance 2.0 全能模式</p>
-                <p className="text-xs text-[#64748b] mt-0.5">多圖參考，保持角色A/B一致性</p>
+                <p className="text-sm font-semibold text-[#0f172a]">🌟 全能模式（WAN 3.0 暫不支援）</p>
+                <p className="text-xs text-[#64748b] mt-0.5">WAN 3.0 僅以場景圖作為首幀，此開關目前不會加入多圖參考</p>
               </div>
               <div className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-all ${animUseOmni ? "bg-[#6366f1]" : "bg-[#e2e8f0]"}`}>
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${animUseOmni ? "left-5" : "left-1"}`} />

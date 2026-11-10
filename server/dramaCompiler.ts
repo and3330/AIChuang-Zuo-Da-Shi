@@ -186,9 +186,6 @@ const ALLOWED_HOST_SUFFIXES = [
   "bunnycdn.com",
   ".replit.app",     // our own deployments
   ".repl.co",
-  "ark.cn-beijing.volces.com", // BytePlus origin
-  "ark-content.tos-cn-beijing.volces.com",
-  "tos-cn-beijing.volces.com",
 ];
 
 function isAllowedMediaUrl(raw: string): boolean {

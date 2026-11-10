@@ -35,7 +35,7 @@ export default function TermsPage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-800 mt-6 mb-3">一、服務說明</h2>
               <p>
-                AI 創意工坊（以下簡稱「本平台」）是一個基於人工智慧技術的圖片及影片生成平台，提供文字生圖、圖片編輯、圖片轉影片、文字轉影片、序列生成、多圖融合及批次生成等功能。本平台使用 BytePlus ARK API 的 Seedream 5.0（圖片生成）及 SeedDance 2.0（影片生成）模型提供 AI 生成服務。
+                AI 創意工坊（以下簡稱「本平台」）是一個基於人工智慧技術的圖片及影片生成平台，提供文字生圖、圖片編輯、圖片轉影片、文字轉影片、序列生成、多圖融合及批次生成等功能。本平台使用 AtlasCloud API 的 Seedream 5.5（圖片生成）及 WAN 3.0（影片生成）模型提供 AI 生成服務。
               </p>
             </section>
 
@@ -88,7 +88,7 @@ export default function TermsPage() {
               <h2 className="text-lg font-semibold text-gray-800 mt-6 mb-3">六、智慧財產權</h2>
               <ul className="list-disc pl-6 space-y-2">
                 <li>本平台的介面設計、程式碼及品牌標識之智慧財產權歸本平台所有。</li>
-                <li>透過本平台 AI 生成的圖片及影片，您可在合法範圍內自由使用，但需遵守 BytePlus API 的使用條款。</li>
+                <li>透過本平台 AI 生成的圖片及影片，您可在合法範圍內自由使用，但需遵守 AtlasCloud API 的使用條款。</li>
                 <li>AI 生成內容可能包含浮水印（可透過設定關閉），浮水印之設計屬於本平台之智慧財產。</li>
                 <li>您上傳的原始圖片之智慧財產權仍歸您所有。</li>
               </ul>
@@ -97,7 +97,7 @@ export default function TermsPage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-800 mt-6 mb-3">七、生成內容與暫存</h2>
               <ul className="list-disc pl-6 space-y-2">
-                <li>AI 生成的圖片及影片以暫存 URL 形式提供，由 BytePlus API 伺服器託管。</li>
+                <li>AI 生成的圖片及影片以暫存 URL 形式提供，由 AtlasCloud API 伺服器託管。</li>
                 <li>暫存 URL 具有時效性，過期後將無法存取。建議您在生成後及時下載保存。</li>
                 <li>本平台不保證生成內容的永久保存，亦不對因 URL 過期導致的內容遺失負責。</li>
                 <li>AI 生成結果受到模型能力限制，本平台不保證生成結果完全符合您的預期。</li>
@@ -108,7 +108,7 @@ export default function TermsPage() {
               <h2 className="text-lg font-semibold text-gray-800 mt-6 mb-3">八、服務中斷與免責</h2>
               <ul className="list-disc pl-6 space-y-2">
                 <li>本平台將盡力維持服務的穩定運作，但不保證服務不會中斷。</li>
-                <li>因第三方 API 服務（BytePlus、Stripe）異常導致的服務中斷，本平台不承擔責任。</li>
+                <li>因第三方 API 服務（AtlasCloud、Stripe）異常導致的服務中斷，本平台不承擔責任。</li>
                 <li>因不可抗力（如天災、網路故障、法規變更）導致的服務中斷，本平台不承擔責任。</li>
                 <li>本平台保留因系統維護、升級等原因暫停服務的權利，並會儘量提前通知。</li>
               </ul>
