@@ -73,7 +73,7 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 
 ## 收費、會員與安全隱私（2026-11）
 
-- 計價集中在 `shared/pricing.ts`：圖片 `IMAGE_COST`（5）、去浮水印 `WATERMARK_REMOVAL_COST`（+1）、註冊送 `SIGNUP_CREDITS`（10，信箱驗證碼通過或 Google 註冊時發一次）、`MEMBERSHIP`（US$9.9 一次性開通，送 300 積分）。對外 API 的計價另在 `server/partnerApi.ts`，沒有跟著改。
+- 計價集中在 `shared/pricing.ts`：圖片 `IMAGE_COST`（5）、去浮水印 `WATERMARK_REMOVAL_COST`（+1）、註冊送 `SIGNUP_CREDITS`（10，信箱驗證碼通過或 Google 註冊時發一次）、`MEMBERSHIP`（US$9.9 一次性開通，送 200 積分）。對外 API 的計價另在 `server/partnerApi.ts`，沒有跟著改。
 - 付款：`POST /api/stripe/create-checkout` 收 `{ kind: "membership" }`（美金）或 `{ amount }`（台幣加購，必須已是會員）。`users.is_member` 在付款確認後設定。
 - `POST /api/credits/topup` 只限管理員（以前任何登入者都能呼叫）。
 - 安全隱私在 `shared/safety.ts` 與 `PATCH /api/account/safety`：生日只能設定一次；成人內容要年滿 18、同意條款才能啟用。提示詞被 `containsNsfw()` 判定為成人內容時，未啟用的帳號回 403 `nsfw_not_enabled`（不扣積分）；啟用的帳號可生成，`image_generations.sensitive` 設為 true，前端用 `SensitiveGate` 先模糊顯示。提示詞強化（`server/promptEnhancer.ts`）現在只作用在成人內容的提示詞上。
