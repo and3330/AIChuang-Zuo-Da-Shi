@@ -1,3 +1,4 @@
+import { imageCost as priceOfImage } from "@shared/pricing";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -442,7 +443,7 @@ export default function NsfwPage() {
   };
 
   // Per-image credit cost: 3 with watermark, 8 without.
-  const imageCost = watermark ? 3 : 8;
+  const imageCost = priceOfImage(watermark);
   // Video cost: WAN 3.0 = 8 (720P) / 15 (1080P) credits per second.
   const videoCreditsPerSec = videoResolution === "720p" ? selectedVideoMeta.per720 : selectedVideoMeta.per1080;
   const videoCost = Math.round(videoDuration * videoCreditsPerSec);

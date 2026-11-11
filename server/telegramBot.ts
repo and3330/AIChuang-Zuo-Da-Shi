@@ -1,3 +1,4 @@
+import { IMAGE_COST } from "@shared/pricing";
 import TelegramBot from "node-telegram-bot-api";
 import { atlasGenerateImage, atlasGenerateTextVideo } from "./atlasProvider";
 import { storage } from "./storage";
@@ -194,7 +195,7 @@ export function startTelegramBot() {
     bot.sendMessage(chatId,
       `💰 積分餘額：${freshUser?.credits || 0}\n\n` +
       `📊 計費標準：\n` +
-      `• 圖片：3 積分/張\n` +
+      `• 圖片：${IMAGE_COST} 積分/張\n` +
       `• 影片 720P：8 積分/秒\n` +
       `• 影片 1080P：15 積分/秒\n\n` +
       `需要儲值？請到網站：https://cmai-marker.com/account`
@@ -218,7 +219,7 @@ export function startTelegramBot() {
 
     const freshUser = await storage.getUser(user.id);
     const credits = freshUser?.credits || 0;
-    const cost = 3;
+    const cost = IMAGE_COST;
     if (credits < cost) {
       bot.sendMessage(chatId, `❌ 積分不足！需要 ${cost} 積分，目前餘額 ${credits}\n\n請到網站儲值：https://cmai-marker.com/account`);
       return;
@@ -435,7 +436,7 @@ export function startTelegramBot() {
       `/bind <Email> — 綁定網站帳號（需 Email 驗證碼）\n` +
       `/verify <驗證碼> — 輸入驗證碼完成綁定\n\n` +
       `🎨 圖片生成：\n` +
-      `/generate <描述> — 文字生圖（3 積分/張）\n` +
+      `/generate <描述> — 文字生圖（${IMAGE_COST} 積分/張）\n` +
       `直接傳送圖片 + 描述文字 — 圖片編輯\n\n` +
       `🎬 影片生成：\n` +
       `/video <描述> — 文字生影片\n` +
@@ -468,7 +469,7 @@ export function startTelegramBot() {
 
     const freshUser = await storage.getUser(user.id);
     const credits = freshUser?.credits || 0;
-    const cost = 3;
+    const cost = IMAGE_COST;
     if (credits < cost) {
       bot.sendMessage(chatId, `❌ 積分不足！需要 ${cost} 積分，目前餘額 ${credits}`);
       return;

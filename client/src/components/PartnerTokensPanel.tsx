@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { PartnerCharactersPanel } from "./PartnerCharactersPanel";
 
 // 後台：對外服務 API 的權杖管理。
 // 權杖明文只在建立當下顯示一次（伺服器只存 SHA-256），關閉視窗後無法再取得。
@@ -256,6 +257,7 @@ export function PartnerTokensPanel({ users }: { users: UserRow[] }) {
         )}
         <p className="px-5 py-3 border-t border-gray-100 text-[11px] text-gray-400">點擊限制數字可以修改。伺服器只保存權杖的 SHA-256，這裡看到的是開頭幾個字，僅供辨識。</p>
       </div>
+      <PartnerCharactersPanel />
     </div>
   );
 }

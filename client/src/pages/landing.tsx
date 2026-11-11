@@ -153,7 +153,7 @@ export default function LandingPage() {
                 <div className="pt-4 border-t border-white/10">
                   <div className="flex items-center gap-2 text-sm text-gray-500">
                     <i className="fas fa-coins text-yellow-400"></i>
-                    <span>3 積分/張 · 去浮水印 8 積分/張</span>
+                    <span>5 積分/張 · 去浮水印 +1 積分</span>
                   </div>
                 </div>
               </CardContent>
@@ -306,8 +306,8 @@ export default function LandingPage() {
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-gray-900 text-lg">3 積分<span className="text-sm font-normal text-gray-500">/張</span></p>
-                    <p className="text-xs text-gray-400">去浮水印 8 積分/張</p>
+                    <p className="font-bold text-gray-900 text-lg">5 積分<span className="text-sm font-normal text-gray-500">/張</span></p>
+                    <p className="text-xs text-gray-400">去浮水印 +1 積分/張</p>
                   </div>
                 </div>
 

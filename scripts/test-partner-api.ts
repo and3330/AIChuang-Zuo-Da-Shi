@@ -16,9 +16,9 @@ import type { AddressInfo } from "net";
 import { randomUUID } from "crypto";
 import {
   registerPartnerRoutes, generatePartnerToken, hashPartnerToken,
-  PartnerIdempotencyRace, PartnerIngestError, type PartnerStore, type PartnerDeps,
+  PartnerIdempotencyRace, PartnerIngestError, PartnerUploadError, type PartnerStore, type PartnerDeps,
 } from "../server/partnerApi";
-import type { PartnerJob, PartnerToken } from "../shared/schema";
+import type { PartnerJob, PartnerToken, PartnerCharacter } from "../shared/schema";
 
 /* ───────── tiny assertion helpers ───────── */
 let passed = 0;
@@ -37,7 +37,8 @@ const tokens = new Map<string, PartnerToken>();
 const jobs = new Map<string, PartnerJob>();
 const images = new Map<string, any>();
 const videos = new Map<string, any>();
-const calls = { runImage: [] as any[], runVideo: [] as any[], ingest: [] as string[], plan: [] as any[], ledger: [] as string[] };
+const calls = { runImage: [] as any[], runVideo: [] as any[], ingest: [] as string[], plan: [] as any[], ledger: [] as string[], uploads: [] as any[], deleted: [] as string[] };
+const characters = new Map<string, PartnerCharacter>();
 /** How the fake workers behave for the next generations. */
 const behaviour = { image: "succeed" as "succeed" | "fail" | "hang" | "partial", video: "succeed" as "succeed" | "fail", plan: "ok" as "ok" | "fail" | "short", storage: true, sessionAdmin: true };
 let clock = Date.now();
@@ -67,6 +68,15 @@ const store: PartnerStore = {
   async clearIdempotencyKey(id) { const j = jobs.get(id); if (j) j.idempotencyKey = null; },
   async updateJob(id, u) { const j = jobs.get(id); if (j) Object.assign(j, u); },
   async deleteJob(id) { jobs.delete(id); },
+  async createCharacter(d) {
+    const row = { id: randomUUID(), ...d, fourViewUrls: null, fourViewStatus: "idle", fourViewJobId: null, disabledAt: null, disabledBy: null, disabledReason: null, createdAt: new Date(clock), updatedAt: new Date(clock) } as unknown as PartnerCharacter;
+    characters.set(row.id, row); return { ...row };
+  },
+  async getCharacter(id) { const c = characters.get(id); return c ? { ...c } : undefined; },
+  async listCharacters(userId, ownerRef) { return [...characters.values()].filter(c => c.userId === userId && c.ownerRef === ownerRef).map(c => ({ ...c })); },
+  async updateCharacter(id, u) { const c = characters.get(id); if (!c) return undefined; Object.assign(c, u); return { ...c }; },
+  async deleteCharacter(id) { characters.delete(id); },
+  async adminListCharacters(f) { return [...characters.values()].filter(c => (!f.ownerRef || c.ownerRef === f.ownerRef) && (!f.id || c.id === f.id)).map(c => ({ ...c })); },
 };
 
 function addCredits(userId: string, amount: number, why: string) {
@@ -139,6 +149,13 @@ const deps: PartnerDeps = {
     if (url.includes("not-an-image")) throw new PartnerIngestError("image_download_failed", "無法下載圖片：請確認網址可公開存取、內容是圖片且小於 25MB。");
     return `${CDN}/${folder}/${randomUUID()}.jpg`;
   },
+  async storeUpload(input) {
+    calls.uploads.push({ format: input.format, folder: input.folder, bytes: input.buffer.length });
+    if (input.buffer.includes(Buffer.from("CORRUPT"))) throw new PartnerUploadError(422, "invalid_image", "檔案無法辨識為 JPG、PNG 或 WEBP 圖片，或圖片過大。");
+    return { url: `${CDN}/${input.folder}/${randomUUID()}.${input.format}`, width: 800, height: 1000 };
+  },
+  isCdnUrl: (u) => u.startsWith(CDN + "/"),
+  async deleteStored(u) { calls.deleted.push(u); return true; },
   storageReady: () => behaviour.storage,
   async planPhotoset(input) {
     calls.plan.push(input);
@@ -223,7 +240,7 @@ async function main() {
   const bal = await call("GET", `${P}/balance`, { token: TOKEN });
   check("balance 回傳綁定帳號積分", bal.status === 200 && bal.json?.credits === 1000, bal.json);
   const pricing = await call("GET", `${P}/pricing`, { token: TOKEN });
-  check("pricing 列出 24 種尺寸與影片費率", pricing.status === 200 && pricing.json?.images?.sizes?.length === 24 && pricing.json?.videos?.per_second?.["1080p"] === 15 && pricing.json?.images?.per_image?.without_watermark === 8, pricing.json?.images?.per_image);
+  check("pricing 列出 24 種尺寸與影片費率", pricing.status === 200 && pricing.json?.images?.sizes?.length === 24 && pricing.json?.videos?.per_second?.["1080p"] === 15 && pricing.json?.images?.per_image?.without_watermark === 6 && pricing.json?.images?.per_image?.with_watermark === 5, pricing.json?.images?.per_image);
   check("pricing 列出姿勢代號與畫面質感", pricing.json?.photosets?.poses?.length >= 40 && pricing.json?.photosets?.quality_styles?.length === 4);
 
   section("圖片：輸入驗證（都不應扣點）");
@@ -246,10 +263,10 @@ async function main() {
 
   section("圖片：文字生圖成功");
   const t2i = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "一隻橘貓坐在窗邊", count: 2, size: "1776x2368", external_ref: "ws_12/post_88" } });
-  check("202 + job_id + queued + credits_charged 16", t2i.status === 202 && !!t2i.json?.job_id && t2i.json?.status === "queued" && t2i.json?.credits_charged === 16, t2i.json);
-  check("扣了 16 積分", users.get("svc")!.credits === before - 16);
+  check("202 + job_id + queued + credits_charged 12", t2i.status === 202 && !!t2i.json?.job_id && t2i.json?.status === "queued" && t2i.json?.credits_charged === 12, t2i.json);
+  check("扣了 12 積分", users.get("svc")!.credits === before - 12);
   const t2iRow = [...images.values()].at(-1);
-  check("建立的是 text-to-image、無浮水印、2 張", t2iRow.type === "text-to-image" && t2iRow.watermark === false && t2iRow.maxImages === 2 && t2iRow.creditsUsed === 16, t2iRow);
+  check("建立的是 text-to-image、無浮水印、2 張", t2iRow.type === "text-to-image" && t2iRow.watermark === false && t2iRow.maxImages === 2 && t2iRow.creditsUsed === 12, t2iRow);
   check("預設不套用提示詞強化（rawPrompt=true）", calls.runImage.at(-1)?.rawPrompt === true);
   const t2iDone = await waitForJob(TOKEN, t2i.json.job_id);
   check("任務 succeeded，2 筆結果", t2iDone.json?.status === "succeeded" && t2iDone.json?.results?.length === 2, t2iDone.json);
@@ -280,7 +297,7 @@ async function main() {
   const idem1 = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "重送測試" }, headers: { "Idempotency-Key": "post-88-img-1" } });
   const idem2 = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "重送測試" }, headers: { "Idempotency-Key": "post-88-img-1" } });
   check("同 key 重送回同一個 job_id", idem1.status === 202 && idem2.status === 202 && idem1.json.job_id === idem2.json.job_id, [idem1.json, idem2.json]);
-  check("只扣一次、只生成一次", users.get("svc")!.credits === credBefore - 8 && calls.runImage.length === runsBefore + 1);
+  check("只扣一次、只生成一次", users.get("svc")!.credits === credBefore - 6 && calls.runImage.length === runsBefore + 1);
   const idem3 = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "內容不同" }, headers: { "Idempotency-Key": "post-88-img-1" } });
   check("同 key 不同內容 → 409 idempotency_key_conflict", idem3.status === 409 && idem3.json?.code === "idempotency_key_conflict", idem3.json);
   const idemOther = await call("POST", `${P}/images`, { token: OTHER, body: { prompt: "重送測試" }, headers: { "Idempotency-Key": "post-88-img-1" } });
@@ -300,12 +317,12 @@ async function main() {
   const failing = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "會失敗" } });
   const failed = await waitForJob(TOKEN, failing.json.job_id);
   check("任務 failed，results 為空", failed.json?.status === "failed" && failed.json?.results?.length === 0, failed.json);
-  check("credits_refunded 等於扣的積分，餘額還原", failed.json?.credits_refunded === 8 && failed.json?.credits_charged === 8 && users.get("svc")!.credits === credBeforeFail, { json: failed.json, credits: users.get("svc")!.credits });
+  check("credits_refunded 等於扣的積分，餘額還原", failed.json?.credits_refunded === 6 && failed.json?.credits_charged === 6 && users.get("svc")!.credits === credBeforeFail, { json: failed.json, credits: users.get("svc")!.credits });
   check("錯誤是中文說明＋代碼，且不洩漏內部訊息", failed.json?.code === "content_rejected" && /[一-鿿]/.test(failed.json?.error) && !/sk-SECRET|internal\/path|AtlasCloud/.test(failed.text), failed.json);
   behaviour.image = "partial";
   const part = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "部分成功", count: 3 } });
   const partDone = await waitForJob(TOKEN, part.json.job_id);
-  check("部分成功：succeeded、2 筆結果、退 1 張的積分", partDone.json?.status === "succeeded" && partDone.json?.results?.length === 2 && partDone.json?.credits_refunded === 8 && partDone.json?.credits_charged === 24, partDone.json);
+  check("部分成功：succeeded、2 筆結果、退 1 張的積分", partDone.json?.status === "succeeded" && partDone.json?.results?.length === 2 && partDone.json?.credits_refunded === 6 && partDone.json?.credits_charged === 18, partDone.json);
   behaviour.image = "hang";
   const hang = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "進行中" } });
   await sleep(40);
@@ -350,28 +367,214 @@ async function main() {
   check("未知姿勢代號 → 400", psBad3.status === 400 && /未知的姿勢代號/.test(psBad3.json?.error ?? ""), psBad3.json);
   const credBeforePs = users.get("svc")!.credits;
   const ps = await call("POST", `${P}/photosets`, { token: TOKEN, body: { mode: "scene", scene_image_url: "https://img.example/scene.jpg", reference_image_urls: ["https://img.example/c1.jpg", "https://img.example/c2.jpg"], count: 4, quality_style: "phone", size: "1584x2816", external_ref: "post_set_1" } });
-  check("202 queued，扣 32（4 張 × 8）", ps.status === 202 && ps.json?.status === "queued" && ps.json?.credits_charged === 32 && users.get("svc")!.credits === credBeforePs - 32, ps.json);
+  check("202 queued，扣 24（4 張 × 6）", ps.status === 202 && ps.json?.status === "queued" && ps.json?.credits_charged === 24 && users.get("svc")!.credits === credBeforePs - 24, ps.json);
   const psDone = await waitForJob(TOKEN, ps.json.job_id);
   check("套圖 succeeded，4 筆結果帶寬高", psDone.json?.status === "succeeded" && psDone.json?.type === "photoset" && psDone.json?.results?.length === 4 && psDone.json?.results?.[0]?.width === 1584 && psDone.json?.results?.[0]?.height === 2816, psDone.json);
   const psRows = [...images.values()].slice(-4);
-  check("每張都帶情境圖＋角色參考圖，順序正確", psRows.every(r => r.originalImageUrl.startsWith(CDN) && r.additionalImageUrls.length === 2 && r.creditsUsed === 8 && r.type === "image-to-image"));
+  check("每張都帶情境圖＋角色參考圖，順序正確", psRows.every(r => r.originalImageUrl.startsWith(CDN) && r.additionalImageUrls.length === 2 && r.creditsUsed === 6 && r.type === "image-to-image"));
   check("提示詞附上圖片用途說明與畫面質感", psRows.every(r => r.prompt.includes("第 1 張圖是情境參考") && r.prompt.includes("【質感】手機隨手拍")), psRows[0]?.prompt);
   check("規劃收到正確的模式、張數與比例", calls.plan.at(-1)?.mode === "scene" && calls.plan.at(-1)?.count === 4 && calls.plan.at(-1)?.aspectRatio === "9:16" && calls.plan.at(-1)?.look === "phone", calls.plan.at(-1));
   const psPose = await call("POST", `${P}/photosets`, { token: TOKEN, body: { mode: "character", reference_image_urls: ["https://img.example/c1.jpg"], poses: ["stand-relaxed", "sit-floor-knee", "face-smile"], count: 9 } });
-  check("指定 3 個姿勢 → 以姿勢數計費（24）", psPose.status === 202 && psPose.json?.credits_charged === 24 && calls.plan.at(-1)?.count === 3, psPose.json);
+  check("指定 3 個姿勢 → 以姿勢數計費（18）", psPose.status === 202 && psPose.json?.credits_charged === 18 && calls.plan.at(-1)?.count === 3, psPose.json);
   await waitForJob(TOKEN, psPose.json.job_id);
   behaviour.plan = "fail";
   const credBeforePlanFail = users.get("svc")!.credits;
   const psFail = await call("POST", `${P}/photosets`, { token: TOKEN, body: { mode: "character", reference_image_urls: ["https://img.example/c1.jpg"], count: 4 } });
   const psFailed = await waitForJob(TOKEN, psFail.json.job_id);
-  check("規劃失敗：failed、planning_failed、全額退點", psFailed.json?.status === "failed" && psFailed.json?.code === "planning_failed" && psFailed.json?.credits_refunded === 32 && users.get("svc")!.credits === credBeforePlanFail, psFailed.json);
+  check("規劃失敗：failed、planning_failed、全額退點", psFailed.json?.status === "failed" && psFailed.json?.code === "planning_failed" && psFailed.json?.credits_refunded === 24 && users.get("svc")!.credits === credBeforePlanFail, psFailed.json);
   check("規劃失敗不洩漏內部錯誤", !/secret stack|\/home\/runner/.test(psFailed.text));
   behaviour.plan = "short";
   const credBeforeShort = users.get("svc")!.credits;
   const psShort = await call("POST", `${P}/photosets`, { token: TOKEN, body: { mode: "character", reference_image_urls: ["https://img.example/c1.jpg"], count: 4 } });
   const psShortDone = await waitForJob(TOKEN, psShort.json.job_id);
-  check("少規劃 1 張：3 筆結果，退 1 張積分", psShortDone.json?.status === "succeeded" && psShortDone.json?.results?.length === 3 && psShortDone.json?.credits_refunded === 8 && users.get("svc")!.credits === credBeforeShort - 24, psShortDone.json);
+  check("少規劃 1 張：3 筆結果，退 1 張積分", psShortDone.json?.status === "succeeded" && psShortDone.json?.results?.length === 3 && psShortDone.json?.credits_refunded === 6 && users.get("svc")!.credits === credBeforeShort - 18, psShortDone.json);
   behaviour.plan = "ok";
+
+  section("上傳照片");
+  clock += 61_000;
+  const JPG = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(2000, 1)]);
+  const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(2000, 2)]);
+  async function upload(token: string, fields: Record<string, string>, file?: { bytes: Buffer; name: string; type?: string }) {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    if (file) form.append("file", new Blob([file.bytes], { type: file.type ?? "image/jpeg" }), file.name);
+    const res = await fetch(base + `${P}/uploads`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: form });
+    const text = await res.text(); everyBody.push(text);
+    let json: any = null; try { json = JSON.parse(text); } catch { /* not json */ }
+    return { status: res.status, json, headers: res.headers, text };
+  }
+  const A = "ws_A-001"; const B = "ws_B-002";
+  const up1 = await upload(TOKEN, { owner_ref: A }, { bytes: JPG, name: "a.jpg" });
+  check("JPG 上傳 → 201，回 CDN 網址與寬高", up1.status === 201 && up1.json?.url?.startsWith(CDN + "/") && up1.json?.url.endsWith(".jpg") && up1.json?.width === 800 && up1.json?.height === 1000, up1.json);
+  check("網址裡沒有 owner_ref 明文", !up1.json?.url.includes(A));
+  const upPng = await upload(TOKEN, { owner_ref: A }, { bytes: PNG, name: "actually-png.jpg" });
+  check("副檔名寫 .jpg 但內容是 PNG → 以內容為準", upPng.status === 201 && upPng.json?.url.endsWith(".png") && calls.uploads.at(-1)?.format === "png", upPng.json);
+  const upFake = await upload(TOKEN, { owner_ref: A }, { bytes: Buffer.from("<html>not an image</html>"), name: "evil.jpg" });
+  check("副檔名 .jpg 但不是圖片 → 415 unsupported_file_type", upFake.status === 415 && upFake.json?.code === "unsupported_file_type", upFake.json);
+  const upCorrupt = await upload(TOKEN, { owner_ref: A }, { bytes: Buffer.concat([JPG, Buffer.from("CORRUPT")]), name: "broken.jpg" });
+  check("檔頭像 JPG 但解不開 → 422 invalid_image", upCorrupt.status === 422 && upCorrupt.json?.code === "invalid_image", upCorrupt.json);
+  const upBig = await upload(TOKEN, { owner_ref: A }, { bytes: Buffer.concat([JPG, Buffer.alloc(10 * 1024 * 1024 + 10)]), name: "big.jpg" });
+  check("超過 10 MB → 413 file_too_large", upBig.status === 413 && upBig.json?.code === "file_too_large", upBig.json);
+  const upNoOwner = await upload(TOKEN, {}, { bytes: JPG, name: "a.jpg" });
+  check("沒有 owner_ref → 400", upNoOwner.status === 400 && upNoOwner.json?.code === "invalid_request", upNoOwner.json);
+  const upNoFile = await upload(TOKEN, { owner_ref: A });
+  check("沒有 file → 400", upNoFile.status === 400 && upNoFile.json?.code === "invalid_request");
+  const upJson = await call("POST", `${P}/uploads`, { token: TOKEN, body: { owner_ref: A } });
+  check("不是 multipart → 400", upJson.status === 400 && upJson.json?.code === "invalid_request");
+  const up2 = await upload(TOKEN, { owner_ref: A }, { bytes: JPG, name: "b.jpg" });
+  const up3 = await upload(TOKEN, { owner_ref: A }, { bytes: JPG, name: "c.jpg" });
+  const up4 = await upload(TOKEN, { owner_ref: A }, { bytes: JPG, name: "d.jpg" });
+  const upB = [await upload(TOKEN, { owner_ref: B }, { bytes: JPG, name: "1.jpg" }), await upload(TOKEN, { owner_ref: B }, { bytes: JPG, name: "2.jpg" }), await upload(TOKEN, { owner_ref: B }, { bytes: JPG, name: "3.jpg" })];
+  check("不同 owner_ref 存在不同資料夾", new URL(up1.json.url).pathname.split("/").slice(0, -2).join("/") !== new URL(upB[0].json.url).pathname.split("/").slice(0, -2).join("/"));
+
+  clock += 61_000;
+  await call("PATCH", `/api/admin/partner-tokens/${created.json.id}`, { body: { rateLimitPerMinute: 200 } });
+  let lastFlood = 0; let floodOk = 0;
+  for (let i = 0; i < 31; i++) { const r = await upload(TOKEN, { owner_ref: "ws_flood" }, { bytes: JPG, name: "f.jpg" }); lastFlood = r.status; if (r.status === 201) floodOk++; }
+  const otherOwnerStillOk = await upload(TOKEN, { owner_ref: "ws_calm" }, { bytes: JPG, name: "f.jpg" });
+  check("同一 owner_ref 每分鐘 30 次：第 31 次 → 429，其他 owner_ref 不受影響", floodOk === 30 && lastFlood === 429 && otherOwnerStillOk.status === 201, { floodOk, lastFlood, other: otherOwnerStillOk.status });
+  clock += 61_000;
+
+  section("AI 角色：建立與單位隔離");
+  const svcBeforeChars = users.get("svc")!.credits;
+  const refsA = [up1.json.url, up2.json.url, up3.json.url];
+  const noConsent = await call("POST", `${P}/characters`, { token: TOKEN, body: { owner_ref: A, name: "小雨", reference_image_urls: refsA } });
+  const falseConsent = await call("POST", `${P}/characters`, { token: TOKEN, body: { owner_ref: A, name: "小雨", reference_image_urls: refsA, consent: false } });
+  check("沒有 consent: true → 400 consent_required，不建立", noConsent.status === 400 && noConsent.json?.code === "consent_required" && falseConsent.json?.code === "consent_required" && characters.size === 0, noConsent.json);
+  const tooFew = await call("POST", `${P}/characters`, { token: TOKEN, body: { owner_ref: A, name: "小雨", reference_image_urls: refsA.slice(0, 2), consent: true } });
+  check("參考圖少於 3 張 → 400", tooFew.status === 400 && tooFew.json?.code === "invalid_request", tooFew.json);
+  const noOwner = await call("POST", `${P}/characters`, { token: TOKEN, body: { name: "小雨", reference_image_urls: refsA, consent: true } });
+  check("沒有 owner_ref → 400", noOwner.status === 400 && noOwner.json?.code === "invalid_request");
+  const ingestBefore = calls.ingest.length;
+  const charA = await call("POST", `${P}/characters`, { token: TOKEN, body: { owner_ref: A, name: "小雨", description: "二十多歲，黑長髮", style_hint: "寫實", reference_image_urls: refsA, consent: true } });
+  const CA: string = charA.json?.id;
+  check("建立角色 → 201，回傳規定的欄位", charA.status === 201 && !!CA && charA.json?.owner_ref === A && charA.json?.name === "小雨" && charA.json?.description === "二十多歲，黑長髮" && charA.json?.style_hint === "寫實" && charA.json?.reference_image_urls?.length === 3 && Array.isArray(charA.json?.four_view_urls) && charA.json.four_view_urls.length === 0 && !!charA.json?.created_at, charA.json);
+  check("自己上傳的照片直接沿用，不重複下載", calls.ingest.length === ingestBefore);
+  check("記下同意時間與 owner_ref", characters.get(CA)?.consentAt instanceof Date && characters.get(CA)?.ownerRef === A);
+  const charExt = await call("POST", `${P}/characters`, { token: TOKEN, body: { owner_ref: A, name: "外部圖", reference_image_urls: ["https://img.example/1.jpg", "https://img.example/2.jpg", upB[0].json.url], consent: true } });
+  check("外部網址與別的單位的檔案都會另存一份到自己的資料夾", charExt.status === 201 && calls.ingest.length === ingestBefore + 3 && charExt.json.reference_image_urls.every((u: string) => u.startsWith(CDN + "/") && !u.includes("img.example")) && !charExt.json.reference_image_urls.includes(upB[0].json.url), charExt.json);
+  const charB = await call("POST", `${P}/characters`, { token: TOKEN, body: { owner_ref: B, name: "阿哲", reference_image_urls: upB.map(u => u.json.url), consent: true } });
+  const CB: string = charB.json?.id;
+  const listA = await call("GET", `${P}/characters?owner_ref=${A}`, { token: TOKEN });
+  const listB = await call("GET", `${P}/characters?owner_ref=${B}`, { token: TOKEN });
+  check("各單位只看得到自己的角色，數量各自計算", listA.json?.count === 2 && listA.json.characters.every((c: any) => c.owner_ref === A) && listB.json?.count === 1 && listB.json.characters[0].id === CB, [listA.json?.count, listB.json?.count]);
+  check("列表沒有 owner_ref → 400", (await call("GET", `${P}/characters`, { token: TOKEN })).status === 400);
+  const getOk = await call("GET", `${P}/characters/${CA}?owner_ref=${A}`, { token: TOKEN });
+  const getWrongOwner = await call("GET", `${P}/characters/${CA}?owner_ref=${B}`, { token: TOKEN });
+  const getOtherAccount = await call("GET", `${P}/characters/${CA}?owner_ref=${A}`, { token: OTHER });
+  const getMissing = await call("GET", `${P}/characters/${randomUUID()}?owner_ref=${A}`, { token: TOKEN });
+  check("查詢：owner_ref 相符 → 200", getOk.status === 200 && getOk.json?.id === CA);
+  check("查詢：owner_ref 不符 → 404，和不存在的角色回應完全相同", getWrongOwner.status === 404 && getWrongOwner.json?.code === "not_found" && getWrongOwner.text === getMissing.text, getWrongOwner.json);
+  check("查詢：別的帳號用同一個 owner_ref → 404", getOtherAccount.status === 404 && getOtherAccount.json?.code === "not_found");
+
+  section("AI 角色：修改");
+  const patchWrong = await call("PATCH", `${P}/characters/${CA}`, { token: TOKEN, body: { owner_ref: B, name: "被改名" } });
+  check("修改：owner_ref 不符 → 404，內容不變", patchWrong.status === 404 && characters.get(CA)?.name === "小雨");
+  const deletedBefore = calls.deleted.length;
+  const patchOk = await call("PATCH", `${P}/characters/${CA}`, { token: TOKEN, body: { owner_ref: A, name: "小雨（新）", style_hint: "日系", add_reference_image_urls: [up4.json.url], remove_reference_image_urls: [up3.json.url] } });
+  check("修改名稱、風格、增減參考圖", patchOk.status === 200 && patchOk.json?.name === "小雨（新）" && patchOk.json?.style_hint === "日系" && patchOk.json?.reference_image_urls?.length === 3 && patchOk.json.reference_image_urls.includes(up4.json.url) && !patchOk.json.reference_image_urls.includes(up3.json.url), patchOk.json);
+  check("被移除的參考圖從 CDN 刪除", calls.deleted.length === deletedBefore + 1 && calls.deleted.at(-1) === up3.json.url);
+  const patchTooFew = await call("PATCH", `${P}/characters/${CA}`, { token: TOKEN, body: { owner_ref: A, remove_reference_image_urls: [up1.json.url] } });
+  check("修改後少於 3 張 → 400，內容不變", patchTooFew.status === 400 && characters.get(CA)?.refImageUrls?.length === 3);
+
+  section("AI 角色：四視圖");
+  const fvWrong = await call("POST", `${P}/characters/${CA}/four-views`, { token: TOKEN, body: { owner_ref: B } });
+  check("四視圖：owner_ref 不符 → 404，不扣點", fvWrong.status === 404 && users.get("svc")!.credits === svcBeforeChars);
+  const runsBeforeFv = calls.runImage.length;
+  const fv = await call("POST", `${P}/characters/${CA}/four-views`, { token: TOKEN, body: { owner_ref: A } });
+  check("四視圖：202 + job_id，扣 20（4 張 × 5）", fv.status === 202 && !!fv.json?.job_id && fv.json?.credits_charged === 20 && users.get("svc")!.credits === svcBeforeChars - 20, fv.json);
+  const fvAgain = await call("POST", `${P}/characters/${CA}/four-views`, { token: TOKEN, body: { owner_ref: A } });
+  check("生成中再送一次 → 409，不重複扣點", fvAgain.status === 409 && fvAgain.json?.code === "four_views_in_progress" && users.get("svc")!.credits === svcBeforeChars - 20, fvAgain.json);
+  async function waitOwned(token: string, id: string, owner: string) {
+    for (let i = 0; i < 100; i++) {
+      const r = await call("GET", `${P}/jobs/${id}?owner_ref=${owner}`, { token });
+      if (r.json?.status === "succeeded" || r.json?.status === "failed") return r;
+      await sleep(10);
+    }
+    return call("GET", `${P}/jobs/${id}?owner_ref=${owner}`, { token });
+  }
+  const fvDone = await waitOwned(TOKEN, fv.json.job_id, A);
+  check("四視圖任務完成：4 張結果，帶 owner_ref 與 character_ids", fvDone.json?.status === "succeeded" && fvDone.json?.results?.length === 4 && fvDone.json?.owner_ref === A && fvDone.json?.character_ids?.[0] === CA && fvDone.json?.type === "four_views", fvDone.json);
+  check("查任務：沒帶或帶錯 owner_ref → 404", (await call("GET", `${P}/jobs/${fv.json.job_id}`, { token: TOKEN })).status === 404 && (await call("GET", `${P}/jobs/${fv.json.job_id}?owner_ref=${B}`, { token: TOKEN })).status === 404);
+  const fvRuns = calls.runImage.slice(runsBeforeFv);
+  check("四視圖一律不套用 NSFW 強化，也不加浮水印", fvRuns.length === 4 && fvRuns.every(r => r.rawPrompt === true) && fvRuns.every(r => images.get(r.id)?.watermark === false));
+  const afterFv = await call("GET", `${P}/characters/${CA}?owner_ref=${A}`, { token: TOKEN });
+  check("角色帶回四視圖（正面在第一張）", afterFv.json?.four_view_urls?.length === 4 && afterFv.json?.four_view_status === "completed" && afterFv.json.four_view_urls[0] === afterFv.json.four_views.front && afterFv.json.four_view_urls.every((u: string) => u.startsWith(CDN + "/")), afterFv.json);
+  behaviour.image = "fail";
+  const credBeforeFvFail = users.get("svc")!.credits;
+  const fvFail = await call("POST", `${P}/characters/${charExt.json.id}/four-views?owner_ref=${A}`, { token: TOKEN, body: {} });
+  const fvFailDone = await waitOwned(TOKEN, fvFail.json.job_id, A);
+  behaviour.image = "succeed";
+  const afterFvFail = await call("GET", `${P}/characters/${charExt.json.id}?owner_ref=${A}`, { token: TOKEN });
+  check("四視圖失敗：全額退點，角色狀態為 failed", fvFailDone.json?.status === "failed" && fvFailDone.json?.credits_refunded === 20 && users.get("svc")!.credits === credBeforeFvFail && afterFvFail.json?.four_view_status === "failed" && afterFvFail.json?.four_view_urls?.length === 0, [fvFailDone.json, afterFvFail.json]);
+
+  section("用角色生成");
+  const credBeforeGen = users.get("svc")!.credits; const jobsBeforeGen = jobs.size;
+  const genNoOwner = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "咖啡廳窗邊", character_ids: [CA] } });
+  check("有 character_ids 沒有 owner_ref → 400", genNoOwner.status === 400 && genNoOwner.json?.code === "invalid_request", genNoOwner.json);
+  const genWrongOwner = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "咖啡廳窗邊", owner_ref: B, character_ids: [CA] } });
+  const genMixed = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "兩人合照", owner_ref: A, character_ids: [CA, CB] } });
+  const vidWrongOwner = await call("POST", `${P}/videos`, { token: TOKEN, body: { type: "image-to-video", prompt: "轉頭微笑", owner_ref: B, character_ids: [CA] } });
+  const psWrongOwner = await call("POST", `${P}/photosets`, { token: TOKEN, body: { mode: "character", owner_ref: B, character_ids: [CA], count: 2 } });
+  check("A 單位的角色被 B 單位拿來用 → 404（圖片、影片、套圖）", [genWrongOwner, vidWrongOwner, psWrongOwner].every(r => r.status === 404 && r.json?.code === "not_found"), [genWrongOwner.json, vidWrongOwner.json, psWrongOwner.json]);
+  check("character_ids 只要有一個不屬於該 owner_ref → 整個請求 404", genMixed.status === 404 && genMixed.json?.code === "not_found");
+  check("以上都沒有扣點、沒有建立任務", users.get("svc")!.credits === credBeforeGen && jobs.size === jobsBeforeGen);
+
+  const genOk = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "咖啡廳窗邊", owner_ref: A, character_ids: [CA], reference_image_urls: ["https://img.example/cafe.jpg"] } });
+  const genRow = images.get(calls.runImage.at(-1)?.id);
+  const front = afterFv.json.four_views.front;
+  check("圖片帶角色 → 202，正面圖排第一、自己的參考圖在後", genOk.status === 202 && genRow.originalImageUrl === front && genRow.additionalImageUrls.length === 4 && genRow.type === "image-to-image", { s: genOk.status, first: genRow?.originalImageUrl, n: genRow?.additionalImageUrls?.length });
+  check("提示詞說明哪幾張是這個角色，且不套用 NSFW 強化", genRow.prompt.includes("小雨（新）") && genRow.prompt.startsWith("咖啡廳窗邊") && calls.runImage.at(-1)?.rawPrompt === true, genRow.prompt);
+  const genDone = await waitOwned(TOKEN, genOk.json.job_id, A);
+  check("任務回傳帶 owner_ref 與 character_ids", genDone.json?.status === "succeeded" && genDone.json?.owner_ref === A && genDone.json?.character_ids?.length === 1 && genDone.json.character_ids[0] === CA, genDone.json);
+  const tooManyRefs = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "x", owner_ref: A, character_ids: [CA], reference_image_urls: Array.from({ length: 10 }, (_, i) => `https://img.example/${i}.jpg`) } });
+  check("參考圖塞滿 10 張沒有角色的空間 → 400，不扣點", tooManyRefs.status === 400 && tooManyRefs.json?.code === "invalid_request", tooManyRefs.json);
+
+  const vidChar = await call("POST", `${P}/videos`, { token: TOKEN, body: { type: "image-to-video", prompt: "轉頭微笑", duration: 4, quality: "720p", owner_ref: A, character_ids: [CA] } });
+  const vidRow = videos.get(calls.runVideo.at(-1)?.id);
+  check("影片帶角色、沒給 image_url → 用角色正面圖當首幀", vidChar.status === 202 && vidRow.originalImageUrl === front && calls.runVideo.at(-1)?.rawPrompt === true, { s: vidChar.status, json: vidChar.json });
+  const t2vChar = await call("POST", `${P}/videos`, { token: TOKEN, body: { type: "text-to-video", prompt: "海邊", owner_ref: A, character_ids: [CA] } });
+  check("text-to-video 帶角色 → 400（模型無法帶入參考圖）", t2vChar.status === 400 && t2vChar.json?.code === "invalid_request");
+  await waitOwned(TOKEN, vidChar.json.job_id, A);
+
+  const psChar = await call("POST", `${P}/photosets`, { token: TOKEN, body: { mode: "character", owner_ref: A, character_ids: [CA], count: 2 } });
+  check("套圖只帶角色、不帶參考圖 → 202，規劃時用角色四視圖", psChar.status === 202 && calls.plan.at(-1)?.referenceImageUrls?.[0] === front && calls.plan.at(-1)?.referenceImageUrls?.length === 4, [psChar.json, calls.plan.at(-1)?.referenceImageUrls?.length]);
+  const psCharDone = await waitOwned(TOKEN, psChar.json.job_id, A);
+  check("套圖完成，帶 character_ids", psCharDone.json?.status === "succeeded" && psCharDone.json?.results?.length === 2 && psCharDone.json?.character_ids?.[0] === CA, psCharDone.json);
+
+  const otherRefs = [await upload(NSFW_TOKEN, { owner_ref: A }, { bytes: JPG, name: "1.jpg" }), await upload(NSFW_TOKEN, { owner_ref: A }, { bytes: JPG, name: "2.jpg" }), await upload(NSFW_TOKEN, { owner_ref: A }, { bytes: JPG, name: "3.jpg" })];
+  const nsfwChar = await call("POST", `${P}/characters`, { token: NSFW_TOKEN, body: { owner_ref: A, name: "另一家的角色", reference_image_urls: otherRefs.map(r => r.json.url), consent: true } });
+  const otherBeforeNsfw = users.get("other")!.credits;
+  const nsfwWithChar = await call("POST", `${P}/images`, { token: NSFW_TOKEN, body: { prompt: "x", nsfw: true, owner_ref: A, character_ids: [nsfwChar.json.id] } });
+  check("可用 NSFW 的權杖：帶角色又要求 nsfw → 400，不扣點", nsfwWithChar.status === 400 && nsfwWithChar.json?.code === "nsfw_not_allowed_with_characters" && users.get("other")!.credits === otherBeforeNsfw, nsfwWithChar.json);
+  check("另一個帳號用同名 owner_ref 也拿不到這邊的角色", (await call("POST", `${P}/images`, { token: NSFW_TOKEN, body: { prompt: "x", owner_ref: A, character_ids: [CA] } })).status === 404);
+
+  section("後台停用與刪除");
+  behaviour.sessionAdmin = false;
+  check("非管理員不能停用角色", (await call("POST", `/api/admin/partner-characters/${CA}/disable`, { body: { disabled: true } })).status === 403);
+  behaviour.sessionAdmin = true;
+  const adminList = await call("GET", `/api/admin/partner-characters?owner_ref=${A}`);
+  check("後台可依 owner_ref 找角色，看得到同意時間", adminList.status === 200 && adminList.json?.length === 3 && adminList.json.every((c: any) => c.owner_ref === A && !!c.consentAt), adminList.json?.length);
+  const disabled = await call("POST", `/api/admin/partner-characters/${CA}/disable`, { body: { disabled: true, reason: "本人要求下架" } });
+  check("依角色代號停用", disabled.status === 200 && disabled.json?.disabled === true && !!disabled.json?.disabledAt && disabled.json?.disabledReason === "本人要求下架");
+  const credBeforeDisabled = users.get("svc")!.credits;
+  const useDisabled = await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "x", owner_ref: A, character_ids: [CA] } });
+  const fvDisabled = await call("POST", `${P}/characters/${CA}/four-views`, { token: TOKEN, body: { owner_ref: A } });
+  check("停用後不能生成、不能做四視圖 → 403 character_disabled，不扣點", useDisabled.status === 403 && useDisabled.json?.code === "character_disabled" && fvDisabled.status === 403 && users.get("svc")!.credits === credBeforeDisabled, [useDisabled.json, fvDisabled.json]);
+  check("停用後對方仍查得到，且標示 disabled", (await call("GET", `${P}/characters/${CA}?owner_ref=${A}`, { token: TOKEN })).json?.disabled === true);
+  const byOwner = await call("POST", `/api/admin/partner-characters/disable-by-owner`, { body: { ownerRef: B, disabled: true } });
+  check("依 owner_ref 一次停用該單位全部角色", byOwner.status === 200 && byOwner.json?.affected === 1 && (await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "x", owner_ref: B, character_ids: [CB] } })).status === 403);
+  await call("POST", `/api/admin/partner-characters/${CA}/disable`, { body: { disabled: false } });
+  check("重新啟用後可以再用", (await call("GET", `${P}/characters/${CA}?owner_ref=${A}`, { token: TOKEN })).json?.disabled === false);
+
+  const delWrong = await call("DELETE", `${P}/characters/${CA}?owner_ref=${B}`, { token: TOKEN });
+  check("刪除：owner_ref 不符 → 404，角色還在", delWrong.status === 404 && characters.has(CA));
+  const deletedBeforeDel = calls.deleted.length;
+  const del = await call("DELETE", `${P}/characters/${CA}?owner_ref=${A}`, { token: TOKEN });
+  const removedNow = calls.deleted.slice(deletedBeforeDel);
+  check("刪除角色：同時刪除 CDN 上的 3 張參考圖與 4 張四視圖", del.status === 200 && del.json?.deleted === true && del.json?.files_deleted === 7 && removedNow.includes(front) && removedNow.includes(up1.json.url), [del.json, removedNow.length]);
+  check("刪除後查不到、也不能用來生成", (await call("GET", `${P}/characters/${CA}?owner_ref=${A}`, { token: TOKEN })).status === 404 && (await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "x", owner_ref: A, character_ids: [CA] } })).status === 404);
+  check("沒帶角色的舊用法不受影響（不需要 owner_ref）", (await call("POST", `${P}/images`, { token: TOKEN, body: { prompt: "一般生圖" } })).status === 202);
 
   section("儲存服務未就緒");
   behaviour.storage = false;

@@ -1,3 +1,5 @@
+import { IMAGE_COST } from "@shared/pricing";
+import { VaultPicker } from "@/components/VaultPicker";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -383,6 +385,7 @@ function ImageUploadButton({
 }) {
   const { toast } = useToast();
   const [uploading, setUploading] = useState(false);
+  const [fromWorks, setFromWorks] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFiles = async (files: FileList | null) => {
@@ -406,11 +409,13 @@ function ImageUploadButton({
     <div className="space-y-2">
       <p className="text-xs font-medium text-[#64748b] uppercase tracking-wide">{label}</p>
       <div className="flex gap-2 flex-wrap">
-        {objectPaths.map((_, i) => (
-          <div key={i} className="relative w-12 h-12 rounded-lg bg-[#e2e8f0] border border-[#cbd5e1] flex items-center justify-center group">
-            <span className="text-[#6366f1] text-xs font-bold">✓</span>
-            <button onClick={() => onRemove(i)}
-              className="absolute -top-1 -right-1 w-4 h-4 bg-[#ef4444] text-white text-xs rounded-full hidden group-hover:flex items-center justify-center">×</button>
+        {objectPaths.map((path, i) => (
+          <div key={i} className="relative w-12 h-12 rounded-lg bg-[#e2e8f0] border border-[#cbd5e1] flex items-center justify-center">
+            {/^https?:/.test(path)
+              ? <img src={path} alt="" className="w-full h-full rounded-lg object-cover" />
+              : <span className="text-[#6366f1] text-xs font-bold">✓</span>}
+            <button type="button" onClick={() => onRemove(i)} aria-label="移除"
+              className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-[#ef4444] text-white text-xs rounded-full flex items-center justify-center">×</button>
           </div>
         ))}
         {objectPaths.length < max && (
@@ -419,7 +424,14 @@ function ImageUploadButton({
             {uploading ? <span className="text-xs">...</span> : <><span className="text-lg leading-none">+</span><span className="text-[9px]">上傳</span></>}
           </button>
         )}
+        {objectPaths.length < max && (
+          <button type="button" onClick={() => setFromWorks(true)}
+            className="h-12 px-3 rounded-lg border border-[#cbd5e1] bg-white text-xs text-[#334155] hover:border-[#6366f1] hover:text-[#4f46e5] transition-all" data-testid="button-from-vault">
+            從作品選
+          </button>
+        )}
       </div>
+      {fromWorks && <VaultPicker onPick={url => { onAdd(url); setFromWorks(false); }} onClose={() => setFromWorks(false)} />}
       <input ref={inputRef} type="file" accept="image/*" multiple className="hidden"
         onChange={e => handleFiles(e.target.files)} />
     </div>
@@ -427,6 +439,58 @@ function ImageUploadButton({
 }
 
 // ─── Projects View ─────────────────────────────────────────────────────────────
+/** Project setting: which library character plays this role. Fills the role's
+ *  reference images with the character's four views (or its first images). */
+/** One step of the episode flow: 劇本 → 分鏡圖 → 動畫 → 合成. Holds that step's own actions. */
+function FlowStep({ n, title, meta, state, children }: {
+  n: number; title: string; meta: string; state: "done" | "active" | "todo"; children?: React.ReactNode;
+}) {
+  const box = state === "active" ? "border-[#6366f1] bg-[#eef2ff]" : state === "done" ? "border-[#a7f3d0] bg-[#ecfdf5]" : "border-[#e2e8f0] bg-[#f8fafc]";
+  const dot = state === "done" ? "bg-[#10b981]" : state === "active" ? "bg-[#6366f1]" : "bg-[#cbd5e1]";
+  return (
+    <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-1.5 shrink-0 ${box}`} data-testid={`episode-step-${n}`} data-state={state}>
+      <span className={`w-6 h-6 rounded-full text-[11px] font-bold text-white flex items-center justify-center shrink-0 ${dot}`}>{state === "done" ? "✓" : n}</span>
+      <span className="leading-tight shrink-0">
+        <span className="block text-xs font-bold text-[#0f172a]">{title}</span>
+        <span className="block text-[10px] text-[#64748b]">{meta}</span>
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function CharacterRolePicker({ label, urls, onChange }: { label: string; urls: string[]; onChange: (urls: string[]) => void }) {
+  const { data: characters = [] } = useQuery<CharacterLibraryItem[]>({ queryKey: ["/api/character-library"] });
+  const imagesOf = (c: CharacterLibraryItem): string[] => {
+    const v = (c.fourViewUrls ?? {}) as FourViewUrls;
+    const views = [v.front, v.threeQuarter, v.side, v.back].filter((u): u is string => !!u);
+    return (views.length > 0 ? views : c.refImageUrls ?? []).slice(0, 4);
+  };
+  const current = characters.find(c => { const imgs = imagesOf(c); return imgs.length > 0 && imgs.every(u => urls.includes(u)); });
+  return (
+    <div>
+      <label className="text-xs text-[#64748b] block mb-1.5">{label}</label>
+      {characters.length === 0 ? (
+        <p className="text-xs text-[#64748b] bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-3">
+          角色庫還沒有角色。先到 <Link href="/character-library"><span className="text-[#4f46e5] underline cursor-pointer">角色庫</span></Link> 用三張照片建立一個，再回來選。
+        </p>
+      ) : (
+        <select value={current?.id ?? ""} onChange={e => { const c = characters.find(x => x.id === e.target.value); onChange(c ? imagesOf(c) : []); }}
+          className="w-full h-11 px-3 rounded-xl border border-[#cbd5e1] bg-white text-sm text-[#0f172a]" data-testid={`select-role-${label}`}>
+          <option value="">{urls.length > 0 && !current ? "（沿用先前上傳的圖）" : "不指定"}</option>
+          {characters.map(c => <option key={c.id} value={c.id} disabled={imagesOf(c).length === 0}>{c.name}{imagesOf(c).length === 0 ? "（還沒有圖片）" : ""}</option>)}
+        </select>
+      )}
+      {urls.length > 0 && (
+        <div className="flex items-center gap-1.5 mt-2">
+          {urls.slice(0, 4).map((u, i) => <img key={i} src={u} alt="" className="w-11 h-11 rounded-lg object-cover border border-[#e2e8f0] bg-[#f8fafc]" />)}
+          <button type="button" onClick={() => onChange([])} className="ml-auto text-xs text-[#94a3b8] hover:text-[#ef4444]">清除</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ProjectsView({ onSelect }: { onSelect: (id: string) => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -456,12 +520,12 @@ function ProjectsView({ onSelect }: { onSelect: (id: string) => void }) {
   });
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-8">
+    <div className="max-w-5xl mx-auto px-4 md:px-6 py-5 md:py-8">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-2xl font-bold text-[#0f172a]">🎬 漫劇工作室</h1>
-          <p className="text-sm text-[#64748b] mt-1">視覺化 AI 漫劇生成流程</p>
+          <h1 className="hidden md:block text-2xl font-bold text-[#0f172a]">漫劇工作室</h1>
+          <p className="text-sm text-[#64748b] md:mt-1">從一句劇情，到分鏡圖、動畫與整集短劇。</p>
         </div>
         <DarkButton onClick={() => setShowCreate(true)}>＋ 新建漫劇</DarkButton>
       </div>
@@ -626,32 +690,53 @@ function ProjectView({
   if (!project) return <div className="text-center py-20 text-[#ef4444]">找不到漫劇</div>;
 
   return (
-    <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+    <div className="max-w-5xl mx-auto px-4 md:px-6 py-5 md:py-6 space-y-5">
       {/* Header */}
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-2 md:gap-3 flex-wrap">
         <button onClick={onBack} className="text-[#64748b] hover:text-[#334155] text-sm transition-colors">← 返回</button>
-        <div className="flex-1">
+        <div className="flex-1 min-w-[200px]">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl font-bold text-[#0f172a]">{project.title}</h1>
             {project.genre && <span className="text-xs bg-[#6366f1]/10 text-[#4f46e5] px-2 py-0.5 rounded-full">{project.genre}</span>}
             <span className="text-xs text-[#94a3b8]">{SIZE_LABELS[project.sceneSize ?? "9:16"]}</span>
           </div>
         </div>
-        <Link href="/character-library">
-          <DarkButton variant="secondary">🎭 角色庫</DarkButton>
-        </Link>
-        <Link href="/scene-library">
-          <DarkButton variant="secondary">🏞 場景庫</DarkButton>
-        </Link>
-        <DarkButton variant="secondary" onClick={() => setShowImportScript(true)} data-testid="button-import-script">📄 上傳劇本</DarkButton>
-        <DarkButton variant="secondary" onClick={() => setShowSettings(true)}>✏️ 編輯設定</DarkButton>
-        <DarkButton onClick={() => setShowNewEpisode(true)}>＋ 新增集數</DarkButton>
+      </div>
+
+      {/* 流程：每一步在哪裡做、做到哪了 */}
+      <div className="bg-white border border-[#e0e7ff] rounded-3xl p-4 md:p-5" data-testid="drama-flow">
+        <ol className="grid grid-cols-1 md:grid-cols-4 gap-2.5">
+          {[
+            { n: 1, title: "選角色與風格", desc: "從角色庫選主角，設定畫面比例與風格圖。", done: (project.characterAUrls ?? []).length > 0, action: "設定", onClick: () => setShowSettings(true) },
+            { n: 2, title: "寫劇本", desc: "新增一集：自己寫、用範本，或上傳劇本讓 AI 拆成分鏡。", done: episodes.length > 0, action: "新增集數", onClick: () => setShowNewEpisode(true), alt: { label: "上傳劇本", onClick: () => setShowImportScript(true) } },
+            { n: 3, title: "生成分鏡圖", desc: `進入集數，逐幕或一次生成。每幕 ${IMAGE_COST} 積分。`, done: episodes.some(e => (e.creditsUsed ?? 0) > 0), action: "", onClick: undefined },
+            { n: 4, title: "動畫與合成", desc: "把分鏡圖變成動畫，再合成整集下載。", done: false, action: "", onClick: undefined },
+          ].map(st => (
+            <li key={st.n} className={`rounded-2xl border p-3 ${st.done ? "border-[#a7f3d0] bg-[#ecfdf5]" : "border-[#e2e8f0] bg-[#f8fafc]"}`}>
+              <p className="flex items-center gap-2 text-sm font-bold text-[#0f172a]">
+                <span className={`w-6 h-6 rounded-full text-[11px] flex items-center justify-center text-white ${st.done ? "bg-[#10b981]" : "bg-[#6366f1]"}`}>{st.done ? "✓" : st.n}</span>
+                {st.title}
+              </p>
+              <p className="text-xs text-[#64748b] mt-1.5 leading-relaxed">{st.desc}</p>
+              {st.onClick && (
+                <div className="flex gap-2 mt-2.5">
+                  <button onClick={st.onClick} className="h-9 px-3 rounded-lg bg-[#6366f1] text-white text-xs font-semibold" data-testid={`drama-flow-${st.n}`}>{st.action}</button>
+                  {st.alt && <button onClick={st.alt.onClick} className="h-9 px-3 rounded-lg border border-[#cbd5e1] bg-white text-xs text-[#334155]" data-testid="button-import-script">{st.alt.label}</button>}
+                </div>
+              )}
+              {st.n >= 3 && <p className="text-[11px] text-[#94a3b8] mt-2">{episodes.length > 0 ? "點下方的集數進入。" : "先完成前兩步。"}</p>}
+            </li>
+          ))}
+        </ol>
       </div>
 
       {/* Character Library */}
       <div className="bg-[#ffffff] border border-[#e2e8f0] rounded-2xl p-5">
-        <h2 className="font-semibold text-[#334155] mb-4 text-sm uppercase tracking-wide">🎭 角色庫</h2>
-        <div className="grid grid-cols-3 gap-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-[#334155] text-sm">角色與風格</h2>
+          <button onClick={() => setShowSettings(true)} className="text-xs text-[#4f46e5] hover:underline">編輯設定</button>
+        </div>
+        <div className="grid grid-cols-3 gap-3 md:gap-6">
           {[
             { label: "角色 A", urls: project.characterAUrls ?? [], color: "#6366f1" },
             { label: "角色 B", urls: project.characterBUrls ?? [], color: "#f59e0b" },
@@ -660,11 +745,8 @@ function ProjectView({
             <div key={label}>
               <p className="text-xs text-[#64748b] mb-2">{label}（{urls.length} 張）</p>
               <div className="flex flex-wrap gap-1.5">
-                {urls.map((_, i) => (
-                  <div key={i} className="w-10 h-10 rounded-lg flex items-center justify-center border text-xs font-bold"
-                    style={{ background: `${color}15`, borderColor: `${color}40`, color }}>
-                    {label[2]}{i + 1}
-                  </div>
+                {urls.map((u, i) => (
+                  <img key={i} src={u} alt={`${label} ${i + 1}`} className="w-10 h-10 rounded-lg object-cover border" style={{ borderColor: `${color}60` }} />
                 ))}
                 {urls.length === 0 && <p className="text-xs text-[#cbd5e1]">未設定</p>}
               </div>
@@ -675,7 +757,7 @@ function ProjectView({
 
       {/* Episodes */}
       <div className="bg-[#ffffff] border border-[#e2e8f0] rounded-2xl p-5">
-        <h2 className="font-semibold text-[#334155] mb-4 text-sm uppercase tracking-wide">📋 集數列表</h2>
+        <h2 className="font-semibold text-[#334155] mb-4 text-sm">集數</h2>
         {loadingEpisodes ? (
           <div className="flex items-center justify-center h-16"><Spinner /></div>
         ) : episodes.length === 0 ? (
@@ -744,10 +826,8 @@ function ProjectView({
               ))}
             </div>
           </div>
-          <ImageUploadButton label="角色 A 參考圖（最多 4 張）" objectPaths={pCharAUrls}
-            onAdd={p => setPCharAUrls(v => [...v, p])} onRemove={i => setPCharAUrls(v => v.filter((_, idx) => idx !== i))} />
-          <ImageUploadButton label="角色 B 參考圖（最多 4 張）" objectPaths={pCharBUrls}
-            onAdd={p => setPCharBUrls(v => [...v, p])} onRemove={i => setPCharBUrls(v => v.filter((_, idx) => idx !== i))} />
+          <CharacterRolePicker label="角色 A（主角）" urls={pCharAUrls} onChange={setPCharAUrls} />
+          <CharacterRolePicker label="角色 B（選填）" urls={pCharBUrls} onChange={setPCharBUrls} />
           <ImageUploadButton label="風格參考圖（最多 4 張）" objectPaths={pStyleUrls}
             onAdd={p => setPStyleUrls(v => [...v, p])} onRemove={i => setPStyleUrls(v => v.filter((_, idx) => idx !== i))} />
           <DarkButton onClick={() => updateMutation.mutate({ title: pTitle, genre: pGenre, sceneSize: pSceneSize, characterAUrls: pCharAUrls, characterBUrls: pCharBUrls, styleImageUrls: pStyleUrls })}
@@ -784,7 +864,7 @@ function ProjectView({
                       <span className={`text-xs font-semibold ${active ? "text-[#4f46e5]" : "text-[#334155]"}`}>{t.title}</span>
                     </div>
                     <p className="text-[10px] text-[#64748b] leading-snug line-clamp-2">{t.description}</p>
-                    <p className="text-[10px] text-[#94a3b8] mt-1">共 {t.scenes.length} 幕 · {t.scenes.length * 3} 積分</p>
+                    <p className="text-[10px] text-[#94a3b8] mt-1">共 {t.scenes.length} 幕 · {t.scenes.length * IMAGE_COST} 積分</p>
                   </button>
                 );
               })}
@@ -796,7 +876,7 @@ function ProjectView({
             <div>
               <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">
                 場景數量：<span className="text-[#4f46e5] font-bold">{newEpSceneCount} 幕</span>
-                <span className="text-[#94a3b8] ml-2">（{newEpSceneCount * 3} 積分）</span>
+                <span className="text-[#94a3b8] ml-2">（{newEpSceneCount * IMAGE_COST} 積分）</span>
               </label>
               <input type="range" min={2} max={12} value={newEpSceneCount}
                 onChange={e => setNewEpSceneCount(Number(e.target.value))}
@@ -1421,7 +1501,7 @@ function EpisodeView({
   }, [episode]);
 
   // ─── Refund toasts on regen failure ──────────────────────────────────────
-  // Backend auto-refunds 3 積分 only via regenerateDramaScene's catch (single
+  // Backend auto-refunds the scene cost only via regenerateDramaScene's catch (single
   // regen + each scene of chain regen-all). /generate-images doesn't refund
   // per-scene, so we track only scenes whose regen WE kicked off — preventing
   // misleading "已退回" toasts. State machine: armed → active → resolved.
@@ -1838,8 +1918,9 @@ function EpisodeView({
   };
 
   const replaceFileRef = useRef<HTMLInputElement | null>(null);
+  const [replaceFromVault, setReplaceFromVault] = useState(false);
   const pendingCount = localScenes.filter(s => s.imageStatus !== "completed").length;
-  const creditCost = pendingCount * 3;
+  const creditCost = pendingCount * IMAGE_COST;
   const hasEnoughCredits = (user?.credits ?? 0) >= creditCost;
 
   const handleGenerateImages = () => {
@@ -1860,6 +1941,18 @@ function EpisodeView({
     const ov = s.chainModeOverride ?? "inherit";
     return ov === "on" ? true : ov === "off" ? false : !!episode.chainMode;
   });
+
+  // Where the episode stands in 劇本 → 分鏡圖 → 動畫 → 合成.
+  const flowTotal = serverScenes.length;
+  const flowImg = serverScenes.filter(sc => sc.imageStatus === "completed").length;
+  const flowVid = serverScenes.filter(sc => sc.videoBunnyUrl || sc.videoUrl).length;
+  const flowCompiled = episode.compiledStatus === "completed" && !!episode.compiledVideoUrl;
+  const flowStage = localScenes.length === 0 ? 1 : flowImg < flowTotal || flowTotal === 0 ? 2 : flowVid < flowTotal ? 3 : flowCompiled ? 5 : 4;
+  const flowState = (n: number): "done" | "active" | "todo" => n < flowStage ? "done" : n === flowStage ? "active" : "todo";
+  const flowHint = flowStage === 1 ? "先新增幕，或讓 AI 寫腳本。"
+    : flowStage === 2 ? "檢查每一幕的描述與台詞，再生成分鏡圖。"
+    : flowStage === 3 ? "分鏡圖都好了，可以生成動畫。"
+    : flowStage === 4 ? "動畫都好了，合成整集影片。" : "整集完成，可以下載。";
 
   // ─── Mobile Layout (single-column + horizontal swipe + bottom sheets) ───
   const renderMobileLayout = () => {
@@ -1899,6 +1992,21 @@ function EpisodeView({
           >
             🤖
           </button>
+        </div>
+
+        {/* Mobile: where am I in the flow */}
+        <div className="bg-white border-b border-[#e2e8f0] px-3 pt-2 pb-1.5 shrink-0" data-testid="mobile-episode-steps">
+          <div className="flex items-center gap-1">
+            {["劇本", "分鏡圖", "動畫", "合成"].map((t, i) => {
+              const st = flowState(i + 1);
+              return (
+                <span key={t} className={`flex-1 text-center text-[11px] font-semibold py-1 rounded-full ${st === "active" ? "bg-[#6366f1] text-white" : st === "done" ? "bg-[#d1fae5] text-[#047857]" : "bg-[#f1f5f9] text-[#94a3b8]"}`}>
+                  {st === "done" ? "✓ " : `${i + 1} `}{t}
+                </span>
+              );
+            })}
+          </div>
+          <p className="text-[11px] text-[#64748b] mt-1.5">{flowHint}</p>
         </div>
 
         {/* Mobile Progress Bar */}
@@ -2053,7 +2161,7 @@ function EpisodeView({
         </div>
 
         {/* Mobile Bottom Action Bar */}
-        <div className="bg-white border-t border-[#e2e8f0] px-3 py-2 shrink-0 flex items-center gap-2">
+        <div className="bg-white border-t border-[#e2e8f0] pl-3 pr-[76px] py-2 shrink-0 flex items-center gap-2">
           <div className="text-[10px] text-[#94a3b8] flex-1 leading-tight">
             積分 <span className="font-semibold text-[#334155]">{user?.credits ?? 0}</span>
             <br />
@@ -2116,12 +2224,12 @@ function EpisodeView({
   };
 
   return (
-    <div className="h-[calc(100vh-56px)] flex flex-col bg-[#f8fafc]">
+    <div className="h-[calc(100dvh-48px-56px-env(safe-area-inset-bottom))] md:h-[calc(100vh-56px)] flex flex-col bg-[#f8fafc]">
 
       {isMobile ? renderMobileLayout() : (<>
 
       {/* ── Top Bar ─────────────────────────────────────────────────────────── */}
-      <div className="flex items-center gap-3 px-4 h-12 bg-[#ffffff] border-b border-[#e2e8f0] shrink-0">
+      <div className="flex items-center gap-3 px-4 min-h-12 py-1.5 flex-wrap bg-[#ffffff] border-b border-[#e2e8f0] shrink-0">
         <button onClick={onBack} className="text-[#64748b] hover:text-[#334155] text-sm transition-colors shrink-0">← 返回</button>
         <div className="w-px h-4 bg-[#e2e8f0]" />
         <div className="flex-1 min-w-0">
@@ -2144,11 +2252,6 @@ function EpisodeView({
           </button>
         </div>
 
-        <DarkButton variant="secondary" onClick={() => setShowAIDialog(true)}
-          style={{ background: "#6366f110", borderColor: "#6366f140", color: "#4f46e5" }}>
-          🤖 AI 寫腳本
-        </DarkButton>
-
         {/* Episode-level Chain Mode toggle */}
         <button
           onClick={() => setChainModeMutation.mutate(!episode.chainMode)}
@@ -2170,13 +2273,48 @@ function EpisodeView({
           </span>
         </button>
 
+        <DarkButton variant="secondary" onClick={() => saveScenesMutation.mutate(localScenes)} disabled={saveScenesMutation.isPending}>
+          {saveScenesMutation.isPending ? "儲存中..." : "💾 儲存"}
+        </DarkButton>
+        {/* Download all assets as ZIP */}
+        <a
+          href={`/api/drama/episodes/${episodeId}/download-zip`}
+          download
+          className="text-xs font-medium text-[#475569] bg-[#f1f5f9] hover:bg-[#e2e8f0] px-3 py-1.5 rounded-md transition-colors shrink-0 border border-[#e2e8f0]"
+          data-testid="link-download-zip"
+        >
+          📦 下載素材 ZIP
+        </a>
+      </div>
+
+      {/* ── 流程列：每一步自己的動作都放在那一步 ─────────────────────────── */}
+      <div className="flex flex-wrap items-stretch gap-2 px-4 py-2 bg-white border-b border-[#e2e8f0] shrink-0" data-testid="episode-steps">
+        <FlowStep n={1} title="劇本" meta={`${localScenes.length} 幕（最多 12）`} state={flowState(1)}>
+        <DarkButton variant="secondary" onClick={() => setShowAIDialog(true)}
+          style={{ background: "#6366f110", borderColor: "#6366f140", color: "#4f46e5" }}>
+          🤖 AI 寫腳本
+        </DarkButton>
+
+        <DarkButton variant="secondary" onClick={addScene} disabled={localScenes.length >= 12}>＋ 新增幕</DarkButton>
+        </FlowStep>
+        <FlowStep n={2} title="分鏡圖" meta={`${flowImg}/${flowTotal} 完成・每幕 ${IMAGE_COST} 積分`} state={flowState(2)}>
+        <DarkButton
+          onClick={handleGenerateImages}
+          disabled={!hasEnoughCredits || generateImagesMutation.isPending || pendingCount === 0}
+        >
+          {generateImagesMutation.isPending ? "⏳ 生成中..." : `🎨 生成分鏡圖（${creditCost} 積分）`}
+        </DarkButton>
+        {!hasEnoughCredits && creditCost > 0 && (
+          <span className="text-xs text-[#ef4444] shrink-0">積分不足</span>
+        )}
+
         {/* One-click: re-apply chain mode to the whole episode */}
         {episode.chainMode && serverScenes.length >= 2 && (() => {
           const firstReady = serverScenes[0]?.imageStatus === "completed" && (serverScenes[0]?.bunnyUrl || serverScenes[0]?.imageUrl);
           // Targets: scenes 2..N excluding ones already in flight
           const targets = serverScenes.slice(1).filter(s => s.imageStatus !== "generating");
           const inFlightAfterFirst = serverScenes.slice(1).filter(s => s.imageStatus === "generating").length;
-          const chainCost = targets.length * 3;
+          const chainCost = targets.length * IMAGE_COST;
           const insufficient = (user?.credits ?? 0) < chainCost;
           const totalChainTargets = serverScenes.length - 1;
           const completedAfterFirst = serverScenes.slice(1).filter(s => s.imageStatus === "completed").length;
@@ -2248,7 +2386,7 @@ function EpisodeView({
                   style={{ background: "#10b98110", borderColor: "#10b98140", color: "#047857" }}
                   data-testid="button-regenerate-all-chain"
                 >
-                  🔁 整集重生（連續）(-{chainCost})
+                  🔁 整集重生（{chainCost} 積分）
                 </DarkButton>
               </span>
               {insufficient && (
@@ -2258,20 +2396,8 @@ function EpisodeView({
           );
         })()}
 
-        <DarkButton variant="secondary" onClick={() => saveScenesMutation.mutate(localScenes)} disabled={saveScenesMutation.isPending}>
-          {saveScenesMutation.isPending ? "儲存中..." : "💾 儲存"}
-        </DarkButton>
-        <DarkButton variant="secondary" onClick={addScene} disabled={localScenes.length >= 12}>＋ 新增幕</DarkButton>
-        <DarkButton
-          onClick={handleGenerateImages}
-          disabled={!hasEnoughCredits || generateImagesMutation.isPending || pendingCount === 0}
-        >
-          {generateImagesMutation.isPending ? "⏳ 生成中..." : `🎨 生成圖片 (-${creditCost}積分)`}
-        </DarkButton>
-        {!hasEnoughCredits && creditCost > 0 && (
-          <span className="text-xs text-[#ef4444] shrink-0">積分不足</span>
-        )}
-
+        </FlowStep>
+        <FlowStep n={3} title="動畫" meta={`${flowVid}/${flowTotal} 完成`} state={flowState(3)}>
         {/* Batch animate all scenes */}
         {(() => {
           const animatable = serverScenes.filter(s => s.imageStatus === "completed" && s.bunnyUrl && !(s.videoStatus === "completed" && s.videoBunnyUrl) && s.videoStatus !== "generating").length;
@@ -2331,11 +2457,14 @@ function EpisodeView({
               disabled={animateAllMutation.isPending || (user?.credits ?? 0) < batchCost}
               style={{ background: "#0ea5e9", borderColor: "#0ea5e9" }}
             >
-              {animateAllMutation.isPending ? "⏳ 派發中..." : `🎬 一鍵生成全部影片 (-${batchCost})`}
+              {animateAllMutation.isPending ? "⏳ 派發中..." : `🎬 生成全部動畫（${batchCost} 積分）`}
             </DarkButton>
           ) : null;
         })()}
 
+          {flowImg === 0 && <span className="text-[11px] text-[#94a3b8]">先完成分鏡圖</span>}
+        </FlowStep>
+        <FlowStep n={4} title="合成" meta={flowCompiled ? "已完成" : "剪接＋字幕"} state={flowState(4)}>
         {/* Compile (stitch + subtitles) */}
         {(() => {
           const allDone = serverScenes.length > 0 && serverScenes.every(s => s.videoBunnyUrl || s.videoUrl);
@@ -2396,15 +2525,9 @@ function EpisodeView({
           );
         })()}
 
-        {/* Download all assets as ZIP */}
-        <a
-          href={`/api/drama/episodes/${episodeId}/download-zip`}
-          download
-          className="text-xs font-medium text-[#475569] bg-[#f1f5f9] hover:bg-[#e2e8f0] px-3 py-1.5 rounded-md transition-colors shrink-0 border border-[#e2e8f0]"
-          data-testid="link-download-zip"
-        >
-          📦 下載素材 ZIP
-        </a>
+          {flowVid < flowTotal || flowTotal === 0 ? <span className="text-[11px] text-[#94a3b8]">全部動畫完成後開放</span> : null}
+        </FlowStep>
+        <span className="self-center text-xs text-[#64748b] pl-1" data-testid="episode-flow-hint">{flowHint}</span>
       </div>
 
       {/* ── Compiled Episode Player ─────────────────────────────────────────── */}
@@ -2929,7 +3052,12 @@ function EpisodeView({
                 {selectedServerScene?.imageStatus === "completed" && (
                   <DarkButton variant="secondary" className="w-full justify-center"
                     onClick={() => replaceFileRef.current?.click()}>
-                    🖼 替換圖片
+                    🖼 替換圖片（上傳）
+                  </DarkButton>
+                )}
+                {selectedServerScene?.imageStatus === "completed" && (
+                  <DarkButton variant="secondary" className="w-full justify-center" onClick={() => setReplaceFromVault(true)} data-testid="button-replace-from-vault">
+                    從作品選一張替換
                   </DarkButton>
                 )}
                 <input ref={replaceFileRef} type="file" accept="image/*" className="hidden"
@@ -3120,6 +3248,12 @@ function EpisodeView({
         }}
       />
 
+      {replaceFromVault && selectedIdx !== null && (
+        <VaultPicker
+          onPick={url => { replaceImageMutation.mutate({ sceneIdx: selectedIdx, objectPath: url }); setReplaceFromVault(false); }}
+          onClose={() => setReplaceFromVault(false)} />
+      )}
+
       {/* Mobile-mode replace-image file input (always mounted when mobile) */}
       {isMobile && (
         <input ref={replaceFileRef} type="file" accept="image/*" className="hidden"
@@ -3171,7 +3305,7 @@ function EpisodeView({
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#6366f1]/10 text-[#4f46e5] text-sm font-medium disabled:opacity-50"
                         data-testid="action-regenerate"
                       >
-                        <span className="text-lg">🔄</span><span>重新生成圖片 (-3 積分)</span>
+                        <span className="text-lg">🔄</span><span>重新生成圖片 (-{IMAGE_COST} 積分)</span>
                       </button>
                     )}
 
@@ -3196,7 +3330,16 @@ function EpisodeView({
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#0ea5e9]/10 text-[#0369a1] text-sm font-medium"
                         data-testid="action-replace"
                       >
-                        <span className="text-lg">🖼</span><span>替換圖片</span>
+                        <span className="text-lg">🖼</span><span>替換圖片（上傳）</span>
+                      </button>
+                    )}
+                    {ss?.imageStatus === "completed" && (
+                      <button
+                        onClick={() => { closeSheet(); setSelectedIdx(idx!); setReplaceFromVault(true); }}
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#6366f1]/10 text-[#4338ca] text-sm font-medium"
+                        data-testid="action-replace-from-vault"
+                      >
+                        <span className="text-lg">🗂</span><span>從作品選一張替換</span>
                       </button>
                     )}
 

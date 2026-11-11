@@ -30,6 +30,17 @@ export const ATLAS_IMAGE_MODEL_LABEL = "Seedream 5.5";
 /** The edit model accepts at most 10 reference images. */
 export const ATLAS_MAX_REFERENCE_IMAGES = 10;
 
+export type AtlasUsage =
+  | { kind: "image"; model: string; images: number; inputImages: number }
+  | { kind: "video"; model: string; seconds: number; resolution: string }
+  | { kind: "library"; model: string; images: number };
+let usageListener: ((u: AtlasUsage) => void) | null = null;
+/** Called once per SUCCESSFUL generation (failed jobs are not billed by the provider). */
+export function setAtlasUsageListener(fn: ((u: AtlasUsage) => void) | null): void { usageListener = fn; }
+function reportUsage(u: AtlasUsage): void {
+  try { usageListener?.(u); } catch { /* cost tracking must never break a generation */ }
+}
+
 function authHeader(): Record<string, string> {
   const key = process.env.ATLASCLOUD_API_KEY;
   if (!key) throw new Error("ATLASCLOUD_API_KEY 未設定，無法呼叫 AtlasCloud。");
@@ -221,6 +232,7 @@ export async function atlasGenerateImage(args: {
   if (!url) {
     throw new Error(`AtlasCloud 完成但無法擷取圖片 URL：${JSON.stringify(done).slice(0, 400)}`);
   }
+  reportUsage({ kind: "image", model: payload.model, images: 1, inputImages: referenceImages.length });
   return url.replace(/&amp;/g, "&");
 }
 
@@ -255,6 +267,7 @@ export async function atlasGenerateLibraryImage(args: {
   const done = await atlasPollUntilDone(predictionId, { timeoutMs: 5 * 60 * 1000, intervalMs: 3000 });
   const url = extractFirstImageUrl(done);
   if (!url) throw new Error("AtlasCloud 完成但無法擷取圖片 URL");
+  reportUsage({ kind: "library", model: ATLAS_LIBRARY_MODEL, images: 1 });
   return url.replace(/&amp;/g, "&");
 }
 
@@ -286,6 +299,7 @@ async function runWanVideo(payload: Record<string, any>): Promise<AtlasVideoResu
   if (!url) {
     throw new Error(`AtlasCloud 完成但無法擷取影片 URL：${JSON.stringify(done).slice(0, 400)}`);
   }
+  reportUsage({ kind: "video", model: String(payload.model), seconds: Number(payload.duration) || 0, resolution: String(payload.resolution || "") });
   return {
     videoUrl: url.replace(/&amp;/g, "&"),
     predictionId,

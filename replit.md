@@ -70,3 +70,40 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 參考圖配額（Seedream 一次最多 10 張）：`REF_BUDGET` in `shared/photosetOptions.ts` —— 情境 1、人物最多 6、服裝 1、每個鏡頭的姿勢 1。送圖順序與提示詞說明由 `studioReferenceNote()` 決定，兩者必須一致。
 - 規劃端點 `/api/photosets/plan` 多了 `customPoses`（素材圖庫的姿勢，自由文字）。
 - 配色：紫→靛→藍的品牌漸層（`bg-brand`、`text-brand`、`shadow-glow`），淺藍 sky 為輔，fuchsia／amber 為跳色。`client/src/index.css` 末段把所有實心品牌色與頁面底色一次換掉，新頁面直接用 `bg-indigo-600` 即可得到漸層。
+
+## 收費、會員與安全隱私（2026-11）
+
+- 計價集中在 `shared/pricing.ts`：圖片 `IMAGE_COST`（5）、去浮水印 `WATERMARK_REMOVAL_COST`（+1）、註冊送 `SIGNUP_CREDITS`（10，信箱驗證碼通過或 Google 註冊時發一次）、`MEMBERSHIP`（US$9.9 一次性開通，送 300 積分）。對外 API 的計價另在 `server/partnerApi.ts`，沒有跟著改。
+- 付款：`POST /api/stripe/create-checkout` 收 `{ kind: "membership" }`（美金）或 `{ amount }`（台幣加購，必須已是會員）。`users.is_member` 在付款確認後設定。
+- `POST /api/credits/topup` 只限管理員（以前任何登入者都能呼叫）。
+- 安全隱私在 `shared/safety.ts` 與 `PATCH /api/account/safety`：生日只能設定一次；成人內容要年滿 18、同意條款才能啟用。提示詞被 `containsNsfw()` 判定為成人內容時，未啟用的帳號回 403 `nsfw_not_enabled`（不扣積分）；啟用的帳號可生成，`image_generations.sensitive` 設為 true，前端用 `SensitiveGate` 先模糊顯示。提示詞強化（`server/promptEnhancer.ts`）現在只作用在成人內容的提示詞上。
+- 新增欄位（需要 `npm run db:push`）：`users.is_member / member_since / birth_date / nsfw_enabled / nsfw_consent_at / onboarded_at`、`image_generations.sensitive`。
+- 測試：`npx tsx scripts/test-safety.ts`。
+
+## 寫真工作室步驟式流程（2026-11）
+
+- 一步一步展開（`Step` in `client/src/pages/photoset.tsx`）。情境寫真：情境（文字或要模仿的照片，下方放人物參考圖）→ 角色 → 姿勢與服裝 → 張數與輸出。素材套圖：人物 → 服裝 → 姿勢 → 張數與輸出。
+- 姿勢與服裝各只選一個。姿勢用在第一張，其餘由 AI 安排，規劃後每個鏡頭可再換；服裝在生成時才加進提示詞，所以隨時可換、不用重新規劃。
+- 選角色會帶入四視圖（最多 4 張）。張數可自訂 2–10。
+- 共用元件：`VaultPicker`（從作品選圖）、`ReferenceCollage`（參考圖拼合卡片，可下載）、`LibraryPicker`、`Onboarding`（首次登入引導，掛在創作中心）。
+- 漫劇專案設定改成從角色庫選角色（`CharacterRolePicker`），專案頁上方有四步流程。
+
+## 對外 API：AI 角色（2026-11）
+
+- 端點都在 `server/partnerApi.ts`：`POST /uploads`、`/characters` 的建立／列表／查詢／修改／刪除、`POST /characters/:id/four-views`；`/images`、`/videos`、`/photosets` 多接受 `owner_ref` 與 `character_ids`。文件與範例在 `docs/partner-api.md`。
+- 隔離：角色存在新表 `partner_characters`，一律以（服務帳號 userId, owner_ref）過濾。所有讀取都經過 `loadCharacter()`，不符回 404，內容與不存在相同。`partner_jobs` 多了 `owner_ref`、`character_ids`；有 owner_ref 的任務查詢時必須帶同一個。
+- 上傳：手寫的 multipart 解析（沒有新增套件），10 MB，依檔頭判斷 JPG／PNG／WEBP，`createPartnerUploadStore()` 用 sharp 重新編碼以去除全部 EXIF。檔案放在 `partner/u/{userId}/o/{owner_ref 雜湊}/`。
+- 四視圖：建立 4 筆 image_generations 交給既有 worker（`rawPrompt: true`、無浮水印、每張 5 積分），角色的 `four_view_urls` 在下次讀取時由 `syncFourViews()` 從任務結果回填。提示詞搬到 `shared/fourViews.ts`，網站角色庫共用。
+- 帶角色的生成一律不套用 NSFW 強化；`consent` 必須為 true 並記錄時間；後台可依 owner_ref 或代號停用（`PartnerCharactersPanel.tsx`）。
+- 對外 API 計價改為與網站一致：有浮水印 5、無浮水印 6 積分。
+- 需要 `npm run db:push`。測試：`npx tsx scripts/test-partner-api.ts`（141 項）。
+
+
+## 漫劇集數編輯、動畫提示詞、圖庫批次（2026-11）
+
+- 集數編輯畫面（`drama.tsx` 的 EpisodeView）：上方改成工具列＋四步流程列（劇本 → 分鏡圖 → 動畫 → 合成，`FlowStep`），每一步的批次按鈕放在那一步；手機版多了四步指示，並修正主要按鈕被底部分頁列與客服泡泡蓋住的問題。替換分鏡圖與風格參考圖可「從作品選」（後端只接受自己 CDN 的網址）。
+- 動畫提示詞改用 `shared/dramaMotion.ts`：首幀錨點＋主體動態＋背景動態＋運鏡＋氛圍變化，不再重述靜態畫面；沒有寫過提示詞的幕在批次動畫時用 `fallbackMotionPrompt()`，不再直接拿畫面描述當動態提示詞。漫劇動畫與網站四視圖只有在提示詞含成人詞時才套用強化前綴。
+- 素材圖庫批次（`server/assetLibrary.ts`）改成滾動式佇列，同時張數上限 32（預設 8）；遇到供應商限流會暫停 20 秒並把同時張數減半，連續失敗會自動停止。
+
+- 成本紀錄（`server/costs.ts`、後台「成本」分頁 `CostPanel.tsx`）：每次 AtlasCloud 生成成功記一筆到 `provider_costs`（估算，單價可用 `COST_*` 環境變數修正，另有 `USD_TWD_RATE`、`PAYMENT_FEE_RATE`，預設 32 與 0.08）；同頁直接呼叫 AtlasCloud 帳務 API（`/public/v1/balance`、`/public/v1/model-costs`）顯示真實餘額與花費。需要 `npm run db:push`。
+- Bunny 上傳遇到網路錯誤、429、5xx 會重試最多 3 次，避免已付費生成的圖因為存不進去而重畫。

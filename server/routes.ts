@@ -1,3 +1,4 @@
+import { fallbackMotionPrompt } from "@shared/dramaMotion";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomBytes } from "crypto";
@@ -10,13 +11,17 @@ import nodemailer from "nodemailer";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
+import { IMAGE_COST, MEMBERSHIP, MIN_TOPUP, SIGNUP_CREDITS, VIDEO_COST_PER_SECOND, imageCost } from "@shared/pricing";
+import { ADULT_AGE, ageFromBirthDate, canUseNsfw, containsNsfw } from "@shared/safety";
 import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
 import { registerPhotosetRoutes, createPhotosetPlanner } from "./photoset";
 import { registerPartnerRoutes } from "./partnerApi";
 import { registerAssetLibraryRoutes } from "./assetLibrary";
 import { registerVaultRoutes } from "./vault";
-import { partnerStore, createPartnerImageIngestor } from "./partnerStore";
+import { registerCostRoutes, recordProviderUsage } from "./costs";
+import { setAtlasUsageListener } from "./atlasProvider";
+import { partnerStore, createPartnerImageIngestor, createPartnerUploadStore } from "./partnerStore";
 import { atlasSizeDimensions } from "./atlasProvider";
 import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
 import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIsConfigured, ATLAS_EDIT_MODEL, ATLAS_T2I_MODEL, ATLAS_I2V_MODEL, ATLAS_T2V_MODEL, ATLAS_MAX_REFERENCE_IMAGES } from "./atlasProvider";
@@ -237,7 +242,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         await storage.setUserAdmin(user.id, true);
       }
 
-      const welcomeCredits = 10;
+      const welcomeCredits = SIGNUP_CREDITS;
       await storage.updateUserCredits(user.id, welcomeCredits);
 
       await storage.createCreditTransaction({
@@ -408,7 +413,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           await storage.setUserAdmin(user.id, true);
         }
 
-        const welcomeCredits = 10;
+        const welcomeCredits = SIGNUP_CREDITS;
         await storage.updateUserCredits(user.id, welcomeCredits);
         await storage.createCreditTransaction({
           userId: user.id,
@@ -463,7 +468,61 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       email: user.email,
       credits: user.credits,
       isAdmin: user.isAdmin || false,
+      createdAt: user.createdAt,
+      isMember: user.isMember || false,
+      birthDate: user.birthDate ?? null,
+      nsfwEnabled: canUseNsfw(user),
+      onboardedAt: user.onboardedAt ?? null,
     });
+  });
+
+  // ===== ACCOUNT: SAFETY & PRIVACY =====
+
+  // Birthday (set once) and the adult-content switch. Turning the switch on
+  // needs an 18+ birthday and acceptance of the terms shown in the UI.
+  app.patch("/api/account/safety", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ error: "用戶不存在" });
+      const { birthDate, nsfwEnabled, acceptTerms } = req.body ?? {};
+      const patch: Parameters<typeof storage.updateUserProfile>[1] = {};
+
+      if (birthDate !== undefined && birthDate !== user.birthDate) {
+        if (user.birthDate) return res.status(400).json({ error: "生日設定後無法自行修改，如需更正請聯繫客服。" });
+        if (typeof birthDate !== "string" || ageFromBirthDate(birthDate) === null) {
+          return res.status(400).json({ error: "請輸入正確的生日。" });
+        }
+        patch.birthDate = birthDate;
+      }
+      const effectiveBirthDate = patch.birthDate ?? user.birthDate;
+
+      if (nsfwEnabled === true) {
+        const age = ageFromBirthDate(effectiveBirthDate);
+        if (age === null) return res.status(400).json({ error: "請先設定生日。" });
+        if (age < ADULT_AGE) return res.status(403).json({ error: `未滿 ${ADULT_AGE} 歲無法啟用成人內容。` });
+        if (acceptTerms !== true) return res.status(400).json({ error: "請先閱讀並同意使用條款。" });
+        patch.nsfwEnabled = true;
+        patch.nsfwConsentAt = new Date();
+      } else if (nsfwEnabled === false) {
+        patch.nsfwEnabled = false;
+      }
+
+      const updated = Object.keys(patch).length > 0 ? await storage.updateUserProfile(user.id, patch) : user;
+      res.json({ birthDate: updated?.birthDate ?? null, nsfwEnabled: canUseNsfw(updated) });
+    } catch (error) {
+      console.error("Error updating safety settings:", error);
+      res.status(500).json({ error: "設定儲存失敗，請稍後再試。" });
+    }
+  });
+
+  app.post("/api/account/onboarded", requireAuth, async (req, res) => {
+    try {
+      await storage.updateUserProfile(req.session.userId!, { onboardedAt: new Date() });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error marking onboarding done:", error);
+      res.status(500).json({ error: "儲存失敗" });
+    }
   });
 
   // Lightweight personal video history feed for the home.tsx "我的影片"
@@ -491,8 +550,12 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
   // ===== CREDIT ROUTES =====
 
+  // Manual credit adjustment. Admins only: customers pay through Stripe.
   app.post("/api/credits/topup", requireAuth, async (req, res) => {
     try {
+      if (!req.session.isAdmin) {
+        return res.status(403).json({ error: "請透過付款頁面加購積分。" });
+      }
       const { amount } = req.body;
       if (!amount || !Number.isInteger(amount) || amount <= 0) {
         return res.status(400).json({ error: "充值金额必须为正整数" });
@@ -555,32 +618,50 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
   app.post("/api/stripe/create-checkout", requireAuth, async (req, res) => {
     try {
-      const { amount } = req.body;
-      if (!amount || !Number.isInteger(amount) || amount < 50) {
-        return res.status(400).json({ error: "充值金額最少 50 積分" });
-      }
-
       const user = await storage.getUser(req.session.userId!);
       if (!user) {
         return res.status(404).json({ error: "用戶不存在" });
+      }
+      const isMembership = req.body?.kind === "membership";
+      const amount = req.body?.amount;
+
+      if (isMembership) {
+        if (user.isMember) return res.status(400).json({ error: "你已經是會員了，直接加購積分即可。" });
+      } else {
+        if (!user.isMember && !user.isAdmin) {
+          return res.status(403).json({ error: "請先開通會員，之後就能加購積分。", code: "membership_required" });
+        }
+        if (!amount || !Number.isInteger(amount) || amount < MIN_TOPUP) {
+          return res.status(400).json({ error: `充值金額最少 ${MIN_TOPUP} 積分` });
+        }
       }
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host;
       const baseUrl = `${protocol}://${host}`;
+      const credits = isMembership ? MEMBERSHIP.credits : amount;
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         line_items: [
           {
-            price_data: {
-              currency: "twd",
-              product_data: {
-                name: `AI 創意工坊 - ${amount} 積分`,
-                description: `充值 ${amount} 積分（1 積分 = 1 元新台幣）`,
-              },
-              unit_amount: amount * 100,
-            },
+            price_data: isMembership
+              ? {
+                  currency: "usd",
+                  product_data: {
+                    name: "AI 創意工坊 - 開通會員",
+                    description: `一次性開通會員，含 ${MEMBERSHIP.credits} 積分`,
+                  },
+                  unit_amount: Math.round(MEMBERSHIP.priceUsd * 100),
+                }
+              : {
+                  currency: "twd",
+                  product_data: {
+                    name: `AI 創意工坊 - ${amount} 積分`,
+                    description: `充值 ${amount} 積分（1 積分 = 1 元新台幣）`,
+                  },
+                  unit_amount: amount * 100,
+                },
             quantity: 1,
           },
         ],
@@ -589,7 +670,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         cancel_url: `${baseUrl}/account?payment=cancelled`,
         metadata: {
           userId: user.id,
-          credits: amount.toString(),
+          credits: String(credits),
+          kind: isMembership ? "membership" : "topup",
         },
       });
 
@@ -633,6 +715,9 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           const existingTx = await storage.getCreditTransactionByDescription(stripeDesc);
           if (!existingTx) {
             await storage.atomicAddCredits(userId, credits, stripeDesc);
+            if (session.metadata?.kind === "membership") {
+              await storage.updateUserProfile(userId, { isMember: true, memberSince: new Date() });
+            }
             console.log(`Stripe webhook: credited ${credits} to user ${userId}`);
           } else {
             console.log(`Stripe webhook: session ${session.id} already processed, skipping`);
@@ -675,7 +760,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const existingTx = await storage.getCreditTransactionByDescription(stripeDesc);
       if (existingTx) {
         console.log(`Stripe session ${sessionId} already processed, skipping`);
-        return res.json({ success: true, credits, alreadyProcessed: true });
+        return res.json({ success: true, credits, alreadyProcessed: true, membership: session.metadata?.kind === "membership" });
       }
 
       const user = await storage.getUser(userId);
@@ -684,10 +769,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
 
       await storage.atomicAddCredits(userId, credits, stripeDesc);
+      if (session.metadata?.kind === "membership") {
+        await storage.updateUserProfile(userId, { isMember: true, memberSince: new Date() });
+      }
 
       const updatedUser = await storage.getUser(userId);
       console.log(`Stripe verify: credited ${credits} to user ${userId}, new balance: ${updatedUser?.credits}`);
-      res.json({ success: true, credits, newBalance: updatedUser?.credits });
+      res.json({ success: true, credits, newBalance: updatedUser?.credits, membership: session.metadata?.kind === "membership" });
     } catch (error: any) {
       console.error("Error verifying Stripe session:", error?.message || error);
       res.status(500).json({ error: "驗證付款失敗" });
@@ -805,9 +893,19 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       // All image generation runs on AtlasCloud Seedream 5.5. Any legacy
       // `provider` / `model` fields sent by an old client are ignored.
       // Per-image credit cost honours the watermark removal premium.
-      const WATERMARK_REMOVAL_COST = 5;
       const hasWatermark = req.body.watermark !== false;
-      const perImageCost = hasWatermark ? 3 : 3 + WATERMARK_REMOVAL_COST;
+      const perImageCost = imageCost(hasWatermark);
+
+      // Adult prompts need an account that has turned adult content on
+      // (18+ and terms accepted). Checked before any credits move.
+      const promptText = batchValidated ? batchValidated.prompts.join("\n") : String((singleValidated as any)?.prompt ?? "");
+      const sensitive = containsNsfw(promptText);
+      if (sensitive && !user.isAdmin && !canUseNsfw(user)) {
+        return res.status(403).json({
+          error: "這段提示詞包含成人內容。請先到「帳戶 → 安全與隱私」設定生日並啟用成人內容。",
+          code: "nsfw_not_enabled",
+        });
+      }
 
       let creditsNeeded: number;
       if (batchValidated) {
@@ -840,7 +938,9 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       if (batchValidated) {
         const generations = await storage.createBatchImageGenerations({ ...batchValidated, userId });
         await Promise.all(generations.map(gen =>
-          storage.updateImageGeneration(gen.id, { provider: "atlas", model: ATLAS_EDIT_MODEL } as any)));
+          // creditsUsed per row, so a failed shot refunds exactly what it cost.
+          storage.updateImageGeneration(gen.id, { provider: "atlas", model: ATLAS_EDIT_MODEL, creditsUsed: perImageCost, sensitive } as any)));
+        generations.forEach(gen => { gen.creditsUsed = perImageCost; gen.sensitive = sensitive; });
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
         generations.forEach(gen => {
@@ -865,6 +965,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           // generation is perImageCost × maxImages) so a failure refunds
           // exactly what was deducted.
           creditsUsed: creditsNeeded,
+          sensitive,
         });
 
         const baseUrl = `${req.protocol}://${req.get('host')}`;
@@ -1015,7 +1116,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
 
       const sizeValue = generation.size || (generation.type === "text-to-image" ? "1:1" : "2K");
-      const finalPrompt = opts.rawPrompt ? generation.prompt : enhanceImagePrompt(generation.prompt);
+      const finalPrompt = opts.rawPrompt || !containsNsfw(generation.prompt) ? generation.prompt : enhanceImagePrompt(generation.prompt);
 
       // One Seedream 5.5 image via AtlasCloud (submit + poll). Throws on any
       // failure so the outer catch refunds the user's credits.
@@ -1193,7 +1294,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const modelId = videoType === "image-to-video" ? ATLAS_I2V_MODEL : ATLAS_T2V_MODEL;
       const duration = Math.max(4, Math.min(12, req.body.duration || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
-      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 8 : 15;
+      const VIDEO_CREDITS_PER_SECOND = VIDEO_COST_PER_SECOND[resolution];
+      if (containsNsfw(String(req.body.prompt ?? "")) && !user.isAdmin && !canUseNsfw(user)) {
+        return res.status(403).json({
+          error: "這段提示詞包含成人內容。請先到「帳戶 → 安全與隱私」設定生日並啟用成人內容。",
+          code: "nsfw_not_enabled",
+        });
+      }
       const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
 
       if ((user.credits || 0) < creditsNeeded) {
@@ -1317,7 +1424,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           `users/${userFolder}/video-inputs/${generationId}.jpg`,
         );
         const { videoUrl, predictionId, processingTime } = await atlasGenerateVideo({
-          prompt: opts.rawPrompt ? generation.prompt : enhanceVideoPrompt(generation.prompt),
+          prompt: opts.rawPrompt || !containsNsfw(generation.prompt) ? generation.prompt : enhanceVideoPrompt(generation.prompt),
           image: firstFrameUrl,
           resolution: generation.resolution || "1080p",
           duration: generation.duration || 5,
@@ -1357,7 +1464,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         console.warn(`[Atlas] WAN 3.0 text-to-video ignores reference audio (generation ${generationId})`);
       }
       const t2v = await atlasGenerateTextVideo({
-        prompt: opts.rawPrompt ? generation.prompt : enhanceVideoPrompt(generation.prompt),
+        prompt: opts.rawPrompt || !containsNsfw(generation.prompt) ? generation.prompt : enhanceVideoPrompt(generation.prompt),
         resolution: generation.resolution || "1080p",
         duration: generation.duration || 5,
         aspectRatio: generation.aspectRatio || "16:9",
@@ -1719,7 +1826,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           type: r.type,
           prompt: r.prompt,
           status: r.status,
-          creditsUsed: r.creditsUsed || 3,
+          creditsUsed: r.creditsUsed || IMAGE_COST,
           createdAt: r.createdAt,
           thumbnailUrl: r.bunnyImageUrl || (r.bunnyImageUrls && r.bunnyImageUrls[0]) || null,
         };
@@ -1760,7 +1867,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           type: `故事（${sceneCount}幕）`,
           prompt: g.title,
           status: g.status,
-          creditsUsed: g.creditsUsed || sceneCount * 3,
+          creditsUsed: g.creditsUsed || sceneCount * IMAGE_COST,
           sceneCount,
           completedCount,
           createdAt: g.createdAt,
@@ -1881,7 +1988,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         return res.status(400).json({ error: "參數錯誤", details: validated.error.flatten() });
       }
       const { title, style, scenes, referenceImageUrls, sceneSize, characterImageUrls, characterBImageUrls, sceneRefImageUrls, styleImageUrls, globalSeed } = validated.data;
-      const creditsNeeded = scenes.length * 3;
+      const creditsNeeded = scenes.length * IMAGE_COST;
 
       const user = await storage.getUser(userId);
       if (!user || (user.credits ?? 0) < creditsNeeded) {
@@ -1989,7 +2096,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         }
       }
 
-      const VIDEO_CREDITS_PER_SECOND = resolution === "720p" ? 8 : 15;
+      const VIDEO_CREDITS_PER_SECOND = VIDEO_COST_PER_SECOND[resolution];
       const credits = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
       const user = await storage.getUser(userId);
       if (!user || (user.credits ?? 0) < credits) {
@@ -2292,11 +2399,11 @@ Requirements:
       }
 
       const user = await storage.getUser(userId);
-      if (!user || (user.credits ?? 0) < 3) {
-        return res.status(400).json({ error: "積分不足，重新生成需要 3 積分" });
+      if (!user || (user.credits ?? 0) < IMAGE_COST) {
+        return res.status(400).json({ error: `積分不足，重新生成需要 ${IMAGE_COST} 積分` });
       }
 
-      await storage.atomicAddCredits(userId, -3, `故事「${story.title}」第 ${sceneIdx + 1} 幕重新生成`);
+      await storage.atomicAddCredits(userId, -IMAGE_COST, `故事「${story.title}」第 ${sceneIdx + 1} 幕重新生成`);
 
       // Allow overriding description, dialogue, and scene reference image before regeneration
       const newDescription = (typeof req.body.description === "string" && req.body.description.trim()) ? req.body.description.trim() : undefined;
@@ -2493,7 +2600,7 @@ Requirements:
       try {
         const story2 = storyForRefund ?? await storage.getStoryGeneration(storyId);
         if (story2) {
-          const creditCost = 3;
+          const creditCost = IMAGE_COST;
           await storage.atomicAddCredits(
             story2.userId,
             creditCost,
@@ -3021,7 +3128,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
       const scenes: any[] = JSON.parse(episode.scenes);
       const pendingScenes = scenes.filter(s => s.imageStatus !== "completed");
-      const creditCost = pendingScenes.length * 3;
+      const creditCost = pendingScenes.length * IMAGE_COST;
 
       const user = await storage.getUser(req.session.userId!);
       if (!user || (user.credits ?? 0) < creditCost) {
@@ -3064,15 +3171,15 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       if (sceneIdx < 0 || sceneIdx >= scenes.length) return res.status(400).json({ error: "幕索引超出範圍" });
 
       const user = await storage.getUser(req.session.userId!);
-      if (!user || (user.credits ?? 0) < 3) return res.status(400).json({ error: "積分不足，需要 3 積分" });
+      if (!user || (user.credits ?? 0) < IMAGE_COST) return res.status(400).json({ error: `積分不足，需要 ${IMAGE_COST} 積分` });
 
       const project = await storage.getDramaProject(episode.projectId);
-      const newBalance = (user.credits ?? 0) - 3;
+      const newBalance = (user.credits ?? 0) - IMAGE_COST;
       await storage.updateUserCredits(req.session.userId!, newBalance);
       await storage.createCreditTransaction({
         userId: req.session.userId!,
         type: "consume",
-        amount: -3,
+        amount: -IMAGE_COST,
         balance: newBalance,
         description: `漫劇重生第 ${sceneIdx + 1} 幕`,
       });
@@ -3128,7 +3235,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const targets: number[] = [];
       for (let i = 1; i < scenes.length; i++) targets.push(i);
 
-      const perSceneCost = 3;
+      const perSceneCost = IMAGE_COST;
       const totalCost = perSceneCost * targets.length;
 
       const user = await storage.getUser(req.session.userId!);
@@ -3282,7 +3389,12 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       if (!objectPath) return res.status(400).json({ error: "缺少 objectPath" });
 
       let bunnyUrl: string | null = null;
-      if (bunnyStorage.isConfigured()) {
+      // 從作品選：只接受我們自己 CDN 上的 https 網址，直接沿用，不再下載。
+      const fromWorks = typeof objectPath === "string" && /^https:\/\//i.test(objectPath);
+      if (fromWorks) {
+        try { bunnyUrl = ssrfAssertAllowedRemoteUrl(objectPath).toString(); }
+        catch { return res.status(400).json({ error: "只能使用作品庫裡的圖片。" }); }
+      } else if (bunnyStorage.isConfigured()) {
         const user = await storage.getUser(req.session.userId!);
         const userFolder = user?.username || req.session.userId!;
         const objectFile = await objectStorageService.getObjectEntityFile(objectPath);
@@ -3293,7 +3405,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         bunnyUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
       }
 
-      const versionedUrl = bunnyUrl ? `${bunnyUrl}?v=${Date.now()}` : null;
+      const versionedUrl = fromWorks ? bunnyUrl : bunnyUrl ? `${bunnyUrl}?v=${Date.now()}` : null;
       scenes[sceneIdx].imageUrl = objectPath;
       scenes[sceneIdx].bunnyUrl = versionedUrl;
       scenes[sceneIdx].imageStatus = "completed";
@@ -4062,7 +4174,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         const ep2 = ep ?? await storage.getDramaEpisode(episodeId);
         if (ep2) {
           const user = await storage.getUser(ep2.userId);
-          const creditCost = 3;
+          const creditCost = IMAGE_COST;
           if (user) {
             const newBalance = (user.credits ?? 0) + creditCost;
             await storage.updateUserCredits(ep2.userId, newBalance);
@@ -4111,7 +4223,9 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const mainImageUrl = scene.bunnyUrl?.split("?")[0] || scene.imageUrl;
 
       // Prefer AI-generated video prompt → caller-supplied prompt → description
-      const videoPrompt = opts.prompt || scene.videoPrompt || scene.description || "電影感鏡頭，角色自然動作";
+      // The scene description describes a still picture, so it is not used as
+      // the motion prompt: without a written one we fall back to a safe motion.
+      const videoPrompt = opts.prompt || scene.videoPrompt || fallbackMotionPrompt(scene);
 
       // AtlasCloud WAN 3.0 image-to-video: one first frame plus an optional
       // last frame, both public URLs; output ratio follows the first frame.
@@ -4126,7 +4240,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       if (!firstImageUrl) throw new Error("此幕尚未生成圖片，無法製作動畫");
 
       const result = await atlasGenerateVideo({
-        prompt: enhanceVideoPrompt(videoPrompt),
+        prompt: containsNsfw(videoPrompt) ? enhanceVideoPrompt(videoPrompt) : videoPrompt,
         image: firstImageUrl,
         lastImage: lastImageUrl,
         resolution: opts.resolution,
@@ -4206,6 +4320,10 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
   // ─── 素材圖庫：清單同步、批次生成預覽圖、瀏覽 ───────────────────────────
   registerAssetLibraryRoutes(app, { requireAuth, requireAdmin, bunnyStorage, cdnUrl: fixBunnyCdnUrl });
 
+  // ─── 成本紀錄：每次成功的生成記一筆，後台「成本」分頁查看 ─────────────
+  setAtlasUsageListener(recordProviderUsage);
+  registerCostRoutes(app, { requireAuth, requireAdmin });
+
   // ─── 對外服務 API（/api/v1/partner/*）與後台權杖管理 ─────────────────────
   // Reuses the workers above; see server/partnerApi.ts and docs/partner-api.md.
   registerPartnerRoutes(app, {
@@ -4225,6 +4343,9 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     runImage: (id, opts) => { processImageGeneration(id, undefined, opts).catch(console.error); },
     runVideo: (id, opts) => { processVideoGeneration(id, objectStorageService, opts).catch(console.error); },
     ingestImage: createPartnerImageIngestor(bunnyStorage, fixBunnyCdnUrl),
+    storeUpload: createPartnerUploadStore(bunnyStorage, fixBunnyCdnUrl),
+    isCdnUrl: (url) => bunnyStorage.isOwnCdnUrl(url),
+    deleteStored: (url) => bunnyStorage.deleteByCdnUrl(url),
     storageReady: () => bunnyStorage.isConfigured(),
     planPhotoset: (input) => createPhotosetPlanner(objectStorageService).plan(input),
     sizeDimensions: atlasSizeDimensions,

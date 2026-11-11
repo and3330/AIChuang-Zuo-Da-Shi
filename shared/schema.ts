@@ -13,6 +13,17 @@ export const users = pgTable("users", {
   credits: integer("credits").default(0),
   isAdmin: boolean("is_admin").default(false),
   telegramChatId: text("telegram_chat_id").unique(),
+  /** One-time membership (see MEMBERSHIP in shared/pricing.ts). Members can buy credits. */
+  isMember: boolean("is_member").default(false),
+  memberSince: timestamp("member_since"),
+  /** "YYYY-MM-DD". Set once in 安全與隱私; needed before adult content can be enabled. */
+  birthDate: text("birth_date"),
+  /** Adult prompts are only accepted when this is on and the user is 18+. */
+  nsfwEnabled: boolean("nsfw_enabled").default(false),
+  /** When the user accepted the adult-content terms. */
+  nsfwConsentAt: timestamp("nsfw_consent_at"),
+  /** When the first-login tour was finished or skipped. */
+  onboardedAt: timestamp("onboarded_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -49,6 +60,8 @@ export const imageGenerations = pgTable("image_generations", {
   processingTime: real("processing_time"),
   cost: real("cost").default(0.03),
   creditsUsed: integer("credits_used").default(3),
+  /** The prompt was adult content: the UI blurs the result until the user asks to see it. */
+  sensitive: boolean("sensitive").default(false),
   /** Generation backend. New rows are always "atlas" (AtlasCloud Seedream
    *  5.5); "byteplus" / "gmi" only appear on historical rows. */
   provider: text("provider").default("byteplus"),
@@ -557,7 +570,11 @@ export const partnerJobs = pgTable("partner_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   tokenId: varchar("token_id").notNull(),
   userId: varchar("user_id").notNull(),
-  type: text("type").notNull(), // image | video | photoset
+  type: text("type").notNull(), // image | video | photoset | four_views
+  /** 客戶小鎮的工作區代號。有值時，查詢這個任務必須帶同一個 owner_ref。 */
+  ownerRef: text("owner_ref"),
+  /** 這個任務使用（或產生四視圖）的對外角色。 */
+  characterIds: text("character_ids").array().default([]),
   /** queued | planning | running | failed (failed = failed before/without generations) */
   phase: text("phase").notNull().default("queued"),
   /** ids in image_generations (image, photoset) or video_generations (video) */
@@ -578,6 +595,59 @@ export const partnerJobs = pgTable("partner_jobs", {
 }, (t) => ({
   idempotencyUnique: uniqueIndex("partner_jobs_token_idem_key").on(t.tokenId, t.idempotencyKey),
   userIdx: index("partner_jobs_user_idx").on(t.userId),
+}));
+
+/**
+ * AI characters created through the partner API. Every character belongs to
+ * exactly one owner_ref (a partner-side workspace); all access is filtered by
+ * (userId, ownerRef), so workspaces sharing one service account stay apart.
+ */
+export const partnerCharacters = pgTable("partner_characters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** The service account the token is bound to. */
+  userId: varchar("user_id").notNull(),
+  /** The token that created it (for audit only; access is by userId + ownerRef). */
+  tokenId: varchar("token_id"),
+  ownerRef: text("owner_ref").notNull(),
+  name: text("name").notNull(),
+  description: text("description").default(""),
+  styleHint: text("style_hint").default(""),
+  /** CDN URLs only. */
+  refImageUrls: text("ref_image_urls").array().default([]),
+  /** { front, threeQuarter, side, back } */
+  fourViewUrls: json("four_view_urls"),
+  fourViewStatus: text("four_view_status").default("idle"), // idle | generating | completed | failed
+  /** The partner job currently drawing the four views, if any. */
+  fourViewJobId: varchar("four_view_job_id"),
+  /** When the partner confirmed likeness consent (consent: true). */
+  consentAt: timestamp("consent_at").notNull(),
+  /** Set by an admin; a disabled character cannot be used to generate. */
+  disabledAt: timestamp("disabled_at"),
+  disabledBy: varchar("disabled_by"),
+  disabledReason: text("disabled_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (t) => ({
+  ownerIdx: index("partner_characters_owner_idx").on(t.userId, t.ownerRef),
+}));
+
+/** One row per successful provider generation, with an estimated cost (後台「成本」). */
+export const providerCosts = pgTable("provider_costs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  provider: text("provider").notNull().default("atlascloud"),
+  model: text("model").notNull(),
+  kind: text("kind").notNull(), // image | video | library
+  /** Images, or seconds of video. */
+  units: real("units").notNull().default(1),
+  unit: text("unit").notNull().default("image"),
+  inputImages: integer("input_images").notNull().default(0),
+  /** e.g. the video resolution. */
+  detail: text("detail"),
+  /** Estimate from the price table in server/costs.ts. */
+  costUsd: real("cost_usd").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  createdIdx: index("provider_costs_created_idx").on(t.createdAt),
 }));
 
 // ─── Asset library (素材圖庫) ────────────────────────────────────────────────
@@ -615,3 +685,4 @@ export const libraryAssets = pgTable("library_assets", {
 export type LibraryAsset = typeof libraryAssets.$inferSelect;
 export type PartnerToken = typeof partnerTokens.$inferSelect;
 export type PartnerJob = typeof partnerJobs.$inferSelect;
+export type PartnerCharacter = typeof partnerCharacters.$inferSelect;
