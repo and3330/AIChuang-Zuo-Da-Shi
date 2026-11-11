@@ -5,7 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/use-seo";
-import { IMAGE_COST, VIDEO_COST_PER_SECOND, WATERMARK_REMOVAL_COST } from "@shared/pricing";
+import { IMAGE_COST, VIDEO_COST_PER_SECOND, VIDEO_MODELS, WATERMARK_REMOVAL_COST } from "@shared/pricing";
 import { ADULT_AGE, ageFromBirthDate } from "@shared/safety";
 // The header is shared by every page; it lives in components/AppNav.tsx.
 // Re-exported here because older pages import it from this module.
@@ -100,6 +100,8 @@ export default function AccountPage() {
     ["fa-stamp", "去除浮水印", `+${WATERMARK_REMOVAL_COST} 積分／張`],
     ["fa-clapperboard", "影片生成 720p", `${VIDEO_COST_PER_SECOND["720p"]} 積分／秒`],
     ["fa-clapperboard", "影片生成 1080p", `${VIDEO_COST_PER_SECOND["1080p"]} 積分／秒`],
+    ["fa-clapperboard", `影片生成 ${VIDEO_MODELS.kling.label} 720p`, `${VIDEO_MODELS.kling.perSecond["720p"]} 積分／秒`],
+    ["fa-clapperboard", `影片生成 ${VIDEO_MODELS.kling.label} 1080p`, `${VIDEO_MODELS.kling.perSecond["1080p"]} 積分／秒`],
   ];
 
   return (

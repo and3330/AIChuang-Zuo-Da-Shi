@@ -15,8 +15,38 @@ export function imageCost(watermark: boolean, gold: boolean = false): number {
   return watermark ? IMAGE_COST : IMAGE_COST + (gold ? GOLD_WATERMARK_REMOVAL_COST : WATERMARK_REMOVAL_COST);
 }
 
-/** 影片每秒。 */
+/** 影片每秒（預設模型 WAN 3.0）。 */
 export const VIDEO_COST_PER_SECOND = { "720p": 8, "1080p": 15 } as const;
+
+/**
+ * 影片頁可以選的模型：價格，以及這個模型做得到的選項（頁面只顯示做得到的）。
+ *   ratios   文字生影片可選的畫面比例；圖生影片一律跟隨首幀圖片。
+ *   audio    模型本身會不會輸出音軌（WAN 會；Kling 沒有開關，以實際輸出為準）。
+ * 影片長度兩個模型在網站上都開放 VIDEO_SECONDS 的範圍。夥伴 API 與故事動畫只用 WAN。
+ */
+export const VIDEO_MODELS = {
+  wan: {
+    label: "WAN 3.0", desc: "阿里 WAN 3.0，速度快、價格低，自帶音訊。",
+    perSecond: { "720p": 8, "1080p": 15 }, ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"], audio: true,
+  },
+  kling: {
+    label: "Kling 4.0", desc: "可靈 Kling 4.0，人物與動作更細緻，適合要求高的作品。",
+    perSecond: { "720p": 12, "1080p": 20 }, ratios: ["16:9", "9:16", "1:1", "21:9"], audio: false,
+  },
+} as const;
+export type VideoModelKey = keyof typeof VIDEO_MODELS;
+export const VIDEO_MODEL_KEYS = Object.keys(VIDEO_MODELS) as VideoModelKey[];
+export const VIDEO_SECONDS = { min: 4, max: 12, default: 5 } as const;
+export const VIDEO_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"] as const;
+
+/** Accepts a key ("kling") or a provider model id ("kwaivgi/kling-v4.0/..."). Anything else is WAN. */
+export function videoModelKey(model: string | null | undefined): VideoModelKey {
+  return model && model.toLowerCase().includes("kling") ? "kling" : "wan";
+}
+
+export function videoCostPerSecond(model: string | null | undefined, resolution: string | null | undefined): number {
+  return VIDEO_MODELS[videoModelKey(model)].perSecond[resolution === "720p" ? "720p" : "1080p"];
+}
 
 /** 信箱驗證完成（或用 Google 註冊）時送的積分，每個帳號一次。 */
 export const SIGNUP_CREDITS = 10;

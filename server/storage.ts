@@ -1,3 +1,4 @@
+import { videoCostPerSecond } from "@shared/pricing";
 import { IMAGE_COST } from "@shared/pricing";
 import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, type StoryGeneration, type InsertStoryGeneration, type StoryScene, type DramaProject, type DramaEpisode, type InsertDramaProject, type InsertDramaEpisode, type CharacterLibraryItem, type SceneLibraryItem, type InsertCharacterLibrary, type InsertSceneLibrary, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages, storyGenerations, dramaProjects, dramaEpisodes, characterLibrary, sceneLibrary } from "@shared/schema";
 import { db } from "./db";
@@ -575,7 +576,7 @@ export class DatabaseStorage implements IStorage {
     const provider = "atlas";
     const model = (insertGeneration as any).model
       ?? (insertGeneration.type === "image-to-video" ? "alibaba/wan-3.0/image-to-video" : "alibaba/wan-3.0/text-to-video");
-    const creditsPerSecond = resolution === "720p" ? 8 : 15;
+    const creditsPerSecond = videoCostPerSecond(model, resolution);
 
     const fps = 24;
     let width: number, height: number;
@@ -588,7 +589,7 @@ export class DatabaseStorage implements IStorage {
       else if (aspectRatio === "9:16") { width = 1080; height = 1920; }
       else { width = 1080; height = 1080; }
     }
-    const costPerSec = resolution === "720p" ? 5.5 : 11;
+    const costPerSec = model.includes("kling") ? (resolution === "720p" ? 4.6 : 6.9) : (resolution === "720p" ? 5.5 : 11);
     const videoCost = duration * costPerSec;
 
     const [row] = await db.insert(videoGenerations).values({
