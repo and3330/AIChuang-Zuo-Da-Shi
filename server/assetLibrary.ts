@@ -163,18 +163,58 @@ export function registerAssetLibraryRoutes(
     try {
       // Rows left "generating" by a restart are not being worked on by anyone.
       await db.update(libraryAssets).set({ status: "pending" }).where(eq(libraryAssets.status, "generating"));
-      while (!run.stopRequested && run.done + run.failed < target) {
-        const remaining = target - run.done - run.failed;
-        const batch = await nextBatch(library, Math.min(concurrency, remaining));
-        if (batch.length === 0) break;
-        const results = await Promise.allSettled(batch.map(generateOne));
-        for (const r of results) r.status === "fulfilled" ? run.done++ : run.failed++;
-        // The whole batch failing the same way means something is wrong with
-        // the key or the provider: stop instead of burning through the queue.
-        if (results.every(r => r.status === "rejected") && batch.length >= Math.min(2, concurrency)) {
-          run.stopRequested = true;
+      // A rolling pool: every slot picks up the next asset as soon as it is
+      // free, so one slow image no longer holds back the rest of its batch.
+      const queue: LibraryAsset[] = [];
+      const inHand = new Set<string>();
+      let claimed = 0;
+      let allowed = concurrency;
+      let pauseUntil = 0;
+      let failuresInARow = 0;
+      let lock: Promise<unknown> = Promise.resolve();
+      const claim = (): Promise<LibraryAsset | undefined> => {
+        const p = lock.then(async () => {
+          if (run.stopRequested || claimed >= target) return undefined;
+          if (queue.length === 0) {
+            const rows = await nextBatch(library, Math.max(concurrency * 4, 50) + inHand.size);
+            queue.push(...rows.filter(r => !inHand.has(r.id)));
+          }
+          const asset = queue.shift();
+          if (asset) { inHand.add(asset.id); claimed++; }
+          return asset;
+        });
+        lock = p.catch(() => undefined);
+        return p;
+      };
+      const worker = async (slot: number) => {
+        while (!run.stopRequested && slot < allowed) {
+          const wait = pauseUntil - Date.now();
+          if (wait > 0) await new Promise(r => setTimeout(r, wait));
+          const asset = await claim();
+          if (!asset) return;
+          try {
+            await generateOne(asset);
+            run.done++;
+            failuresInARow = 0;
+          } catch (e) {
+            run.failed++;
+            failuresInARow++;
+            const message = e instanceof Error ? e.message : String(e);
+            if (/\(429\)|rate.?limit|too many/i.test(message)) {
+              // The provider is throttling: wait, and keep fewer running at once.
+              pauseUntil = Date.now() + 20_000;
+              allowed = Math.max(2, Math.floor(allowed / 2));
+              run.lastError = `供應商限流，已自動降為同時 ${allowed} 張`;
+            }
+            // Many failures in a row means the key or the provider is in
+            // trouble: stop instead of burning through the queue.
+            if (failuresInARow >= Math.max(5, Math.min(concurrency, 12))) run.stopRequested = true;
+          } finally {
+            inHand.delete(asset.id);
+          }
         }
-      }
+      };
+      await Promise.all(Array.from({ length: concurrency }, (_, slot) => worker(slot)));
     } catch (e) {
       run.lastError = "批次中斷：" + shortError(e);
       console.error("[Library] batch aborted:", e instanceof Error ? e.message : "unknown");
@@ -225,7 +265,7 @@ export function registerAssetLibraryRoutes(
     library: z.enum(["all", ...LIBRARY_IDS]).default("all"),
     /** Hard cap on images for this run — the spending limit. */
     limit: z.number().int().min(1).max(5000),
-    concurrency: z.number().int().min(1).max(8).default(4),
+    concurrency: z.number().int().min(1).max(32).default(8),
   });
 
   app.post("/api/admin/library/generate", requireAuth, requireAdmin, async (req, res) => {

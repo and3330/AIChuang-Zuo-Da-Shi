@@ -1,7 +1,9 @@
+import { IMAGE_COST } from "@shared/pricing";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "@/components/AppNav";
+import { Onboarding } from "@/components/Onboarding";
 
 // 創作中心：登入後的首頁。一眼看到三個主要模組與素材圖庫，一次點擊就進到要用的功能。
 //
@@ -16,7 +18,7 @@ type Module = { href: string; icon: string; title: string; desc: string; meta: s
 
 const MODULES: Module[] = [
   {
-    href: "/create/image", icon: "fa-wand-magic-sparkles", title: "創作", meta: "圖片 3 積分起・影片 8 積分／秒起",
+    href: "/create/image", icon: "fa-wand-magic-sparkles", title: "創作", meta: `圖片 ${IMAGE_COST} 積分・影片 8 積分／秒起`,
     desc: "用文字或一張圖，生成圖片與短影片。", tile: "from-violet-500 to-indigo-600",
     actions: [
       { href: "/create/image", label: "圖片生成", icon: "fa-image" },
@@ -24,7 +26,7 @@ const MODULES: Module[] = [
     ],
   },
   {
-    href: "/photoset", icon: "fa-camera-retro", title: "寫真工作室", meta: "3 積分／張起",
+    href: "/photoset", icon: "fa-camera-retro", title: "寫真工作室", meta: `${IMAGE_COST} 積分／張`,
     desc: "一次生成整組可貼社群的寫真。", tile: "from-indigo-500 to-blue-600",
     actions: [
       { href: "/photoset?mode=scene", label: "情境寫真", icon: "fa-panorama" },
@@ -90,6 +92,7 @@ export default function CreateHub() {
   return (
     <div className="min-h-screen">
       <NavigationHeader />
+      <Onboarding />
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-5 md:py-8 space-y-6">
         {/* 帳戶摘要 */}
         <section className="relative overflow-hidden bg-brand-night text-white rounded-3xl">
@@ -115,9 +118,9 @@ export default function CreateHub() {
           </div>
         </section>
 
-        {credits < 10 && (
+        {credits < IMAGE_COST * 2 && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
-            積分快用完了，生成一張圖片至少需要 3 積分。
+            積分快用完了，生成一張圖片需要 {IMAGE_COST} 積分。
           </p>
         )}
 

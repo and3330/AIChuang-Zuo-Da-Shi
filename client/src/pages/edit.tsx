@@ -1,3 +1,4 @@
+import { IMAGE_COST, WATERMARK_REMOVAL_COST, imageCost } from "@shared/pricing";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -99,7 +100,7 @@ export default function EditPage() {
   const [uploading, setUploading] = useState(false);
 
   const source = versions[current]?.url ?? "";
-  const cost = watermark ? 3 : 8;
+  const cost = imageCost(watermark);
   const credits = user?.credits ?? 0;
 
   // A new source image invalidates the selection and its measured size.
@@ -366,7 +367,7 @@ export default function EditPage() {
 
               <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer">
                 <input type="checkbox" checked={watermark} onChange={e => setWatermark(e.target.checked)} disabled={busy} className="accent-indigo-600" />
-                加上浮水印（3 積分；不加為 8 積分）
+                加上浮水印（取消會去除浮水印，+{WATERMARK_REMOVAL_COST} 積分）
               </label>
 
               <button onClick={() => editMutation.mutate()} disabled={busy || credits < cost}

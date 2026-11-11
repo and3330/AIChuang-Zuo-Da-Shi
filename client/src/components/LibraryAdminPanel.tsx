@@ -30,7 +30,7 @@ export function LibraryAdminPanel() {
   const queryClient = useQueryClient();
   const [library, setLibrary] = useState("all");
   const [limit, setLimit] = useState("20");
-  const [concurrency, setConcurrency] = useState("4");
+  const [concurrency, setConcurrency] = useState("8");
 
   const { data: status, error, isLoading } = useQuery<Status>({
     queryKey: ["/api/admin/library/status"],
@@ -159,14 +159,14 @@ export function LibraryAdminPanel() {
           <div>
             <label className="text-xs text-gray-600 block mb-1">同時生成幾張</label>
             <select value={concurrency} onChange={e => setConcurrency(e.target.value)} disabled={run.running} className={inputCls}>
-              {[1, 2, 4, 6, 8].map(c => <option key={c} value={c}>{c}</option>)}
+              {[1, 2, 4, 8, 12, 16, 24, 32].map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
         </div>
 
         <p className="text-sm text-gray-700 mt-3">
           待生成 <b>{waiting}</b> 張，這次會生成 <b>{willGenerate}</b> 張，預估最多 <b className="text-purple-700">{estimate} 美元</b>。
-          <span className="text-xs text-gray-500 ml-1">建議先用 20 張試跑，確認風格滿意再放大。每張約半分鐘到一分鐘，同時 8 張的話，一千張大約要一到兩小時。</span>
+          <span className="text-xs text-gray-500 ml-1">建議先用 20 張試跑，確認風格滿意再放大。每張約半分鐘到一分鐘。同時 8 張時一千張大約一到兩小時，同時 32 張大約二十到三十分鐘。遇到供應商限流會自動暫停 20 秒並把同時張數減半；連續失敗多次會自動停止。</span>
         </p>
 
         <div className="mt-3 flex items-center gap-3">

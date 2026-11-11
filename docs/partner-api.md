@@ -16,7 +16,7 @@
 |---|---|
 | 扣點 | 建立任務時先扣；每個權杖綁定一個帳號，扣那個帳號的積分 |
 | 退點 | 失敗的部分自動退回，反映在任務的 `credits_refunded` |
-| 浮水印 | 預設**不加**（`watermark: false`），圖片每張 8 積分；設為 `true` 為每張 3 積分 |
+| 浮水印 | 預設**不加**（`watermark: false`），圖片每張 6 積分（5 + 去除浮水印 1）；設為 `true` 為每張 5 積分 |
 | NSFW 提示詞強化 | 預設**不套用**。必須權杖已開放，且該次請求帶 `"nsfw": true` 才會套用 |
 | 結果網址 | 一律是已轉存 CDN 的 https 網址，不會回暫時網址 |
 | 參考圖／首幀 | 只接受 https 公開網址；不可轉址；必須是圖片且小於 25MB；會先下載並轉存再使用 |
@@ -41,7 +41,7 @@ curl https://你的網域/api/v1/partner/pricing -H "Authorization: Bearer $TOKE
 {
   "unit": "credits",
   "images": {
-    "per_image": { "without_watermark": 8, "with_watermark": 3 },
+    "per_image": { "without_watermark": 6, "with_watermark": 5 },
     "default_watermark": false,
     "count": { "min": 1, "max": 4 },
     "max_reference_images": 10,
@@ -56,7 +56,7 @@ curl https://你的網域/api/v1/partner/pricing -H "Authorization: Bearer $TOKE
     "ratios": ["16:9", "9:16", "1:1"]
   },
   "photosets": {
-    "per_image": { "without_watermark": 8, "with_watermark": 3 },
+    "per_image": { "without_watermark": 6, "with_watermark": 5 },
     "planning": 0,
     "count": { "min": 2, "max": 10 },
     "max_reference_images": 9,
@@ -104,7 +104,7 @@ curl -X POST https://你的網域/api/v1/partner/images \
 成功（`202`）：
 
 ```json
-{ "job_id": "0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e11", "status": "queued", "credits_charged": 16 }
+{ "job_id": "0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e11", "status": "queued", "credits_charged": 12 }
 ```
 
 ### POST /api/v1/partner/videos
@@ -158,12 +158,12 @@ curl -X POST https://你的網域/api/v1/partner/photosets \
 ```
 
 ```json
-{ "job_id": "a3e0c2d4-91b7-4c1f-b0aa-64c6d0f5e7a2", "status": "queued", "credits_charged": 32 }
+{ "job_id": "a3e0c2d4-91b7-4c1f-b0aa-64c6d0f5e7a2", "status": "queued", "credits_charged": 24 }
 ```
 
 ### GET /api/v1/partner/jobs/:id
 
-只能查到同一個帳號建立的任務，其他一律 `404`。建議每 3–5 秒查一次；圖片約 1–3 分鐘，影片約 2–10 分鐘。
+只能查到同一個帳號建立的任務，其他一律 `404`。建立任務時有帶 `owner_ref` 的，查詢時必須帶同一個 `?owner_ref=`，沒帶或不符也是 `404`。回傳多了 `owner_ref`（沒有就是 `null`）與 `character_ids`（沒有就是空陣列）。建議每 3–5 秒查一次；圖片約 1–3 分鐘，影片約 2–10 分鐘。
 
 ```bash
 curl https://你的網域/api/v1/partner/jobs/0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e11 -H "Authorization: Bearer $TOKEN"
@@ -180,7 +180,7 @@ curl https://你的網域/api/v1/partner/jobs/0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e
     { "url": "https://cdn.你的網域/users/svc/images/xxxx_0.jpg", "type": "image", "width": 1776, "height": 2368 },
     { "url": "https://cdn.你的網域/users/svc/images/xxxx_1.jpg", "type": "image", "width": 1776, "height": 2368 }
   ],
-  "credits_charged": 16,
+  "credits_charged": 12,
   "credits_refunded": 0,
   "external_ref": "ws_12/post_88",
   "error": null,
@@ -198,8 +198,8 @@ curl https://你的網域/api/v1/partner/jobs/0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e
   "type": "image",
   "status": "failed",
   "results": [],
-  "credits_charged": 8,
-  "credits_refunded": 8,
+  "credits_charged": 6,
+  "credits_refunded": 6,
   "external_ref": null,
   "error": "內容未通過安全審查，請調整提示詞或更換圖片後再試。",
   "code": "content_rejected",
@@ -230,7 +230,7 @@ curl https://你的網域/api/v1/partner/jobs/0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e
 積分不足（`402`，不會扣點、不會建立任務）：
 
 ```json
-{ "error": "積分不足：需要 16，目前 5。", "code": "insufficient_credits" }
+{ "error": "積分不足：需要 12，目前 5。", "code": "insufficient_credits" }
 ```
 
 輸入有誤（`400`）：
@@ -254,7 +254,17 @@ curl https://你的網域/api/v1/partner/jobs/0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e
 | 403 | `browser_requests_not_allowed` | 請求帶 `Origin` 標頭 |
 | 403 | `nsfw_not_allowed` | 請求帶 `nsfw: true` 但權杖未開放 |
 | 403 | `account_unavailable` | 權杖綁定的帳號不存在 |
-| 404 | `not_found` | 任務不存在、不屬於這個帳號，或端點不存在 |
+| 400 | `consent_required` | 建立角色時沒有 `consent: true` |
+| 400 | `nsfw_not_allowed_with_characters` | 帶了 `character_ids` 又帶 `nsfw: true` |
+| 403 | `character_disabled` | 角色已被管理員停用 |
+| 404 | `not_found` | 任務或角色不存在、不屬於這個帳號、`owner_ref` 不符，或端點不存在 |
+| 409 | `four_views_in_progress` | 角色的四視圖還在生成（重做四視圖或刪除角色時） |
+| 409 | `character_limit_reached` | 這個 `owner_ref` 的角色已達 50 個 |
+| 409 | `character_not_ready` | 角色沒有可用的參考圖 |
+| 413 | `file_too_large` | 上傳檔案超過 10 MB |
+| 415 | `unsupported_file_type` | 上傳的檔案實際內容不是 JPG／PNG／WEBP |
+| 422 | `invalid_image` | 檔頭像圖片但無法解碼，或像素過大 |
+| 422 | `image_too_small` | 上傳的圖片短邊小於 256 像素 |
 | 409 | `idempotency_key_conflict` | 同一個 Idempotency-Key 用在內容不同的請求 |
 | 422 | `image_download_failed` | 圖片下載不到、會轉址、不是圖片或超過 25MB |
 | 429 | `rate_limited` | 超過每分鐘請求數，或驗證失敗次數過多 |
@@ -265,6 +275,286 @@ curl https://你的網域/api/v1/partner/jobs/0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e
 
 任務層級的 `code`（出現在 `GET /jobs/:id`）：`content_rejected`（未通過安全審查）、`generation_timeout`（逾時）、`generation_failed`（其他生成失敗）、`planning_failed`（寫真套圖規劃失敗）、`storage_failed`（已生成但轉存失敗，這種情況**不會自動退點**，請聯絡管理員）。
 
+## AI 角色（依 owner_ref 分開）
+
+客戶小鎮的每個工作區可以建立自己的 AI 角色，之後生圖、生影片、寫真套圖都能指定使用。所有工作區共用同一個服務帳號，所以**每個角色端點都要帶 `owner_ref`**（工作區代號）。
+
+### 數字一覽
+
+| 項目 | 值 |
+|---|---|
+| 上傳單檔上限 | **10 MB** |
+| 上傳支援格式 | **JPG、PNG、WEBP**（以檔案實際內容判斷，不看副檔名或宣告的類型） |
+| 上傳圖片最小尺寸 | 短邊 256 像素 |
+| 上傳頻率 | 每個 `owner_ref` 每分鐘 30 次（另受權杖每分鐘次數限制） |
+| 角色參考圖張數 | **最少 3 張，最多 30 張** |
+| 每個 `owner_ref` 的角色數 | 最多 50 個，各 `owner_ref` 各自計算 |
+| 一次請求可帶的角色 | 圖片、寫真套圖最多 3 個；影片 1 個 |
+| 每個角色帶入的參考圖 | 最多 4 張：有四視圖用四視圖（正面第一張），沒有就用前幾張參考圖 |
+| 四視圖費用 | 20 積分（4 張 × 5） |
+| 建立、修改、刪除角色，上傳照片 | 不收費 |
+| `owner_ref` 格式 | 1–100 個字元，英數與符號，不可有空白或中文 |
+
+### 隔離規則
+
+- 角色只屬於建立它的 `owner_ref`。查詢、修改、刪除、做四視圖、用來生成時，`owner_ref` 不符一律回 `404`，內容與「角色不存在」完全相同，無法分辨。
+- 另一個服務帳號即使用同一個 `owner_ref` 也拿不到。
+- 上傳的照片依 `owner_ref` 存在不同資料夾；網址裡不會出現 `owner_ref` 本身。
+
+`owner_ref` 不符時的回應（所有角色端點與帶角色的生成端點都一樣）：
+
+```json
+HTTP/1.1 404 Not Found
+{ "error": "找不到這個角色。", "code": "not_found" }
+```
+
+### POST /api/v1/partner/uploads
+
+把客戶上傳的照片交給本站保存，回傳可直接當作參考圖的網址。`multipart/form-data`，欄位 `file` 與 `owner_ref`。
+
+儲存前會：確認檔案內容真的是 JPG／PNG／WEBP、套用拍攝方向後重新編碼，並**移除 EXIF 等全部中繼資料（含拍攝位置）**。
+
+```bash
+curl -X POST https://你的網域/api/v1/partner/uploads \
+  -H "Authorization: Bearer $TOKEN" \
+  -F "owner_ref=ws_12" -F "file=@photo.jpg"
+```
+
+```json
+HTTP/1.1 201 Created
+{ "url": "https://cdn.你的網域/partner/u/…/o/…/uploads/7f0c….jpg", "width": 1536, "height": 2048 }
+```
+
+檔案不是圖片（例如把 HTML 改名成 .jpg）：
+
+```json
+HTTP/1.1 415 Unsupported Media Type
+{ "error": "只接受 JPG、PNG、WEBP 圖片（以檔案實際內容判斷，不看副檔名）。", "code": "unsupported_file_type" }
+```
+
+超過大小：
+
+```json
+HTTP/1.1 413 Payload Too Large
+{ "error": "檔案過大：單檔上限 10 MB。", "code": "file_too_large" }
+```
+
+### POST /api/v1/partner/characters
+
+| 欄位 | 必填 | 說明 |
+|---|---|---|
+| `owner_ref` | 是 | 工作區代號 |
+| `name` | 是 | 最多 60 字 |
+| `description` | 否 | 外貌描述，最多 1000 字；會用在四視圖 |
+| `style_hint` | 否 | 風格，例如「寫實」「日系」，最多 200 字 |
+| `reference_image_urls` | 是 | 3–30 張 https 網址。用 `/uploads` 回傳的網址會直接沿用；其他網址會下載後另存一份 |
+| `consent` | 是 | 必須是 `true`：代表已向客戶確認「照片中的人是本人或已取得本人同意」。本站會記下同意時間與 `owner_ref` |
+
+```bash
+curl -X POST https://你的網域/api/v1/partner/characters \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"owner_ref":"ws_12","name":"小雨","description":"二十多歲，黑長髮","style_hint":"寫實","reference_image_urls":["https://cdn…/a.jpg","https://cdn…/b.jpg","https://cdn…/c.jpg"],"consent":true}'
+```
+
+```json
+HTTP/1.1 201 Created
+{
+  "id": "4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10",
+  "owner_ref": "ws_12",
+  "name": "小雨",
+  "description": "二十多歲，黑長髮",
+  "style_hint": "寫實",
+  "reference_image_urls": ["https://cdn…/a.jpg", "https://cdn…/b.jpg", "https://cdn…/c.jpg"],
+  "four_view_urls": [],
+  "four_views": { "front": null, "three_quarter": null, "side": null, "back": null },
+  "four_view_status": "idle",
+  "disabled": false,
+  "created_at": "2026-11-11T08:00:00.000Z"
+}
+```
+
+`four_view_urls` 依序是正面、3/4 側、側面、背面，只列出已經有的；要知道哪張是哪個角度請看 `four_views`。`four_view_status` 為 `idle`／`generating`／`completed`／`failed`。`disabled` 為 `true` 表示已被管理員停用。
+
+沒有同意：
+
+```json
+HTTP/1.1 400 Bad Request
+{ "error": "建立角色前必須確認肖像同意：請在向客戶確認「照片中的人是本人或已取得本人同意」後傳入 consent: true。", "code": "consent_required" }
+```
+
+### GET /api/v1/partner/characters?owner_ref=...
+
+```bash
+curl "https://你的網域/api/v1/partner/characters?owner_ref=ws_12" -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{ "characters": [ { "id": "4c9d2a6e-…", "owner_ref": "ws_12", "name": "小雨", "…": "同上" } ], "count": 1, "limit": 50 }
+```
+
+### GET /api/v1/partner/characters/:id?owner_ref=...
+
+```bash
+curl "https://你的網域/api/v1/partner/characters/4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10?owner_ref=ws_12" -H "Authorization: Bearer $TOKEN"
+```
+
+回傳一個角色（格式同建立）。用別的工作區代號查：
+
+```bash
+curl "https://你的網域/api/v1/partner/characters/4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10?owner_ref=ws_99" -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+HTTP/1.1 404 Not Found
+{ "error": "找不到這個角色。", "code": "not_found" }
+```
+
+### PATCH /api/v1/partner/characters/:id
+
+`owner_ref` 必填，其餘都是選填：`name`、`description`、`style_hint`、`add_reference_image_urls`（要加入的網址）、`remove_reference_image_urls`（要移除的網址，需與角色現有的網址完全相同）。修改後參考圖仍須是 3–30 張，否則回 `400` 且不做任何變更。被移除的照片會從 CDN 刪除。
+
+```bash
+curl -X PATCH https://你的網域/api/v1/partner/characters/4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10 \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"owner_ref":"ws_12","name":"小雨（新）","add_reference_image_urls":["https://cdn…/d.jpg"],"remove_reference_image_urls":["https://cdn…/c.jpg"]}'
+```
+
+回傳修改後的角色。`owner_ref` 不符回上面的 `404`。
+
+### DELETE /api/v1/partner/characters/:id?owner_ref=...
+
+刪除角色，並同時刪除它在 CDN 上的參考圖與四視圖。同一個工作區的其他角色還在用的照片會保留。
+
+```bash
+curl -X DELETE "https://你的網域/api/v1/partner/characters/4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10?owner_ref=ws_12" -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{ "id": "4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10", "deleted": true, "files_deleted": 7, "files_failed": 0 }
+```
+
+`files_failed` 大於 0 表示有檔案沒刪成功（角色本身已刪除），請通知管理員手動清除。四視圖還在生成時會回 `409 four_views_in_progress`，請等任務結束再刪。已經用這個角色生成出來的成品不會被刪除。
+
+### POST /api/v1/partner/characters/:id/four-views
+
+用角色的參考圖生成正面、3/4 側、側面、背面四張全身圖，行為與本站角色庫相同。非同步，扣 20 積分，失敗的張數自動退點。支援 `Idempotency-Key`。
+
+```bash
+curl -X POST https://你的網域/api/v1/partner/characters/4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10/four-views \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"owner_ref":"ws_12"}'
+```
+
+```json
+HTTP/1.1 202 Accepted
+{ "job_id": "9a1b7c3d-5e2f-4a60-8b91-0c2d3e4f5a6b", "status": "queued", "credits_charged": 20 }
+```
+
+查任務要帶同一個 `owner_ref`：
+
+```bash
+curl "https://你的網域/api/v1/partner/jobs/9a1b7c3d-5e2f-4a60-8b91-0c2d3e4f5a6b?owner_ref=ws_12" -H "Authorization: Bearer $TOKEN"
+```
+
+```json
+{
+  "job_id": "9a1b7c3d-5e2f-4a60-8b91-0c2d3e4f5a6b",
+  "type": "four_views",
+  "status": "succeeded",
+  "results": [
+    { "url": "https://cdn…/front.jpg", "type": "image", "width": 1440, "height": 2560 },
+    { "url": "https://cdn…/three-quarter.jpg", "type": "image", "width": 1440, "height": 2560 },
+    { "url": "https://cdn…/side.jpg", "type": "image", "width": 1440, "height": 2560 },
+    { "url": "https://cdn…/back.jpg", "type": "image", "width": 1440, "height": 2560 }
+  ],
+  "credits_charged": 20,
+  "credits_refunded": 0,
+  "external_ref": null,
+  "owner_ref": "ws_12",
+  "character_ids": ["4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10"],
+  "error": null,
+  "code": null,
+  "created_at": "2026-11-11T08:05:00.000Z",
+  "finished_at": "2026-11-11T08:07:10.000Z"
+}
+```
+
+完成後角色的 `four_view_urls` 會自動帶上這四張。
+
+### 生成時使用角色
+
+`/images`、`/videos`、`/photosets` 都多接受兩個欄位：
+
+| 欄位 | 說明 |
+|---|---|
+| `owner_ref` | 工作區代號。有帶 `character_ids` 時必填；沒帶角色時可省略（舊的呼叫方式不受影響） |
+| `character_ids` | 角色代號陣列。圖片與寫真套圖 0–3 個，影片 0–1 個 |
+
+- 角色的參考圖排在最前面（有四視圖用四視圖、正面第一張），你另外給的 `reference_image_urls` 排在後面。圖片合計最多 10 張、寫真套圖最多 9 張；塞不下時回 `400`。
+- 提示詞後面會自動加一句說明「第幾張參考圖是哪個角色，請保持同一個人」。
+- `character_ids` 裡只要有一個不屬於該 `owner_ref`，整個請求回 `404`，不生成、不扣點。
+- 角色被停用時回 `403 character_disabled`，不扣點。
+- **帶角色時一律不套用 NSFW 提示詞強化**；同時帶 `nsfw: true` 會回 `400 nsfw_not_allowed_with_characters`。
+- 寫真套圖 `mode: "character"` 有帶 `character_ids` 時，可以不給 `reference_image_urls`。
+- 影片：模型只接受一張首幀，所以只能帶一個角色，且必須是 `image-to-video`。沒給 `image_url` 時用角色的正面圖當首幀；有給 `image_url` 時以它為首幀，角色只記錄在任務上。`text-to-video` 無法帶入角色，會回 `400`。
+
+圖片：
+
+```bash
+curl -X POST https://你的網域/api/v1/partner/images \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -H "Idempotency-Key: post_88-cover" \
+  -d '{"prompt":"咖啡廳窗邊，午後陽光","owner_ref":"ws_12","character_ids":["4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10"],"size":"1776x2368"}'
+```
+
+```json
+HTTP/1.1 202 Accepted
+{ "job_id": "0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e11", "status": "queued", "credits_charged": 6 }
+```
+
+影片：
+
+```bash
+curl -X POST https://你的網域/api/v1/partner/videos \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"type":"image-to-video","prompt":"轉頭對鏡頭微笑","duration":5,"quality":"720p","owner_ref":"ws_12","character_ids":["4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10"]}'
+```
+
+```json
+HTTP/1.1 202 Accepted
+{ "job_id": "5f1d7b9a-2a53-4a0e-8a11-7b1f0f6f2c33", "status": "queued", "credits_charged": 40 }
+```
+
+寫真套圖：
+
+```bash
+curl -X POST https://你的網域/api/v1/partner/photosets \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"mode":"character","owner_ref":"ws_12","character_ids":["4c9d2a6e-0f51-4e0b-9b7e-2d1f6a3b8c10"],"count":4}'
+```
+
+```json
+HTTP/1.1 202 Accepted
+{ "job_id": "a3e0c2d4-91b7-4c1f-b0aa-64c6d0f5e7a2", "status": "queued", "credits_charged": 24 }
+```
+
+用了別的工作區的角色（三個端點相同）：
+
+```json
+HTTP/1.1 404 Not Found
+{ "error": "找不到這個角色。", "code": "not_found" }
+```
+
+查這些任務時沒帶或帶錯 `owner_ref`：
+
+```json
+HTTP/1.1 404 Not Found
+{ "error": "找不到這個任務。", "code": "not_found" }
+```
+
+### 肖像下架（管理員）
+
+除了對方自己呼叫 DELETE，管理員可以在「後台 → 對外 API → 對外 API 的 AI 角色」依 `owner_ref` 或角色代號搜尋，停用單一角色，或一次停用某個工作區的全部角色。停用後不能再用來生成或做四視圖；資料與圖片保留，重新啟用即可恢復。對方查詢時會看到 `"disabled": true`。
+
 ## 後台操作：建立與撤銷權杖
 
 前置：第一次使用前要建立兩張新資料表。在 Replit 的 Shell 執行：
@@ -273,7 +563,7 @@ curl https://你的網域/api/v1/partner/jobs/0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e
 npm run db:push
 ```
 
-這只會新增 `partner_tokens` 與 `partner_jobs`，不會更動既有資料表。
+這會新增 `partner_tokens`、`partner_jobs`、`partner_characters`，並在 `partner_jobs` 加上 `owner_ref`、`character_ids` 兩個欄位；不會更動其他既有資料表。加入 AI 角色功能後需要再執行一次。
 
 建立：
 

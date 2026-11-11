@@ -20,6 +20,8 @@ export type VaultItem = {
   kind: "image" | "video";
   url: string;
   prompt: string;
+  /** Adult prompt: blur until the user asks to see it. */
+  sensitive?: boolean;
   /** Which feature made it, for the filter chips. */
   source: "image" | "edit" | "photoset" | "video";
   generationId: string;
@@ -62,7 +64,7 @@ export function registerVaultRoutes(
             .filter((u): u is string => !!u);
           const source: VaultItem["source"] = g.batchId ? "photoset" : g.type === "text-to-image" ? "image" : "edit";
           urls.forEach((url, i) => items.push({
-            id: `${g.id}:${i}`, kind: "image", url, prompt: g.prompt ?? "", source,
+            id: `${g.id}:${i}`, kind: "image", url, prompt: g.prompt ?? "", source, sensitive: !!g.sensitive,
             generationId: g.id, createdAt: g.createdAt ? new Date(g.createdAt).toISOString() : null,
           }));
         }

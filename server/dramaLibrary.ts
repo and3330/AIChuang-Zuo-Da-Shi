@@ -8,11 +8,15 @@
  *   - Per-episode ZIP download (all assets)
  */
 
+import { IMAGE_COST } from "@shared/pricing";
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService } from "./bunnyStorage";
 import { enhanceImagePrompt } from "./promptEnhancer";
+import { FOUR_VIEW_PRESETS, FOUR_VIEW_SIZE, fourViewPrompt } from "@shared/fourViews";
+import { containsNsfw } from "@shared/safety";
+import { motionPromptRequest, finishMotionPrompt } from "@shared/dramaMotion";
 import {
   insertCharacterLibrarySchema,
   updateCharacterLibrarySchema,
@@ -27,17 +31,7 @@ import { assertAllowedRemoteUrl, assertPublicHttpsUrl } from "./ssrfGuard";
 import { atlasGenerateImage, atlasIsConfigured } from "./atlasProvider";
 
 
-// Four-view image presets (all share the same base portrait so we get a
-// consistent character rotated around — the prompt does the work of
-// indicating which side is being rendered).
-const FOUR_VIEW_PRESETS: { key: keyof FourViewUrls; promptZh: string }[] = [
-  { key: "front",        promptZh: "角色正面全身肖像，A-pose 站姿，正面對鏡頭，乾淨白色背景，中性表情，雙臂自然下垂略微張開，全身入鏡（從頭到腳），高解析、無遮擋、清晰光線" },
-  { key: "threeQuarter", promptZh: "同一角色 3/4 側身全身肖像（左前 45 度），A-pose 站姿，乾淨白色背景，中性表情，全身入鏡，與正面圖完全一致的服裝、髮型、體型與五官" },
-  { key: "side",         promptZh: "同一角色純側面全身肖像（90 度側面），A-pose 站姿，乾淨白色背景，中性表情，全身入鏡，與正面圖完全一致的服裝、髮型、體型與五官" },
-  { key: "back",         promptZh: "同一角色背面全身肖像，A-pose 站姿，乾淨白色背景，全身入鏡，背向鏡頭，與正面圖完全一致的髮型、服裝與體型" },
-];
-
-const FOUR_VIEW_CREDIT_COST = 12; // 4 images × 3 credits
+const FOUR_VIEW_CREDIT_COST = 4 * IMAGE_COST; // 4 images
 
 export function registerDramaLibraryRoutes(
   app: Express,
@@ -167,25 +161,17 @@ export function registerDramaLibraryRoutes(
           // A character pack can hold up to 30 images; the edit model uses 10.
           const refBase64s = await Promise.all(refUrls.slice(0, 10).map(loadAsBase64));
           const userFolder = user?.username || userId;
-          const styleHint = character.styleHint?.trim()
-            ? `，整體風格：${character.styleHint}`
-            : "";
-          const baseDescription = character.description?.trim()
-            ? `角色描述：${character.description}。`
-            : "";
-
           const results: FourViewUrls = {};
           let succeeded = 0;
 
           for (const preset of FOUR_VIEW_PRESETS) {
             try {
-              const fullPrompt = enhanceImagePrompt(
-                `${baseDescription}${preset.promptZh}${styleHint}（保持與第 1 張參考圖完全一致的角色外貌、髮色、五官、年齡與服裝）`
-              );
+              const plainPrompt = fourViewPrompt(preset.promptZh, character.description, character.styleHint);
+              const fullPrompt = containsNsfw(plainPrompt) ? enhanceImagePrompt(plainPrompt) : plainPrompt;
               const requestBody: any = {
                 prompt: fullPrompt,
                 image: refBase64s.length === 1 ? refBase64s[0] : refBase64s,
-                size: "1440x2560",
+                size: FOUR_VIEW_SIZE,
               };
               const imageUrl = await atlasGenerateImage({ prompt: requestBody.prompt, images: requestBody.image, size: requestBody.size });
 
@@ -504,30 +490,8 @@ ${rawText}`;
       const prevScene = sceneIdx > 0 ? scenes[sceneIdx - 1] : null;
       const nextScene = sceneIdx + 1 < scenes.length ? scenes[sceneIdx + 1] : null;
 
-      const continuityBlock = `
-
-【上一幕】${prevScene ? `${prevScene.title || ""}｜${prevScene.description || ""}` : "（這是首幕）"}
-【本幕】${scene.title || ""}｜${scene.description || ""}
-【下一幕】${nextScene ? `${nextScene.title || ""}｜${nextScene.description || ""}` : "（這是末幕）"}
-${sceneChainOn ? `
-連續模式（已開啟）特別要求：
-- 如果有上一幕，提示詞需自然「承接」上一幕的動作或情緒（例如「承接上一幕的對視，他緩緩開口…」）
-- 如果有下一幕，動作收尾要朝下一幕的開場方向過渡，避免突兀
-- 鏡頭起手與收尾的構圖／角色站位需與相鄰幕一致` : `
-請參考前後幕的劇情走向，避免動作或情緒與相鄰幕互相矛盾。`}`;
-
-      const prompt = `你是 WAN 3.0 圖生影片的提示詞專家。請根據以下分鏡資訊，寫出一段精煉、專業的視頻生成提示詞（限 100 字內，繁中）：
-
-【本幕場景描述】${scene.description ?? ""}
-【台詞】${scene.dialogue ?? "（無）"}
-【運鏡建議】${scene.cameraMovement ?? "（自由）"}${continuityBlock}
-
-要求：
-- 開頭直接寫主體動作（角色做什麼）
-- 包含運鏡（推鏡/拉鏡/環繞/跟拍）、景別（特寫/中景/遠景）、光線（暖色/冷色/自然光/逆光）、氛圍（緊張/溫馨/懸疑等）
-- 不要寫「請生成」「以下是」之類的引言
-- 不要包含台詞內容、不加引號
-- 直接輸出提示詞文字，沒有任何標題或解釋`;
+      const hasLastFrame = !!(scene.useFirstLastFrame && (scene.lastFrameBunnyUrl || scene.lastFrameUrl));
+      const prompt = motionPromptRequest({ scene, prev: prevScene, next: nextScene, chain: sceneChainOn, hasLastFrame });
 
       const claudeResp = await anthropic.messages.create({
         model: "claude-haiku-4-5",
@@ -536,7 +500,7 @@ ${sceneChainOn ? `
       });
 
       const textBlock = claudeResp.content.find((b: any) => b.type === "text") as any;
-      const videoPrompt = (textBlock?.text || "").trim().replace(/^[「『"']|[」』"']$/g, "");
+      const videoPrompt = finishMotionPrompt(textBlock?.text || "");
       if (!videoPrompt) return res.status(500).json({ error: "AI 未產生提示詞" });
 
       scenes[sceneIdx].videoPrompt = videoPrompt;
@@ -564,7 +528,7 @@ ${sceneChainOn ? `
 
       if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
 
-      const FRAME_COST = 6; // 2 frames × 3 credits
+      const FRAME_COST = 2 * IMAGE_COST; // 2 frames
 
       const project = await storage.getDramaProject(episode.projectId);
       if (!project) return res.status(404).json({ error: "找不到專案" });

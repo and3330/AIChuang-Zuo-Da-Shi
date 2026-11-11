@@ -53,7 +53,7 @@ export default function TermsPage() {
               <h2 className="text-lg font-semibold text-gray-800 mt-6 mb-3">三、積分制度與計費</h2>
               <ul className="list-disc pl-6 space-y-2">
                 <li>本平台採用積分制度，1 積分等值於 1 元新台幣（TWD）。</li>
-                <li><strong>圖片生成：</strong>每次生成消耗 3 積分。選擇去除浮水印時，每張額外加收 5 積分（共 8 積分/張）。</li>
+                <li><strong>圖片生成：</strong>每張消耗 5 積分。選擇去除浮水印時，每張額外加收 1 積分（共 6 積分/張）。</li>
                 <li><strong>影片生成：</strong>按時長與解析度計費，720P 每秒 8 積分，1080P 每秒 15 積分（支援 4 至 12 秒）。</li>
                 <li>積分充值最低金額為 50 積分，透過 Stripe 安全支付處理。</li>
                 <li>積分在生成任務開始時扣除。若生成失敗，積分將自動退還至您的帳戶。</li>

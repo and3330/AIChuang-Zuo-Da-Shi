@@ -74,21 +74,48 @@ export class BunnyStorageService {
 
   async uploadBuffer(buffer: Buffer, remotePath: string): Promise<string> {
     const url = this.getStorageUrl(remotePath);
-    const response = await fetch(url, {
-      method: "PUT",
-      headers: {
-        "AccessKey": this.accessKey,
-        "Content-Type": "application/octet-stream",
-      },
-      body: buffer,
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Bunny upload failed: ${response.status} - ${errorText}`);
+    // A generated image has already been paid for, so a hiccup on the way to
+    // the CDN is retried (network errors, 429 and 5xx) before giving up.
+    const waits = [0, 1000, 3000, 8000];
+    let lastError = "unknown";
+    for (let attempt = 0; attempt < waits.length; attempt++) {
+      if (waits[attempt] > 0) await new Promise(r => setTimeout(r, waits[attempt] * (0.75 + Math.random() * 0.5)));
+      try {
+        const response = await fetch(url, {
+          method: "PUT",
+          headers: {
+            "AccessKey": this.accessKey,
+            "Content-Type": "application/octet-stream",
+          },
+          body: buffer,
+        });
+        if (response.ok) return this.getCdnUrl(remotePath);
+        lastError = `${response.status} - ${(await response.text()).slice(0, 200)}`;
+        // Other 4xx (bad key, bad path) fail the same way every time.
+        if (response.status !== 429 && response.status < 500) break;
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : "network error";
+      }
     }
+    throw new Error(`Bunny upload failed: ${lastError}`);
+  }
 
-    return this.getCdnUrl(remotePath);
+  /** True when the URL points at our own CDN host. */
+  isOwnCdnUrl(url: string): boolean {
+    try {
+      const host = (this.cdnHost.startsWith("http") ? new URL(this.cdnHost).host : this.cdnHost).toLowerCase();
+      const u = new URL(url);
+      return u.protocol === "https:" && u.host.toLowerCase() === host;
+    } catch { return false; }
+  }
+
+  /** Delete a file by its CDN URL. Refuses anything that is not on our CDN. */
+  async deleteByCdnUrl(url: string): Promise<boolean> {
+    if (!this.isConfigured() || !this.isOwnCdnUrl(url)) return false;
+    const path = decodeURIComponent(new URL(url).pathname.replace(/^\/+/, ""));
+    if (!path || path.includes("..")) return false;
+    const response = await fetch(this.getStorageUrl(path), { method: "DELETE", headers: { "AccessKey": this.accessKey } });
+    return response.ok || response.status === 404;
   }
 
   async uploadImageFromUrl(sourceUrl: string, userFolder: string, generationId: string, index?: number): Promise<string> {

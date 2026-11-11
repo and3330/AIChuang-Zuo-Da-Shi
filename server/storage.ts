@@ -1,3 +1,4 @@
+import { IMAGE_COST } from "@shared/pricing";
 import { type User, type InsertUser, type ImageGeneration, type InsertImageGeneration, type InsertBatchImageToImage, type VideoGeneration, type InsertImageToVideo, type InsertTextToVideo, type CreditTransaction, type VerificationCode, type ChatMessage, type StoryGeneration, type InsertStoryGeneration, type StoryScene, type DramaProject, type DramaEpisode, type InsertDramaProject, type InsertDramaEpisode, type CharacterLibraryItem, type SceneLibraryItem, type InsertCharacterLibrary, type InsertSceneLibrary, users, creditTransactions, imageGenerations, videoGenerations, verificationCodes, chatMessages, storyGenerations, dramaProjects, dramaEpisodes, characterLibrary, sceneLibrary } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, sql, and, gt, gte, like } from "drizzle-orm";
@@ -12,6 +13,7 @@ export interface IStorage {
   updateUserGoogleId(userId: string, googleId: string, avatarUrl?: string): Promise<User | undefined>;
   updateUserCredits(userId: string, credits: number): Promise<User | undefined>;
   setUserAdmin(userId: string, isAdmin: boolean): Promise<User | undefined>;
+  updateUserProfile(userId: string, patch: Partial<Pick<User, "isMember" | "memberSince" | "birthDate" | "nsfwEnabled" | "nsfwConsentAt" | "onboardedAt">>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
 
   createCreditTransaction(transaction: { userId: string; type: string; amount: number; balance: number; description: string | null }): Promise<CreditTransaction>;
@@ -303,6 +305,11 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async updateUserProfile(userId: string, patch: Partial<Pick<User, "isMember" | "memberSince" | "birthDate" | "nsfwEnabled" | "nsfwConsentAt" | "onboardedAt">>): Promise<User | undefined> {
+    const [user] = await db.update(users).set(patch).where(eq(users.id, userId)).returning();
+    return user;
+  }
+
   async getAllUsers(): Promise<User[]> {
     return db.select().from(users).orderBy(desc(users.createdAt));
   }
@@ -359,6 +366,7 @@ export class DatabaseStorage implements IStorage {
     /** True per-row credit cost. Used by failImageGenerationAndRefund so
      *  the user gets back exactly what they paid (not a hard-coded 3). */
     creditsUsed?: number;
+    sensitive?: boolean;
   }): Promise<ImageGeneration> {
     const [row] = await db.insert(imageGenerations).values({
       userId: insertGeneration.userId,
@@ -376,7 +384,8 @@ export class DatabaseStorage implements IStorage {
       generatedImageUrls: [],
       status: "pending",
       cost: 0.05,
-      creditsUsed: insertGeneration.creditsUsed ?? 3,
+      creditsUsed: insertGeneration.creditsUsed ?? IMAGE_COST,
+      sensitive: insertGeneration.sensitive ?? false,
       provider: insertGeneration.provider ?? "atlas",
       model: insertGeneration.model ?? null,
     }).returning();
@@ -427,6 +436,7 @@ export class DatabaseStorage implements IStorage {
     if (updates.processingTime !== undefined) dbUpdates.processingTime = updates.processingTime;
     if (updates.cost !== undefined) dbUpdates.cost = updates.cost;
     if (updates.creditsUsed !== undefined) dbUpdates.creditsUsed = updates.creditsUsed;
+    if (updates.sensitive !== undefined) dbUpdates.sensitive = updates.sensitive;
     if (updates.generatedImageUrls !== undefined) dbUpdates.generatedImageUrls = updates.generatedImageUrls;
     if (updates.bunnyImageUrl !== undefined) dbUpdates.bunnyImageUrl = updates.bunnyImageUrl;
     if (updates.bunnyImageUrls !== undefined) dbUpdates.bunnyImageUrls = updates.bunnyImageUrls;
@@ -444,7 +454,7 @@ export class DatabaseStorage implements IStorage {
     if (!updated) return false;
 
     if (updated.userId) {
-      const refundAmount = updated.creditsUsed || 3;
+      const refundAmount = updated.creditsUsed || IMAGE_COST;
       await this.atomicAddCredits(updated.userId, refundAmount, `圖片生成失敗退還 ${refundAmount} 積分`);
     }
     return true;

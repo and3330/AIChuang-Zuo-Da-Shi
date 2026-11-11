@@ -1,3 +1,4 @@
+import { IMAGE_COST } from "@shared/pricing";
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -133,8 +134,8 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
         data-testid={`button-generate-fourviews-${character.id}`}
       >
         {fourViewStatus === "generating" ? "⏳ 生成中…" :
-         fourViewStatus === "completed" ? "🔄 重新生成四視圖 (-12 積分)" :
-         "✨ 生成四視圖 (-12 積分)"}
+         fourViewStatus === "completed" ? `🔄 重新生成四視圖 (-${4 * IMAGE_COST} 積分)` :
+         `✨ 生成四視圖 (-${4 * IMAGE_COST} 積分)`}
       </button>
 
       <div className="grid grid-cols-2 gap-2">

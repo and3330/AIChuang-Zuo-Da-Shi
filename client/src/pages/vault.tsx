@@ -1,3 +1,4 @@
+import { SensitiveGate } from "@/components/SensitiveGate";
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
@@ -9,7 +10,7 @@ import { NavigationHeader } from "@/components/AppNav";
 
 type VaultItem = {
   id: string; kind: "image" | "video"; url: string; prompt: string;
-  source: "image" | "edit" | "photoset" | "video"; generationId: string; createdAt: string | null;
+  source: "image" | "edit" | "photoset" | "video"; generationId: string; createdAt: string | null; sensitive?: boolean;
 };
 type VaultResponse = { items: VaultItem[]; total: number; counts: { image: number; video: number }; page: number; pageSize: number };
 
@@ -75,7 +76,7 @@ export default function VaultPage() {
               {items.map(it => (
                 <button key={it.id} onClick={() => setOpen(it)} className="relative aspect-square rounded-lg sm:rounded-xl overflow-hidden bg-slate-200 group" data-testid={`vault-item-${it.id}`}>
                   {it.kind === "image"
-                    ? <img src={it.url} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                    ? <SensitiveGate on={it.sensitive} compact><img src={it.url} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-105 transition-transform" /></SensitiveGate>
                     : <video src={it.url} muted playsInline preload="metadata" className="w-full h-full object-cover" />}
                   {it.kind === "video" && (
                     <span className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 text-white flex items-center justify-center"><i className="fas fa-play text-[9px]" /></span>
@@ -99,7 +100,7 @@ export default function VaultPage() {
           <div className="bg-white w-full md:max-w-4xl max-h-[92vh] overflow-auto rounded-t-3xl md:rounded-2xl grid md:grid-cols-[1fr_300px]" onClick={e => e.stopPropagation()}>
             <div className="bg-slate-900 flex items-center justify-center min-h-[240px]">
               {open.kind === "image"
-                ? <img src={open.url} alt="" className="max-w-full max-h-[60vh] md:max-h-[85vh] object-contain" />
+                ? <div className="max-w-full"><SensitiveGate on={open.sensitive}><img src={open.url} alt="" className="max-w-full max-h-[60vh] md:max-h-[85vh] object-contain" /></SensitiveGate></div>
                 : <video src={open.url} controls playsInline className="max-w-full max-h-[60vh] md:max-h-[85vh]" />}
             </div>
             <div className="p-5 space-y-4 pb-[calc(20px+env(safe-area-inset-bottom))]">

@@ -10,8 +10,8 @@ import { lookup } from "dns/promises";
 import { isIP } from "net";
 import sharp from "sharp";
 import { db } from "./db";
-import { partnerTokens, partnerJobs, type PartnerJob, type PartnerToken } from "@shared/schema";
-import { PartnerIdempotencyRace, PartnerIngestError, type PartnerStore } from "./partnerApi";
+import { partnerTokens, partnerJobs, partnerCharacters, type PartnerJob, type PartnerToken } from "@shared/schema";
+import { PartnerIdempotencyRace, PartnerIngestError, PartnerUploadError, type PartnerStore, type PartnerUploadFormat } from "./partnerApi";
 import { assertPublicHttpsUrl } from "./ssrfGuard";
 import type { BunnyStorageService } from "./bunnyStorage";
 
@@ -58,6 +58,8 @@ export const partnerStore: PartnerStore = {
         idempotencyKey: data.idempotencyKey,
         requestHash: data.requestHash,
         meta: data.meta,
+        ownerRef: data.ownerRef ?? null,
+        characterIds: data.characterIds ?? [],
       }).returning();
       return row;
     } catch (e) {
@@ -82,6 +84,35 @@ export const partnerStore: PartnerStore = {
   },
   async deleteJob(id) {
     await db.delete(partnerJobs).where(eq(partnerJobs.id, id));
+  },
+
+  async createCharacter(data) {
+    const [row] = await db.insert(partnerCharacters).values(data).returning();
+    return row;
+  },
+  async getCharacter(id) {
+    const [row] = await db.select().from(partnerCharacters).where(eq(partnerCharacters.id, id));
+    return row;
+  },
+  async listCharacters(userId, ownerRef) {
+    return db.select().from(partnerCharacters)
+      .where(and(eq(partnerCharacters.userId, userId), eq(partnerCharacters.ownerRef, ownerRef)))
+      .orderBy(desc(partnerCharacters.createdAt));
+  },
+  async updateCharacter(id, updates) {
+    const [row] = await db.update(partnerCharacters).set({ ...updates, updatedAt: new Date() }).where(eq(partnerCharacters.id, id)).returning();
+    return row;
+  },
+  async deleteCharacter(id) {
+    await db.delete(partnerCharacters).where(eq(partnerCharacters.id, id));
+  },
+  async adminListCharacters(filter) {
+    const conds = [
+      filter.ownerRef ? eq(partnerCharacters.ownerRef, filter.ownerRef) : undefined,
+      filter.id ? eq(partnerCharacters.id, filter.id) : undefined,
+    ].filter((x): x is NonNullable<typeof x> => !!x);
+    const q = db.select().from(partnerCharacters);
+    return (conds.length ? q.where(and(...conds)) : q).orderBy(desc(partnerCharacters.createdAt)).limit(200);
   },
 };
 
@@ -195,5 +226,45 @@ export function createPartnerImageIngestor(
     const publicUrl = cdnUrl(stored);
     if (!publicUrl) throw new Error("CDN upload returned no URL");
     return publicUrl;
+  };
+}
+
+/** Largest image we will decode for an upload (width × height). */
+const MAX_UPLOAD_PIXELS = 50_000_000;
+const MIN_UPLOAD_SIDE = 256;
+
+/**
+ * Store a partner upload: confirm the bytes really decode as the sniffed
+ * format, apply the EXIF orientation, then re-encode. Re-encoding with sharp
+ * drops ALL metadata (EXIF incl. GPS position, XMP, IPTC), so nothing about
+ * where or with what a photo was taken reaches the CDN.
+ */
+export function createPartnerUploadStore(
+  bunnyStorage: BunnyStorageService,
+  cdnUrl: (url: string | null | undefined) => string | null | undefined,
+) {
+  return async function storeUpload(input: { buffer: Buffer; format: PartnerUploadFormat; folder: string }) {
+    let out: Buffer; let width = 0; let height = 0;
+    try {
+      const img = sharp(input.buffer, { limitInputPixels: MAX_UPLOAD_PIXELS, failOn: "error" });
+      const meta = await img.metadata();
+      const actual = meta.format === "jpeg" ? "jpg" : meta.format;
+      if (actual !== input.format) throw new Error("format mismatch");
+      const pipeline = img.rotate();
+      const encoded = input.format === "png" ? pipeline.png({ compressionLevel: 9 })
+        : input.format === "webp" ? pipeline.webp({ quality: 92 })
+        : pipeline.jpeg({ quality: 92 });
+      const result = await encoded.toBuffer({ resolveWithObject: true });
+      out = result.data; width = result.info.width; height = result.info.height;
+    } catch {
+      throw new PartnerUploadError(422, "invalid_image", "檔案無法辨識為 JPG、PNG 或 WEBP 圖片，或圖片過大。");
+    }
+    if (Math.min(width, height) < MIN_UPLOAD_SIDE) {
+      throw new PartnerUploadError(422, "image_too_small", `圖片太小：短邊至少 ${MIN_UPLOAD_SIDE} 像素。`);
+    }
+    const stored = await bunnyStorage.uploadBuffer(out, `${input.folder}/${randomUUID()}.${input.format}`);
+    const url = cdnUrl(stored);
+    if (!url) throw new Error("CDN upload returned no URL");
+    return { url, width, height };
   };
 }
