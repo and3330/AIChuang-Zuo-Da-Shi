@@ -45,7 +45,7 @@ import {
 type Variant = "studio" | "sheet";
 type Mode = "scene" | "kit" | "sheet";
 type Shot = { title: string; prompt: string; poseRef?: string };
-type Plan = { analysis: string; shots: Shot[] };
+type Plan = { analysis: string; shots: Shot[]; customPrompt?: string };
 type BatchStatus = { batchId: string; generations: ImageGeneration[]; totalCount: number; completedCount: number; failedCount: number };
 type Picker = { library: LibraryId; purpose: "portrait" | "costume" | "pose" | "shotPose"; idx?: number };
 type VaultTarget = { purpose: "situation" | "ref" | "shotPose"; idx?: number };
@@ -418,9 +418,8 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       const directionParts = [
         scene ? (hasSituation ? `情境補充：${scene}` : mode === "scene" ? `拍攝情境（整組都在這個情境裡拍攝）：${scene}` : "") : "",
         pose ? `姿勢：第一張請使用這個姿勢——${pose.usage}；其餘各張請依情境自行安排不同的姿勢，不要重複` : "",
-        costume ? "服裝會另外指定，提示詞不要描述服裝的款式與顏色" : "",
+        costume ? `規劃時納入服裝參考：${costume.usage}。生成時會依目前選擇的服裝調整。` : "",
         isSheet ? "" : shootControlText(control, { hasSceneImage: hasSituation }),
-        direction.trim(),
       ].filter(Boolean);
       const res = await apiRequest("POST", "/api/photosets/plan", {
         mode: hasSituation ? "scene" : "character",
@@ -433,7 +432,8 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         characterGoal: isSheet ? "sheet" : "shoot",
         count,
         look: lookId,
-        direction: directionParts.join("。").slice(0, 1200) || undefined,
+        direction: directionParts.join("。") || undefined,
+        customPrompt: direction.trim() || undefined,
         aspectRatio: ratio.id,
       });
       return res.json();
@@ -666,6 +666,30 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
 
   const outputBody = (
     <>
+      <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 sm:p-4">
+        <label htmlFor="input-photoset-direction" className="block text-sm font-semibold text-slate-800">
+          額外 Prompt
+          <span className="ml-2 text-xs font-normal text-slate-500">選填，最多 1,000 字</span>
+        </label>
+        <p id="photoset-direction-help" className="mt-1 mb-2 text-xs leading-relaxed text-slate-600">
+          人像、服裝、姿勢素材，場景與鏡頭控制會和這段提示一起交給 AI 規劃。修改後請重新規劃，才會套用到鏡頭。
+        </p>
+        <textarea
+          id="input-photoset-direction"
+          value={direction}
+          onChange={e => { setDirection(e.target.value); if (plan) setPlan(null); }}
+          rows={3}
+          maxLength={1000}
+          disabled={busy}
+          aria-describedby="photoset-direction-help photoset-direction-count"
+          placeholder="例如：自然的日常感、柔和側光，鏡頭之間保持造型一致"
+          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-70"
+          data-testid="input-photoset-direction"
+        />
+        <p id="photoset-direction-count" className="mt-1 text-right text-xs tabular-nums text-slate-500" aria-live="polite">
+          {direction.length}／1,000
+        </p>
+      </div>
       <div>
         <label className="text-xs font-semibold text-slate-600 block mb-1">張數</label>
         <div className="flex items-center gap-2">
@@ -734,8 +758,6 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
                     <button onClick={() => { toggleProp(propDraft); setPropDraft(""); }} disabled={busy || !propDraft.trim() || control.props.length >= MAX_PROPS} className="px-3 h-9 rounded-lg border border-slate-200 text-xs text-slate-600 disabled:opacity-40">加入</button>
                   </div>
                 </div>
-                <textarea value={direction} onChange={(e) => setDirection(e.target.value.slice(0, 500))} rows={2} disabled={busy} placeholder="其他要求，例如：日系清新、多一點臉部特寫"
-                  className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm" data-testid="input-photoset-direction" />
               </div>
             )}
           </div>
@@ -866,10 +888,11 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         {/* ── 規劃：所有步驟走完才出現 ── */}
         <div className={`mt-4 space-y-2 ${reached >= steps.length || plan ? "" : "hidden"}`} data-testid="plan-section">
           {isSheet && (
-            <button onClick={() => planMutation.mutate("preset")} disabled={!inputsReady || busy} className="w-full h-12 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-photoset-preset">
+            <button onClick={() => planMutation.mutate("preset")} disabled={!inputsReady || busy || !!direction.trim()} aria-describedby={direction.trim() ? "photoset-preset-help" : undefined} className="w-full h-12 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-photoset-preset">
               使用標準九宮格（立即產生）
             </button>
           )}
+          {isSheet && direction.trim() && <p id="photoset-preset-help" className="text-xs text-slate-600">已填寫額外 Prompt，請使用下方 AI 規劃，標準九宮格不套用自訂描述。</p>}
           <button onClick={() => planMutation.mutate("ai")} disabled={!inputsReady || busy}
             className={`w-full h-12 rounded-xl text-sm font-semibold disabled:opacity-40 ${isSheet ? "border border-slate-300 bg-white text-slate-800" : "bg-indigo-600 text-white shadow-glow"}`} data-testid="button-photoset-plan">
             {planMutation.isPending ? "AI 規劃中…" : plan ? "重新規劃鏡頭" : isSheet ? "請 AI 依角色規劃（免費）" : `規劃 ${count} 個鏡頭（免費）`}
@@ -889,6 +912,12 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
                   <p className="text-xs font-semibold text-slate-600 mb-1">規劃說明</p>
                   <p className="text-sm text-slate-700 leading-relaxed">{plan.analysis}</p>
+                </div>
+              )}
+              {plan.customPrompt && (
+                <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
+                  <p className="text-xs font-semibold text-indigo-800 mb-1">已納入規劃的額外提示</p>
+                  <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{plan.customPrompt}</p>
                 </div>
               )}
               {!isSheet && (

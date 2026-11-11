@@ -59,7 +59,7 @@ const PLANNER_REFERENCE_LOOKS = 3;
 /** Product mode: photos of the product. */
 export const PHOTOSET_MAX_PRODUCT_IMAGES = 3;
 
-const planRequestSchema = z.object({
+export const planRequestSchema = z.object({
   mode: z.enum(["scene", "character", "product", "ugc"]).default("scene"),
   planner: z.enum(["ai", "preset"]).default("ai"),
   /** 情境圖 — required in scene mode. */
@@ -92,7 +92,9 @@ const planRequestSchema = z.object({
    *  wording to each prompt; the planner only needs to stay out of its way. */
   look: z.string().max(20).optional(),
   /** Optional art direction from the user, e.g. "日系清新、多一點特寫". */
-  direction: z.string().max(1200).optional(),
+  direction: z.string().max(4000).optional(),
+  /** User-authored supplement, kept separate so controls cannot truncate it. */
+  customPrompt: z.string().trim().max(1000).optional(),
   /** Target aspect ratio label, only used to steer composition. */
   aspectRatio: z.string().max(10).optional(),
 });
@@ -105,6 +107,7 @@ export type PhotosetShot = {
 };
 export type PhotosetPlan = {
   analysis: string; shots: PhotosetShot[];
+  customPrompt?: string;
   /** Product mode only: a post to go with the pictures. */
   caption?: string; hashtags?: string[];
 };
@@ -161,7 +164,7 @@ function outputFormat(count: number): string {
 shots 陣列必須剛好 ${count} 個元素。`;
 }
 
-function userExtras(req: PlanRequest): string {
+export function userExtras(req: PlanRequest): string {
   const parts: string[] = [];
   if (req.aspectRatio) parts.push(`成品比例為 ${req.aspectRatio}，構圖請以此比例安排。`);
   if (req.characterName?.trim()) parts.push(`角色名稱：${req.characterName.trim()}`);
@@ -169,6 +172,9 @@ function userExtras(req: PlanRequest): string {
   const look = PHOTO_LOOKS.find(l => l.id === req.look);
   if (look) parts.push(`整組的畫面質感為「${look.label}」（${look.hint}），鏡頭的光線與氛圍請與它相符。`);
   if (req.direction?.trim()) parts.push(`使用者的額外要求（優先遵守）：${req.direction.trim()}`);
+  if (req.customPrompt) {
+    parts.push(`補充 Prompt（與人物、服裝、姿勢、場景及拍攝設定一起綜合規劃；在不違反內容安全規則的前提下，具體反映在每個相關鏡頭中）：${req.customPrompt}`);
+  }
   return parts.length ? `\n\n【補充資訊】\n${parts.join("\n")}` : "";
 }
 
@@ -328,14 +334,36 @@ shots 陣列必須剛好 ${req.count} 個元素。`;
 }
 
 /** Pull the first JSON object out of the model's text and validate it. */
-function parsePlan(text: string, count: number): PhotosetPlan {
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error("AI 規劃結果格式錯誤，請再試一次。");
-  let parsed: any;
-  try {
-    parsed = JSON.parse(match[0]);
-  } catch {
-    throw new Error("AI 規劃結果無法解析，請再試一次。");
+export function parsePlan(value: unknown, count: number): PhotosetPlan {
+  let parsed: any = value;
+  if (typeof value === "string") {
+    // Scan balanced objects instead of greedily matching the first through last
+    // brace. Quoted braces, Markdown fences and surrounding prose are common.
+    parsed = undefined;
+    let start = -1, depth = 0, quoted = false, escaped = false;
+    for (let i = 0; i < value.length; i++) {
+      const c = value[i];
+      if (start < 0) {
+        if (c === "{") { start = i; depth = 1; }
+        continue;
+      }
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (c === "\\") escaped = true;
+        else if (c === '"') quoted = false;
+        continue;
+      }
+      if (c === '"') quoted = true;
+      else if (c === "{") depth++;
+      else if (c === "}" && --depth === 0) {
+        try {
+          const candidate = JSON.parse(value.slice(start, i + 1));
+          if (Array.isArray(candidate?.shots)) { parsed = candidate; break; }
+        } catch { /* Keep looking for a complete, valid plan, never invent one. */ }
+        start = -1;
+      }
+    }
+    if (!parsed) throw new Error("AI 未回傳可讀取的鏡頭規劃格式，請再試一次。");
   }
   const shots: PhotosetShot[] = (Array.isArray(parsed?.shots) ? parsed.shots : [])
     .map((s: any, i: number) => ({
@@ -347,8 +375,8 @@ function parsePlan(text: string, count: number): PhotosetPlan {
     }))
     .filter((s: PhotosetShot) => s.prompt.length > 0)
     .slice(0, count);
-  if (shots.length < PHOTOSET_MIN_SHOTS) {
-    throw new Error("AI 沒有產生足夠的鏡頭，請再試一次。");
+  if (shots.length !== count) {
+    throw new Error(`AI 規劃鏡頭不完整（需要 ${count} 個），請再試一次。`);
   }
   const hashtags: string[] = (Array.isArray(parsed?.hashtags) ? parsed.hashtags : [])
     .filter((h: unknown): h is string => typeof h === "string")
@@ -368,6 +396,29 @@ export class PhotosetPlanError extends Error {
   constructor(public status: number, message: string) {
     super(message);
     this.name = "PhotosetPlanError";
+  }
+}
+
+/** Distinguish refusal and truncated output from an actual JSON format error. */
+export function readPlannerMessage(message: Pick<Anthropic.Message, "content" | "stop_reason">, count: number): PhotosetPlan {
+  if (message.stop_reason === "refusal") {
+    throw new PhotosetPlanError(422, "AI 無法處理這次內容，請調整圖片或描述後再試。");
+  }
+  if (message.stop_reason === "max_tokens") {
+    throw new PhotosetPlanError(502, "AI 規劃回覆被截斷，請減少張數或縮短描述後再試。");
+  }
+  const tool = message.content.find((block): block is Anthropic.ToolUseBlock =>
+    block.type === "tool_use" && block.name === "submit_photoset_plan");
+  const text = message.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map(block => block.text).join("\n");
+  if (!tool && !text.includes("{") && /(?:sorry|cannot|can't|unable to|抱歉|無法協助|不能協助|无法帮助|無法提供)/i.test(text)) {
+    throw new PhotosetPlanError(422, "AI 無法處理這次內容，請調整圖片或描述後再試。");
+  }
+  try {
+    return parsePlan(tool ? tool.input : text, count);
+  } catch (e) {
+    throw new PhotosetPlanError(502, e instanceof Error ? e.message : "AI 規劃格式錯誤，請再試一次。");
   }
 }
 
@@ -437,6 +488,9 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
 
     // Fixed character sheet: no model call needed.
     if (body.mode === "character" && body.planner === "preset") {
+      if (body.customPrompt || body.direction?.trim()) {
+        throw new PhotosetPlanError(400, "固定九宮格不會套用補充描述，請改用 AI 規劃。");
+      }
       return {
         analysis: "標準角色九宮格：依序涵蓋正面、全身、側面、背面等視角，以及多種表情與姿勢，全部使用乾淨的攝影棚背景，方便之後當作角色參考圖庫。",
         shots: CHARACTER_SHEET_PRESET.slice(0, body.count),
@@ -473,25 +527,42 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
 
     const message = await anthropic.messages.create({
       model: PLANNER_MODEL,
-      max_tokens: body.mode === "ugc" ? 6000 : 4000,
+      max_tokens: Math.min(12000, Math.max(4000, body.count * (body.mode === "ugc" ? 1100 : 750) + 1000)),
+      tools: [{
+        name: "submit_photoset_plan",
+        description: "Return the requested photo shoot plan as structured data. Do not use this tool if you cannot assist with the requested content.",
+        input_schema: {
+          type: "object",
+          properties: {
+            analysis: { type: "string" },
+            shots: {
+              type: "array", minItems: body.count, maxItems: body.count,
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" }, prompt: { type: "string" },
+                  motion: { type: "string" }, subtitle: { type: "string" },
+                  seconds: { type: "integer", minimum: 4, maximum: 6 },
+                },
+                required: body.mode === "ugc" ? ["title", "prompt", "motion", "subtitle", "seconds"] : ["title", "prompt"],
+              },
+            },
+            caption: { type: "string" },
+            hashtags: { type: "array", items: { type: "string" } },
+          },
+          required: ["analysis", "shots"],
+        },
+      }],
+      tool_choice: { type: "auto" },
       messages: [
-        { role: "user", content: [...imageBlocks, { type: "text", text: promptText }] },
+        { role: "user", content: [...imageBlocks, { type: "text", text: `${promptText}\n\n請優先以 submit_photoset_plan 工具回傳結構化結果；若無法協助這次內容，請直接說明，不要產生替代鏡頭。` }] },
       ],
     });
 
-    if (message.stop_reason === "refusal") {
-      throw new PhotosetPlanError(422, "AI 無法分析這些圖片，請換一張圖再試。");
-    }
-    const text = message.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map(b => b.text)
-      .join("");
-
-    try {
-      return parsePlan(text, body.count);
-    } catch (e: any) {
-      throw new PhotosetPlanError(502, e?.message || "AI 規劃結果格式錯誤，請再試一次。");
-    }
+    return {
+      ...readPlannerMessage(message, body.count),
+      ...(body.customPrompt ? { customPrompt: body.customPrompt } : {}),
+    };
   }
 
   return { plan };
