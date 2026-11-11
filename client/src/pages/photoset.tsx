@@ -14,7 +14,7 @@ import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type FourViewUrls
 import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor, type ImageRatioId, type ImageTierId } from "@shared/imageSizes";
 import type { LibraryId } from "@shared/libraryCatalog";
 import { loadRecipe, type Recipe, type RecipeItem } from "@/lib/recipe";
-import { WATERMARK_REMOVAL_COST, imageCost } from "@shared/pricing";
+import { IMAGE_COST, MEMBERSHIP, TRIAL, WATERMARK_REMOVAL_COST, imageCost } from "@shared/pricing";
 import { inGoldZone } from "@/lib/zone";
 /** Price of one image on the page being shown (the gold zone costs more). */
 const priceHere = (watermark: boolean) => imageCost(watermark, inGoldZone());
@@ -226,7 +226,12 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const [outfitFrom, setOutfitFrom] = useState<"character" | "scene">("character");
   const [uploading, setUploading] = useState<"" | "situation" | "refs">("");
   const [randomizing, setRandomizing] = useState<"" | LibraryId | "all">("");
-  const [count, setCount] = useState(isSheet ? 9 : 6);
+  // Default number of shots: six, or fewer when the balance cannot pay for six (a new account has enough for two).
+  const [count, setCount] = useState(() => {
+    if (isSheet) return 9;
+    const affordable = Math.floor((user?.credits ?? 0) / IMAGE_COST);
+    return affordable >= MIN_SHOTS && affordable < 6 ? affordable : 6;
+  });
   const [ratioId, setRatioId] = useState<ImageRatioId>("3:4");
   const [tierId, setTierId] = useState<ImageTierId>("2k");
   const [lookId, setLookId] = useState<PhotoLookId>("natural");
@@ -489,6 +494,17 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   });
 
   const batchDone = !!batch && batch.completedCount + batch.failedCount >= batch.totalCount;
+  // When a set is finished, invite the visitor to the 會員商城: always for non-members, and for
+  // members whose balance can no longer pay for a set of the same size. Once per finished set.
+  const [nudgedBatch, setNudgedBatch] = useState("");
+  const [showStoreNudge, setShowStoreNudge] = useState(false);
+  const isMember = !!user?.isMember || !!user?.isAdmin;
+  useEffect(() => {
+    if (isSheet || !batchDone || !batch || batch.completedCount === 0 || nudgedBatch === batch.batchId) return;
+    setNudgedBatch(batch.batchId);
+    if (inGoldZone()) return;
+    if (!isMember || credits < totalCost) setShowStoreNudge(true);
+  }, [isSheet, batchDone, batch, nudgedBatch, isMember, credits, totalCost]);
   const isGenerating = generateMutation.isPending || (!!batchId && !batchDone);
   const busy = isGenerating || planMutation.isPending;
 
@@ -989,6 +1005,39 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       </div>
 
       {picker && <LibraryPicker library={picker.library} onConfirm={onPicked} onClose={() => setPicker(null)} />}
+      {showStoreNudge && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 flex items-end md:items-center justify-center md:p-4" onClick={() => setShowStoreNudge(false)}>
+          <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl p-5 pb-[calc(20px+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()} data-testid="dialog-store-nudge">
+            <h3 className="text-lg font-bold text-slate-900"><i className="fas fa-champagne-glasses text-fuchsia-500 mr-2" />你的寫真完成了</h3>
+            <p className="text-sm text-slate-600 mt-2">
+              目前剩 <b className="text-slate-900">{credits.toLocaleString()}</b> 積分{credits < IMAGE_COST ? "，不夠再做一張了" : `，還能做 ${Math.floor(credits / IMAGE_COST)} 張`}。
+              {isMember ? "加購積分就能繼續做下一組。" : "換一套服裝、換一個場景，再做一組？"}
+            </p>
+            {!isMember && (
+              <ul className="mt-3 space-y-2">
+                {!user?.trialUsedAt && (
+                  <li className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3 text-sm">
+                    <span><b className="text-slate-900">小試身手</b><span className="block text-xs text-slate-500">{TRIAL.credits} 積分，約 {Math.floor(TRIAL.credits / IMAGE_COST)} 張</span></span>
+                    <b className="text-slate-900">US${TRIAL.priceUsd}</b>
+                  </li>
+                )}
+                <li className="flex items-center justify-between gap-3 rounded-2xl border-2 border-indigo-400 bg-indigo-50 p-3 text-sm">
+                  <span><b className="text-slate-900">正式會員</b><span className="ml-2 px-1.5 py-0.5 rounded bg-fuchsia-500 text-white text-[10px] font-bold align-middle">最划算</span><span className="block text-xs text-slate-500">{MEMBERSHIP.credits} 積分，約 {Math.floor(MEMBERSHIP.credits / IMAGE_COST)} 張</span></span>
+                  <b className="text-slate-900">US${MEMBERSHIP.priceUsd}</b>
+                </li>
+              </ul>
+            )}
+            <div className="grid grid-cols-2 gap-2 mt-5">
+              <button onClick={() => setShowStoreNudge(false)} className="h-11 rounded-xl border border-slate-200 text-sm text-slate-600" data-testid="button-store-nudge-later">先看作品</button>
+              <Link href="/store">
+                <span className="h-11 rounded-xl bg-indigo-600 text-white text-sm font-semibold flex items-center justify-center cursor-pointer" data-testid="button-store-nudge-go">
+                  前往會員商城<i className="fas fa-arrow-right ml-2 text-xs" />
+                </span>
+              </Link>
+            </div>
+          </div>
+        </div>
+      )}
       {showWizard && <CharacterWizard onClose={() => setShowWizard(false)} onCreated={(id) => { setPortrait(undefined); setCharacterId(id); }} />}
       {vaultTarget && <VaultPicker onPick={onVaultPicked} onClose={() => setVaultTarget(null)} />}
       {showCollage && <ReferenceCollage tiles={collageTiles} onClose={() => setShowCollage(false)} />}
