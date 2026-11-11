@@ -46,7 +46,7 @@ function SceneCard({ scene }: { scene: SceneLibraryItem }) {
           <p className="text-[10px] text-[#94a3b8] mt-2">{refs.length} 張參考圖</p>
         </div>
         <div className="flex flex-col gap-1.5">
-          <button onClick={() => setShowEdit(true)} className="text-xs text-[#6366f1] hover:underline" data-testid={`button-edit-scene-${scene.id}`}>編輯</button>
+          <button onClick={() => setShowEdit(true)} className="text-xs text-indigo-500 hover:underline" data-testid={`button-edit-scene-${scene.id}`}>編輯</button>
           <button
             onClick={() => { if (confirm(`刪除場景「${scene.name}」？`)) deleteMutation.mutate(); }}
             className="text-xs text-[#ef4444] hover:underline"
@@ -143,7 +143,7 @@ function SceneFormModal({
             <label className="text-xs text-[#64748b] uppercase">參考圖（最多 6 張，第 1 張為主視覺）</label>
             <button type="button" onClick={() => fileRef.current?.click()}
               disabled={uploading || refImageUrls.length >= 6}
-              className="text-xs text-[#6366f1] hover:text-[#4f46e5] disabled:text-[#cbd5e1]"
+              className="text-xs text-indigo-500 hover:text-indigo-600 disabled:text-[#cbd5e1]"
               data-testid="button-upload-scene-ref">
               {uploading ? "上傳中…" : "+ 上傳"}
             </button>
@@ -170,7 +170,7 @@ function SceneFormModal({
           <button
             onClick={() => { if (!name.trim()) { toast({ title: "請填名稱" }); return; } saveMutation.mutate(); }}
             disabled={saveMutation.isPending}
-            className="flex-1 px-4 py-2 rounded-lg bg-[#6366f1] text-white text-sm font-medium hover:bg-[#4f46e5] disabled:bg-[#cbd5e1]"
+            className="flex-1 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-600 disabled:bg-[#cbd5e1]"
             data-testid="button-save-scene"
           >
             {saveMutation.isPending ? "儲存中…" : "儲存"}
@@ -215,7 +215,7 @@ export default function SceneLibraryPage() {
                 ← 回漫劇工作室
               </button>
             </Link>
-            <button onClick={() => setShowCreate(true)} className="px-4 py-2 rounded-lg bg-[#6366f1] text-white text-sm font-medium hover:bg-[#4f46e5]" data-testid="button-create-scene">
+            <button onClick={() => setShowCreate(true)} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-600" data-testid="button-create-scene">
               + 新增場景
             </button>
           </div>
@@ -228,7 +228,7 @@ export default function SceneLibraryPage() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="🔍 搜尋場景（名稱／描述）"
-              className="w-full md:w-80 px-3 py-2 rounded-lg border border-[#cbd5e1] bg-white text-sm focus:outline-none focus:border-[#6366f1]"
+              className="w-full md:w-80 px-3 py-2 rounded-lg border border-[#cbd5e1] bg-white text-sm focus:outline-none focus:border-indigo-500"
               data-testid="input-scene-search"
             />
             {search && (
@@ -244,7 +244,7 @@ export default function SceneLibraryPage() {
         ) : scenes.length === 0 ? (
           <div className="bg-white border border-dashed border-[#cbd5e1] rounded-2xl p-12 text-center">
             <p className="text-[#64748b]">場景庫還沒有任何場景</p>
-            <button onClick={() => setShowCreate(true)} className="mt-3 px-4 py-2 rounded-lg bg-[#6366f1] text-white text-sm">
+            <button onClick={() => setShowCreate(true)} className="mt-3 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm">
               建立第一個場景
             </button>
           </div>

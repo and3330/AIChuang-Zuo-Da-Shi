@@ -20,11 +20,14 @@ export const RECIPE_SLOTS: Array<{ id: RecipeSlot; label: string; emptyHint: str
   { id: "pose", label: "姿勢", emptyHint: "決定身體姿態" },
 ];
 
-const KEY = "photosetRecipe.v1";
+import { inGoldZone } from "@/lib/zone";
+
+/** The gold zone keeps its own recipe so its picks never show up on the ordinary pages. */
+const storageKey = () => (inGoldZone() ? "photosetRecipe.gold.v1" : "photosetRecipe.v1");
 
 export function loadRecipe(): Recipe {
   try {
-    const raw = window.localStorage.getItem(KEY);
+    const raw = window.localStorage.getItem(storageKey());
     if (!raw) return {};
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === "object" ? parsed as Recipe : {};
@@ -35,8 +38,8 @@ export function loadRecipe(): Recipe {
 
 export function saveRecipe(recipe: Recipe): void {
   try {
-    if (Object.keys(recipe).length === 0) window.localStorage.removeItem(KEY);
-    else window.localStorage.setItem(KEY, JSON.stringify(recipe));
+    if (Object.keys(recipe).length === 0) window.localStorage.removeItem(storageKey());
+    else window.localStorage.setItem(storageKey(), JSON.stringify(recipe));
   } catch { /* storage unavailable: the recipe just won't persist */ }
 }
 

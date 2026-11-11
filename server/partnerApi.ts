@@ -26,7 +26,7 @@
  *   - Anything involving a character never uses the NSFW prompt enhancer.
  */
 
-import { imageCost, IMAGE_COST } from "@shared/pricing";
+import { IMAGE_COST } from "@shared/pricing";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { z } from "zod";
@@ -38,8 +38,9 @@ import { PHOTO_LOOKS, POSES, photoLookSuffix, poseById, referenceNote, type Phot
 /* ───────────────────────── pricing (keep in sync with routes.ts) ───────────────────────── */
 
 export const PARTNER_PRICING = {
-  imageWithWatermark: imageCost(true),
-  imageWithoutWatermark: imageCost(false),
+  // The partner API keeps its own prices; site price changes do not move them.
+  imageWithWatermark: 5,
+  imageWithoutWatermark: 6,
   videoPerSecond: { "720p": 8, "1080p": 15 } as Record<string, number>,
   videoDuration: { min: 4, max: 12, default: 5 },
   imageCount: { min: 1, max: 4 },

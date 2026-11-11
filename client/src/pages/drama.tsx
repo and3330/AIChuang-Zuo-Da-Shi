@@ -225,7 +225,7 @@ function DarkButton({
 }) {
   const base = "px-3 py-1.5 rounded-lg text-sm font-medium transition-all focus:outline-none disabled:opacity-40 disabled:cursor-not-allowed";
   const variants = {
-    primary:   "bg-[#6366f1] hover:bg-[#4338ca] text-white",
+    primary:   "bg-indigo-600 hover:bg-[#4338ca] text-white",
     secondary: "bg-[#e2e8f0] hover:bg-[#f1f5f9] border border-[#cbd5e1] text-[#334155]",
     danger:    "bg-[#ef4444]/10 hover:bg-[#ef4444]/20 border border-[#ef4444]/30 text-[#dc2626]",
     ghost:     "hover:bg-[#e2e8f0] text-[#64748b] hover:text-[#334155]",
@@ -246,7 +246,7 @@ function DarkInput({
       onChange={e => onChange(e.target.value)}
       placeholder={placeholder}
       className={`w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#0f172a] text-sm
-        placeholder-[#94a3b8] focus:outline-none focus:border-[#6366f1] transition-colors ${className}`}
+        placeholder-[#94a3b8] focus:outline-none focus:border-indigo-500 transition-colors ${className}`}
     />
   );
 }
@@ -261,7 +261,7 @@ function DarkTextarea({
       placeholder={placeholder}
       rows={rows}
       className={`w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#0f172a] text-sm
-        placeholder-[#94a3b8] focus:outline-none focus:border-[#6366f1] transition-colors resize-none ${className}`}
+        placeholder-[#94a3b8] focus:outline-none focus:border-indigo-500 transition-colors resize-none ${className}`}
     />
   );
 }
@@ -274,7 +274,7 @@ function DarkSelect({
       value={value}
       onChange={e => onChange(e.target.value)}
       className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-[#0f172a] text-sm
-        focus:outline-none focus:border-[#6366f1] transition-colors"
+        focus:outline-none focus:border-indigo-500 transition-colors"
     >
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
@@ -413,20 +413,20 @@ function ImageUploadButton({
           <div key={i} className="relative w-12 h-12 rounded-lg bg-[#e2e8f0] border border-[#cbd5e1] flex items-center justify-center">
             {/^https?:/.test(path)
               ? <img src={path} alt="" className="w-full h-full rounded-lg object-cover" />
-              : <span className="text-[#6366f1] text-xs font-bold">✓</span>}
+              : <span className="text-indigo-500 text-xs font-bold">✓</span>}
             <button type="button" onClick={() => onRemove(i)} aria-label="移除"
               className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-[#ef4444] text-white text-xs rounded-full flex items-center justify-center">×</button>
           </div>
         ))}
         {objectPaths.length < max && (
           <button onClick={() => inputRef.current?.click()} disabled={uploading}
-            className="w-12 h-12 rounded-lg border border-dashed border-[#cbd5e1] flex flex-col items-center justify-center text-[#94a3b8] hover:border-[#6366f1] hover:text-[#6366f1] transition-all">
+            className="w-12 h-12 rounded-lg border border-dashed border-[#cbd5e1] flex flex-col items-center justify-center text-[#94a3b8] hover:border-indigo-500 hover:text-indigo-500 transition-all">
             {uploading ? <span className="text-xs">...</span> : <><span className="text-lg leading-none">+</span><span className="text-[9px]">上傳</span></>}
           </button>
         )}
         {objectPaths.length < max && (
           <button type="button" onClick={() => setFromWorks(true)}
-            className="h-12 px-3 rounded-lg border border-[#cbd5e1] bg-white text-xs text-[#334155] hover:border-[#6366f1] hover:text-[#4f46e5] transition-all" data-testid="button-from-vault">
+            className="h-12 px-3 rounded-lg border border-[#cbd5e1] bg-white text-xs text-[#334155] hover:border-indigo-500 hover:text-indigo-600 transition-all" data-testid="button-from-vault">
             從作品選
           </button>
         )}
@@ -445,8 +445,8 @@ function ImageUploadButton({
 function FlowStep({ n, title, meta, state, children }: {
   n: number; title: string; meta: string; state: "done" | "active" | "todo"; children?: React.ReactNode;
 }) {
-  const box = state === "active" ? "border-[#6366f1] bg-[#eef2ff]" : state === "done" ? "border-[#a7f3d0] bg-[#ecfdf5]" : "border-[#e2e8f0] bg-[#f8fafc]";
-  const dot = state === "done" ? "bg-[#10b981]" : state === "active" ? "bg-[#6366f1]" : "bg-[#cbd5e1]";
+  const box = state === "active" ? "border-indigo-500 bg-[#eef2ff]" : state === "done" ? "border-[#a7f3d0] bg-[#ecfdf5]" : "border-[#e2e8f0] bg-[#f8fafc]";
+  const dot = state === "done" ? "bg-[#10b981]" : state === "active" ? "bg-indigo-600" : "bg-[#cbd5e1]";
   return (
     <div className={`flex items-center gap-2.5 rounded-xl border px-3 py-1.5 shrink-0 ${box}`} data-testid={`episode-step-${n}`} data-state={state}>
       <span className={`w-6 h-6 rounded-full text-[11px] font-bold text-white flex items-center justify-center shrink-0 ${dot}`}>{state === "done" ? "✓" : n}</span>
@@ -472,7 +472,7 @@ function CharacterRolePicker({ label, urls, onChange }: { label: string; urls: s
       <label className="text-xs text-[#64748b] block mb-1.5">{label}</label>
       {characters.length === 0 ? (
         <p className="text-xs text-[#64748b] bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-3">
-          角色庫還沒有角色。先到 <Link href="/character-library"><span className="text-[#4f46e5] underline cursor-pointer">角色庫</span></Link> 用三張照片建立一個，再回來選。
+          角色庫還沒有角色。先到 <Link href="/character-library"><span className="text-indigo-600 underline cursor-pointer">角色庫</span></Link> 用三張照片建立一個，再回來選。
         </p>
       ) : (
         <select value={current?.id ?? ""} onChange={e => { const c = characters.find(x => x.id === e.target.value); onChange(c ? imagesOf(c) : []); }}
@@ -544,15 +544,15 @@ function ProjectsView({ onSelect }: { onSelect: (id: string) => void }) {
           {projects.map(p => (
             <div key={p.id} onClick={() => onSelect(p.id)}
               className="bg-[#ffffff] border border-[#e2e8f0] rounded-2xl p-5 cursor-pointer
-                hover:border-[#6366f1] hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] transition-all group">
+                hover:border-indigo-500 hover:shadow-[0_0_20px_rgba(99,102,241,0.15)] transition-all group">
               <div className="flex items-start justify-between mb-3">
-                <div className="w-10 h-10 bg-[#6366f1]/10 rounded-xl flex items-center justify-center text-xl">🎬</div>
+                <div className="w-10 h-10 bg-indigo-600/10 rounded-xl flex items-center justify-center text-xl">🎬</div>
                 <button onClick={e => { e.stopPropagation(); if (confirm(`確定刪除「${p.title}」？`)) deleteMutation.mutate(p.id); }}
                   className="opacity-0 group-hover:opacity-100 text-[#94a3b8] hover:text-[#ef4444] transition-all text-sm">✕</button>
               </div>
               <h3 className="font-bold text-[#0f172a] truncate">{p.title}</h3>
               <div className="flex items-center gap-2 mt-2 flex-wrap">
-                {p.genre && <span className="text-xs bg-[#6366f1]/10 text-[#4f46e5] px-2 py-0.5 rounded-full">{p.genre}</span>}
+                {p.genre && <span className="text-xs bg-indigo-600/10 text-indigo-600 px-2 py-0.5 rounded-full">{p.genre}</span>}
                 <span className="text-xs text-[#64748b]">{p.episodeCount ?? 0} 集</span>
               </div>
             </div>
@@ -571,7 +571,7 @@ function ProjectsView({ onSelect }: { onSelect: (id: string) => void }) {
             <div className="flex flex-wrap gap-2">
               {GENRES.map(g => (
                 <button key={g} onClick={() => setNewGenre(g)}
-                  className={`px-3 py-1 rounded-full text-xs border transition-all ${newGenre === g ? "bg-[#6366f1] text-white border-[#6366f1]" : "border-[#cbd5e1] text-[#64748b] hover:border-[#6366f1] hover:text-[#4f46e5]"}`}>
+                  className={`px-3 py-1 rounded-full text-xs border transition-all ${newGenre === g ? "bg-indigo-600 text-white border-indigo-500" : "border-[#cbd5e1] text-[#64748b] hover:border-indigo-500 hover:text-indigo-600"}`}>
                   {g}
                 </button>
               ))}
@@ -697,7 +697,7 @@ function ProjectView({
         <div className="flex-1 min-w-[200px]">
           <div className="flex items-center gap-3 flex-wrap">
             <h1 className="text-xl font-bold text-[#0f172a]">{project.title}</h1>
-            {project.genre && <span className="text-xs bg-[#6366f1]/10 text-[#4f46e5] px-2 py-0.5 rounded-full">{project.genre}</span>}
+            {project.genre && <span className="text-xs bg-indigo-600/10 text-indigo-600 px-2 py-0.5 rounded-full">{project.genre}</span>}
             <span className="text-xs text-[#94a3b8]">{SIZE_LABELS[project.sceneSize ?? "9:16"]}</span>
           </div>
         </div>
@@ -714,13 +714,13 @@ function ProjectView({
           ].map(st => (
             <li key={st.n} className={`rounded-2xl border p-3 ${st.done ? "border-[#a7f3d0] bg-[#ecfdf5]" : "border-[#e2e8f0] bg-[#f8fafc]"}`}>
               <p className="flex items-center gap-2 text-sm font-bold text-[#0f172a]">
-                <span className={`w-6 h-6 rounded-full text-[11px] flex items-center justify-center text-white ${st.done ? "bg-[#10b981]" : "bg-[#6366f1]"}`}>{st.done ? "✓" : st.n}</span>
+                <span className={`w-6 h-6 rounded-full text-[11px] flex items-center justify-center text-white ${st.done ? "bg-[#10b981]" : "bg-indigo-600"}`}>{st.done ? "✓" : st.n}</span>
                 {st.title}
               </p>
               <p className="text-xs text-[#64748b] mt-1.5 leading-relaxed">{st.desc}</p>
               {st.onClick && (
                 <div className="flex gap-2 mt-2.5">
-                  <button onClick={st.onClick} className="h-9 px-3 rounded-lg bg-[#6366f1] text-white text-xs font-semibold" data-testid={`drama-flow-${st.n}`}>{st.action}</button>
+                  <button onClick={st.onClick} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-xs font-semibold" data-testid={`drama-flow-${st.n}`}>{st.action}</button>
                   {st.alt && <button onClick={st.alt.onClick} className="h-9 px-3 rounded-lg border border-[#cbd5e1] bg-white text-xs text-[#334155]" data-testid="button-import-script">{st.alt.label}</button>}
                 </div>
               )}
@@ -734,7 +734,7 @@ function ProjectView({
       <div className="bg-[#ffffff] border border-[#e2e8f0] rounded-2xl p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-[#334155] text-sm">角色與風格</h2>
-          <button onClick={() => setShowSettings(true)} className="text-xs text-[#4f46e5] hover:underline">編輯設定</button>
+          <button onClick={() => setShowSettings(true)} className="text-xs text-indigo-600 hover:underline">編輯設定</button>
         </div>
         <div className="grid grid-cols-3 gap-3 md:gap-6">
           {[
@@ -773,7 +773,7 @@ function ProjectView({
               const statusColor = ep.status === "completed" ? "#22c55e" : ep.status === "generating" ? "#ca8a04" : ep.status === "failed" ? "#ef4444" : "#94a3b8";
               return (
                 <div key={ep.id} onClick={() => onSelectEpisode(ep.id)}
-                  className="flex items-center gap-4 p-4 rounded-xl border border-[#e2e8f0] hover:border-[#6366f1]/40 hover:bg-[#6366f1]/5 cursor-pointer transition-all group">
+                  className="flex items-center gap-4 p-4 rounded-xl border border-[#e2e8f0] hover:border-indigo-500/40 hover:bg-indigo-600/5 cursor-pointer transition-all group">
                   <div className="w-9 h-9 rounded-lg flex items-center justify-center font-bold text-sm"
                     style={{ background: "#6366f115", color: "#4f46e5" }}>
                     {ep.episodeNumber}
@@ -809,7 +809,7 @@ function ProjectView({
             <div className="flex flex-wrap gap-2">
               {GENRES.map(g => (
                 <button key={g} onClick={() => setPGenre(g)}
-                  className={`px-2.5 py-1 rounded-full text-xs border transition-all ${pGenre === g ? "bg-[#6366f1] text-white border-[#6366f1]" : "border-[#cbd5e1] text-[#64748b] hover:border-[#6366f1]"}`}>
+                  className={`px-2.5 py-1 rounded-full text-xs border transition-all ${pGenre === g ? "bg-indigo-600 text-white border-indigo-500" : "border-[#cbd5e1] text-[#64748b] hover:border-indigo-500"}`}>
                   {g}
                 </button>
               ))}
@@ -820,7 +820,7 @@ function ProjectView({
             <div className="grid grid-cols-3 gap-2">
               {Object.entries(SIZE_LABELS).map(([val, label]) => (
                 <button key={val} onClick={() => setPSceneSize(val)}
-                  className={`p-2.5 rounded-xl border text-xs transition-all ${pSceneSize === val ? "border-[#6366f1] bg-[#6366f1]/10 text-[#4f46e5]" : "border-[#cbd5e1] text-[#64748b] hover:border-[#6366f1]/40"}`}>
+                  className={`p-2.5 rounded-xl border text-xs transition-all ${pSceneSize === val ? "border-indigo-500 bg-indigo-600/10 text-indigo-600" : "border-[#cbd5e1] text-[#64748b] hover:border-indigo-500/40"}`}>
                   {label}
                 </button>
               ))}
@@ -850,7 +850,7 @@ function ProjectView({
             <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block flex items-center justify-between">
               <span>📚 從範本開始（選填）</span>
               {selectedTemplate && (
-                <button onClick={() => setSelectedTemplate(null)} className="text-[10px] text-[#4f46e5] hover:text-[#6366f1] normal-case tracking-normal">清除</button>
+                <button onClick={() => setSelectedTemplate(null)} className="text-[10px] text-indigo-600 hover:text-indigo-500 normal-case tracking-normal">清除</button>
               )}
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -858,10 +858,10 @@ function ProjectView({
                 const active = selectedTemplate === t.key;
                 return (
                   <button key={t.key} onClick={() => setSelectedTemplate(t.key)}
-                    className={`p-2.5 rounded-xl border text-left transition-all ${active ? "border-[#6366f1] bg-[#6366f1]/10" : "border-[#e2e8f0] bg-[#f8fafc] hover:border-[#6366f1]/40"}`}>
+                    className={`p-2.5 rounded-xl border text-left transition-all ${active ? "border-indigo-500 bg-indigo-600/10" : "border-[#e2e8f0] bg-[#f8fafc] hover:border-indigo-500/40"}`}>
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="text-base">{t.emoji}</span>
-                      <span className={`text-xs font-semibold ${active ? "text-[#4f46e5]" : "text-[#334155]"}`}>{t.title}</span>
+                      <span className={`text-xs font-semibold ${active ? "text-indigo-600" : "text-[#334155]"}`}>{t.title}</span>
                     </div>
                     <p className="text-[10px] text-[#64748b] leading-snug line-clamp-2">{t.description}</p>
                     <p className="text-[10px] text-[#94a3b8] mt-1">共 {t.scenes.length} 幕 · {t.scenes.length * IMAGE_COST} 積分</p>
@@ -875,19 +875,19 @@ function ProjectView({
           {!selectedTemplate && (
             <div>
               <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">
-                場景數量：<span className="text-[#4f46e5] font-bold">{newEpSceneCount} 幕</span>
+                場景數量：<span className="text-indigo-600 font-bold">{newEpSceneCount} 幕</span>
                 <span className="text-[#94a3b8] ml-2">（{newEpSceneCount * IMAGE_COST} 積分）</span>
               </label>
               <input type="range" min={2} max={12} value={newEpSceneCount}
                 onChange={e => setNewEpSceneCount(Number(e.target.value))}
-                className="w-full accent-[#6366f1]" />
+                className="w-full accent-indigo-500" />
               <div className="flex justify-between text-xs text-[#94a3b8] mt-1"><span>2 幕</span><span>12 幕</span></div>
               <p className="text-[10px] text-[#64748b] mt-2">💡 建立後可在編輯器中用「🤖 AI 寫腳本」一鍵生成所有幕的內容</p>
             </div>
           )}
 
           {selectedTemplate && (
-            <div className="bg-[#6366f1]/5 border border-[#6366f1]/20 rounded-lg p-2.5 text-[11px] text-[#4f46e5]">
+            <div className="bg-indigo-600/5 border border-indigo-500/20 rounded-lg p-2.5 text-[11px] text-indigo-600">
               ✨ 將以「{DRAMA_TEMPLATES.find(t => t.key === selectedTemplate)?.title}」範本建立完整腳本，建立後可隨時微調
             </div>
           )}
@@ -940,7 +940,7 @@ function LibraryPickers({
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <label className="text-[10px] text-[#64748b] uppercase tracking-wide">角色庫角色（多選，影響出圖）</label>
-          <Link href="/character-library" className="text-[10px] text-[#6366f1] hover:underline" data-testid="link-open-charlib">
+          <Link href="/character-library" className="text-[10px] text-indigo-500 hover:underline" data-testid="link-open-charlib">
             管理 →
           </Link>
         </div>
@@ -959,7 +959,7 @@ function LibraryPickers({
                   onClick={() => toggleChar(c.id)}
                   className={`flex items-center gap-1.5 px-2 py-1 rounded-full border text-[11px] transition-all ${
                     active
-                      ? "bg-[#6366f1]/10 border-[#6366f1] text-[#4f46e5]"
+                      ? "bg-indigo-600/10 border-indigo-500 text-indigo-600"
                       : "bg-white border-[#cbd5e1] text-[#64748b] hover:border-[#94a3b8]"
                   }`}
                   data-testid={`char-lib-chip-${c.id}`}
@@ -981,7 +981,7 @@ function LibraryPickers({
       <div>
         <div className="flex items-center justify-between mb-1.5">
           <label className="text-[10px] text-[#64748b] uppercase tracking-wide">場景庫場景（影響出圖背景）</label>
-          <Link href="/scene-library" className="text-[10px] text-[#6366f1] hover:underline" data-testid="link-open-scenelib">
+          <Link href="/scene-library" className="text-[10px] text-indigo-500 hover:underline" data-testid="link-open-scenelib">
             管理 →
           </Link>
         </div>
@@ -1056,7 +1056,7 @@ function ImportScriptModal({
           <input ref={fileRef} type="file" accept=".txt,.docx,.pdf" className="hidden"
             onChange={e => handleFile(e.target.files?.[0] ?? null)} />
           <button onClick={() => fileRef.current?.click()}
-            className="w-full p-3 rounded-lg border-2 border-dashed border-[#cbd5e1] hover:border-[#6366f1] text-sm text-[#64748b] hover:text-[#4f46e5] transition-all"
+            className="w-full p-3 rounded-lg border-2 border-dashed border-[#cbd5e1] hover:border-indigo-500 text-sm text-[#64748b] hover:text-indigo-600 transition-all"
             data-testid="button-pick-script-file">
             {fileName ? `📎 ${fileName}` : "📂 選擇檔案…"}
           </button>
@@ -1079,13 +1079,13 @@ function ImportScriptModal({
             <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">集數</label>
             <input type="number" min={1} max={10} value={episodeCount}
               onChange={e => setEpisodeCount(Math.min(10, Math.max(1, Number(e.target.value))))}
-              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#6366f1]" />
+              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
           </div>
           <div>
             <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">每集幕數</label>
             <input type="number" min={2} max={12} value={scenesPerEpisode}
               onChange={e => setScenesPerEpisode(Math.min(12, Math.max(2, Number(e.target.value))))}
-              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#6366f1]" />
+              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500" />
           </div>
         </div>
 
@@ -1293,7 +1293,7 @@ function AIScriptDialog({
   return (
     <Modal open={open} onClose={onClose} title="🤖 AI 智慧腳本助手">
       <div className="space-y-4">
-        <div className="bg-[#6366f1]/5 border border-[#6366f1]/20 rounded-xl p-3 text-xs text-[#4f46e5] leading-relaxed">
+        <div className="bg-indigo-600/5 border border-indigo-500/20 rounded-xl p-3 text-xs text-indigo-600 leading-relaxed">
           💡 用一兩句話描述劇情概念，AI 會依 WAN 3.0 提示詞最佳實踐自動產出整集分鏡（含場景描述、台詞、運鏡）。
         </div>
 
@@ -1309,16 +1309,16 @@ function AIScriptDialog({
 
         <div>
           <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">
-            幕數：<span className="text-[#4f46e5] font-bold">{count} 幕</span>
+            幕數：<span className="text-indigo-600 font-bold">{count} 幕</span>
           </label>
           <input type="range" min={2} max={12} value={count}
-            onChange={e => setCount(Number(e.target.value))} className="w-full accent-[#6366f1]" />
+            onChange={e => setCount(Number(e.target.value))} className="w-full accent-indigo-500" />
           <div className="flex justify-between text-xs text-[#94a3b8] mt-1"><span>2 幕</span><span>12 幕</span></div>
         </div>
 
         {(characterAName || characterBName) && (
           <div className="bg-[#f8fafc] rounded-lg p-2.5 text-[11px] text-[#64748b] space-y-0.5">
-            {characterAName && <div>🎭 角色 A：<span className="text-[#4f46e5]">{characterAName}</span></div>}
+            {characterAName && <div>🎭 角色 A：<span className="text-indigo-600">{characterAName}</span></div>}
             {characterBName && <div>🎭 角色 B：<span className="text-[#d97706]">{characterBName}</span></div>}
           </div>
         )}
@@ -1987,7 +1987,7 @@ function EpisodeView({
           </button>
           <button
             onClick={() => setShowAIDialog(true)}
-            className="text-xs px-2.5 py-1.5 rounded-lg bg-[#6366f1]/10 text-[#4f46e5] shrink-0"
+            className="text-xs px-2.5 py-1.5 rounded-lg bg-indigo-600/10 text-indigo-600 shrink-0"
             data-testid="mobile-ai-script"
           >
             🤖
@@ -2000,7 +2000,7 @@ function EpisodeView({
             {["劇本", "分鏡圖", "動畫", "合成"].map((t, i) => {
               const st = flowState(i + 1);
               return (
-                <span key={t} className={`flex-1 text-center text-[11px] font-semibold py-1 rounded-full ${st === "active" ? "bg-[#6366f1] text-white" : st === "done" ? "bg-[#d1fae5] text-[#047857]" : "bg-[#f1f5f9] text-[#94a3b8]"}`}>
+                <span key={t} className={`flex-1 text-center text-[11px] font-semibold py-1 rounded-full ${st === "active" ? "bg-indigo-600 text-white" : st === "done" ? "bg-[#d1fae5] text-[#047857]" : "bg-[#f1f5f9] text-[#94a3b8]"}`}>
                   {st === "done" ? "✓ " : `${i + 1} `}{t}
                 </span>
               );
@@ -2022,7 +2022,7 @@ function EpisodeView({
             </div>
             <div className="h-1.5 bg-[#f1f5f9] rounded-full overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-[#6366f1] to-[#8b5cf6] transition-all"
+                className="h-full bg-gradient-to-r from-indigo-500 to-[#8b5cf6] transition-all"
                 style={{ width: `${imgPct}%` }}
               />
             </div>
@@ -2204,7 +2204,7 @@ function EpisodeView({
               <button
                 onClick={handleGenerateImages}
                 disabled={!hasEnoughCredits || generateImagesMutation.isPending || pendingCount === 0}
-                className="px-3 py-2 rounded-lg bg-[#6366f1] text-white text-xs font-semibold shrink-0 disabled:opacity-50"
+                className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold shrink-0 disabled:opacity-50"
                 data-testid="mobile-generate-images"
               >
                 {generateImagesMutation.isPending ? "⏳…" : `🎨 生成圖片 (-${creditCost})`}
@@ -2243,11 +2243,11 @@ function EpisodeView({
         {/* View toggle */}
         <div className="flex gap-1 bg-[#f8fafc] rounded-lg p-0.5">
           <button onClick={() => setActiveView("flow")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${activeView === "flow" ? "bg-[#6366f1] text-white" : "text-[#64748b] hover:text-[#334155]"}`}>
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${activeView === "flow" ? "bg-indigo-600 text-white" : "text-[#64748b] hover:text-[#334155]"}`}>
             ⬡ 節點流
           </button>
           <button onClick={() => setActiveView("grid")}
-            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${activeView === "grid" ? "bg-[#6366f1] text-white" : "text-[#64748b] hover:text-[#334155]"}`}>
+            className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${activeView === "grid" ? "bg-indigo-600 text-white" : "text-[#64748b] hover:text-[#334155]"}`}>
             ⊞ 格網
           </button>
         </div>
@@ -2664,7 +2664,7 @@ function EpisodeView({
             {/* Inspector header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#e2e8f0]">
               <div>
-                <span className="text-xs text-[#6366f1] font-mono">SCENE {(selectedIdx ?? 0) + 1}</span>
+                <span className="text-xs text-indigo-500 font-mono">SCENE {(selectedIdx ?? 0) + 1}</span>
                 <p className="text-sm font-semibold text-[#0f172a] mt-0.5">場景屬性</p>
               </div>
               <button onClick={() => setSelectedIdx(null)} className="text-[#94a3b8] hover:text-[#334155] text-lg">×</button>
@@ -2741,7 +2741,7 @@ function EpisodeView({
                   <div className="flex gap-2">
                     {(project?.characterAUrls ?? []).length > 0 && (
                       <button onClick={() => updateScene(selectedIdx!, { useCharA: !selectedScene.useCharA })}
-                        className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharA ? "bg-[#6366f1]/10 border-[#6366f1]/40 text-[#4f46e5]" : "border-[#cbd5e1] text-[#94a3b8]"}`}>
+                        className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharA ? "bg-indigo-600/10 border-indigo-500/40 text-indigo-600" : "border-[#cbd5e1] text-[#94a3b8]"}`}>
                         角色A {selectedScene.useCharA ? "✓" : "×"}
                       </button>
                     )}
@@ -2963,7 +2963,7 @@ function EpisodeView({
                   </div>
                   <button
                     onClick={() => updateScene(selectedIdx!, { useFirstLastFrame: !selectedScene.useFirstLastFrame })}
-                    className={`w-10 h-6 rounded-full relative shrink-0 transition-all ${selectedScene.useFirstLastFrame ? "bg-[#6366f1]" : "bg-[#e2e8f0]"}`}
+                    className={`w-10 h-6 rounded-full relative shrink-0 transition-all ${selectedScene.useFirstLastFrame ? "bg-indigo-600" : "bg-[#e2e8f0]"}`}
                     data-testid="toggle-use-first-last"
                   >
                     <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${selectedScene.useFirstLastFrame ? "left-5" : "left-1"}`} />
@@ -3080,7 +3080,7 @@ function EpisodeView({
                 <p className="text-[10px] text-[#cbd5e1] uppercase tracking-wide mb-2">連接埠</p>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-[#94a3b8] font-mono border border-[#e2e8f0] rounded px-2 py-0.5">◎ text_in</span>
-                  <span className="text-[10px] text-[#6366f1] font-mono border border-[#6366f1]/20 rounded px-2 py-0.5">image_out ◉</span>
+                  <span className="text-[10px] text-indigo-500 font-mono border border-indigo-500/20 rounded px-2 py-0.5">image_out ◉</span>
                 </div>
                 {selectedServerScene?.imageStatus === "completed" && (
                   <div className="flex items-center justify-between mt-1">
@@ -3119,20 +3119,20 @@ function EpisodeView({
           <div className="space-y-5">
             <div>
               <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">
-                影片時長：<span className="text-[#4f46e5] font-bold">{animDuration} 秒</span>
+                影片時長：<span className="text-indigo-600 font-bold">{animDuration} 秒</span>
               </label>
               <input type="range" min={4} max={12} value={animDuration}
-                onChange={e => setAnimDuration(Number(e.target.value))} className="w-full accent-[#6366f1]" />
+                onChange={e => setAnimDuration(Number(e.target.value))} className="w-full accent-indigo-500" />
               <div className="flex justify-between text-xs text-[#94a3b8] mt-1"><span>4秒</span><span>12秒</span></div>
             </div>
 
             <div onClick={() => setAnimUseOmni(!animUseOmni)}
-              className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${animUseOmni ? "border-[#6366f1] bg-[#6366f1]/5" : "border-[#e2e8f0] hover:border-[#6366f1]/30"}`}>
+              className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${animUseOmni ? "border-indigo-500 bg-indigo-600/5" : "border-[#e2e8f0] hover:border-indigo-500/30"}`}>
               <div>
                 <p className="text-sm font-semibold text-[#0f172a]">🌟 全能模式（WAN 3.0 暫不支援）</p>
                 <p className="text-xs text-[#64748b] mt-0.5">WAN 3.0 僅以場景圖作為首幀，此開關目前不會加入多圖參考</p>
               </div>
-              <div className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-all ${animUseOmni ? "bg-[#6366f1]" : "bg-[#e2e8f0]"}`}>
+              <div className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-all ${animUseOmni ? "bg-indigo-600" : "bg-[#e2e8f0]"}`}>
                 <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${animUseOmni ? "left-5" : "left-1"}`} />
               </div>
             </div>
@@ -3164,7 +3164,7 @@ function EpisodeView({
                   const cost = r === "1080p" ? Math.ceil(animDuration * 15) : Math.ceil(animDuration * 8);
                   return (
                     <button key={r} onClick={() => setAnimResolution(r)}
-                      className={`p-3 rounded-xl border-2 text-sm transition-all ${animResolution === r ? "border-[#6366f1] bg-[#6366f1]/10 text-[#4f46e5]" : "border-[#e2e8f0] text-[#64748b] hover:border-[#6366f1]/40"}`}>
+                      className={`p-3 rounded-xl border-2 text-sm transition-all ${animResolution === r ? "border-indigo-500 bg-indigo-600/10 text-indigo-600" : "border-[#e2e8f0] text-[#64748b] hover:border-indigo-500/40"}`}>
                       <div className="font-bold">{r}</div>
                       <div className="text-xs text-[#94a3b8]">{cost} 積分</div>
                     </button>
@@ -3174,7 +3174,7 @@ function EpisodeView({
             </div>
 
             <div className="bg-[#f8fafc] rounded-lg p-3 text-sm text-[#64748b]">
-              消耗 <span className="font-bold text-[#4f46e5]">
+              消耗 <span className="font-bold text-indigo-600">
                 {animResolution === "1080p" ? Math.ceil(animDuration * 15) : Math.ceil(animDuration * 8)} 積分
               </span>
               （現有 {user?.credits ?? 0} 積分）
@@ -3302,7 +3302,7 @@ function EpisodeView({
                           closeSheet();
                         }}
                         disabled={regenerateSceneMutation.isPending || (user?.credits ?? 0) < 3}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#6366f1]/10 text-[#4f46e5] text-sm font-medium disabled:opacity-50"
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-indigo-600/10 text-indigo-600 text-sm font-medium disabled:opacity-50"
                         data-testid="action-regenerate"
                       >
                         <span className="text-lg">🔄</span><span>重新生成圖片 (-{IMAGE_COST} 積分)</span>
@@ -3336,7 +3336,7 @@ function EpisodeView({
                     {ss?.imageStatus === "completed" && (
                       <button
                         onClick={() => { closeSheet(); setSelectedIdx(idx!); setReplaceFromVault(true); }}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#6366f1]/10 text-[#4338ca] text-sm font-medium"
+                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-indigo-600/10 text-[#4338ca] text-sm font-medium"
                         data-testid="action-replace-from-vault"
                       >
                         <span className="text-lg">🗂</span><span>從作品選一張替換</span>
@@ -3381,7 +3381,7 @@ function EpisodeView({
               <>
                 <SheetHeader className="px-4 py-3 border-b border-[#e2e8f0] shrink-0">
                   <SheetTitle className="text-left flex items-center gap-2">
-                    <span className="text-xs text-[#6366f1] font-mono">SCENE {(selectedIdx ?? 0) + 1}</span>
+                    <span className="text-xs text-indigo-500 font-mono">SCENE {(selectedIdx ?? 0) + 1}</span>
                     <span className="text-sm">場景屬性</span>
                   </SheetTitle>
                 </SheetHeader>
@@ -3422,7 +3422,7 @@ function EpisodeView({
                       <div className="flex gap-2">
                         {(project?.characterAUrls ?? []).length > 0 && (
                           <button onClick={() => updateScene(selectedIdx!, { useCharA: !selectedScene.useCharA })}
-                            className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharA ? "bg-[#6366f1]/10 border-[#6366f1]/40 text-[#4f46e5]" : "border-[#cbd5e1] text-[#94a3b8]"}`}>
+                            className={`flex-1 text-xs py-1.5 rounded-lg border transition-all ${selectedScene.useCharA ? "bg-indigo-600/10 border-indigo-500/40 text-indigo-600" : "border-[#cbd5e1] text-[#94a3b8]"}`}>
                             角色A {selectedScene.useCharA ? "✓" : "×"}
                           </button>
                         )}
@@ -3449,7 +3449,7 @@ function EpisodeView({
                   <button
                     onClick={() => { saveScenesMutation.mutate(localScenes); setMobileInspectorOpen(false); }}
                     disabled={saveScenesMutation.isPending}
-                    className="flex-1 py-2.5 rounded-xl bg-[#6366f1] text-white text-sm font-semibold disabled:opacity-50"
+                    className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-50"
                     data-testid="mobile-inspector-save"
                   >
                     {saveScenesMutation.isPending ? "儲存中…" : "💾 儲存變更"}

@@ -1,5 +1,5 @@
 import { useState, useEffect, type ReactNode } from "react";
-import { Switch, Route, Link, Redirect } from "wouter";
+import { Switch, Route, Link, Redirect, useLocation } from "wouter";
 import { queryClient, apiRequest, getQueryFn } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -19,7 +19,9 @@ import TermsPage from "@/pages/terms";
 import DramaPage from "@/pages/drama";
 import CharacterLibraryPage from "@/pages/character-library";
 import SceneLibraryPage from "@/pages/scene-library";
-import NsfwPage from "@/pages/nsfw";
+import GoldHub from "@/pages/gold-hub";
+import StorePage from "@/pages/store";
+import { hasGoldAccess, inGoldZone } from "@/lib/zone";
 import PhotosetPage from "@/pages/photoset";
 import LibraryPage from "@/pages/library";
 import VaultPage from "@/pages/vault";
@@ -322,7 +324,24 @@ function AdminOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+/** Anyone who is not a gold member gets the ordinary 404, so the zone does not show it exists. */
+function GoldOnly({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useUser();
+  if (isLoading) return null;
+  if (!hasGoldAccess(user)) return <NotFound />;
+  return <>{children}</>;
+}
+
 function Router() {
+  // Gold-zone pages are the ordinary pages in gold: the class recolours the brand palette.
+  const [location] = useLocation();
+  const { user } = useUser();
+  const gold = inGoldZone(location) && hasGoldAccess(user);
+  useEffect(() => {
+    document.documentElement.classList.toggle("gold-zone", gold);
+    return () => document.documentElement.classList.remove("gold-zone");
+  }, [gold]);
+
   return (
     <Switch>
       <Route path="/" component={CreateHub} />
@@ -336,9 +355,13 @@ function Router() {
       <Route path="/library" component={LibraryPage} />
       <Route path="/vault" component={VaultPage} />
       <Route path="/edit" component={EditPage} />
-      <Route path="/nsfw">
-        {() => <AdminOnly><NsfwPage /></AdminOnly>}
-      </Route>
+      {/* 黃金專區：和一般區同一套頁面，只有黃金會員進得來 */}
+      <Route path="/gold">{() => <GoldOnly><GoldHub /></GoldOnly>}</Route>
+      <Route path="/gold/image">{() => <GoldOnly><Home key="gold-image" section="image" /></GoldOnly>}</Route>
+      <Route path="/gold/video">{() => <GoldOnly><Home key="gold-video" section="video" /></GoldOnly>}</Route>
+      <Route path="/gold/photoset">{() => <GoldOnly><PhotosetPage key="gold-photoset" /></GoldOnly>}</Route>
+      <Route path="/gold/library">{() => <GoldOnly><LibraryPage key="gold-library" /></GoldOnly>}</Route>
+      <Route path="/store" component={StorePage} />
       <Route path="/account" component={AccountPage} />
       <Route path="/transactions" component={TransactionsPage} />
       <Route path="/admin" component={AdminPage} />

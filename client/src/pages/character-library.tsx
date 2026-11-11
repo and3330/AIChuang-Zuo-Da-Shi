@@ -98,7 +98,7 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
           )}
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             {character.styleHint && (
-              <span className="text-[10px] bg-[#6366f1]/10 text-[#4f46e5] px-2 py-0.5 rounded-full">
+              <span className="text-[10px] bg-indigo-600/10 text-indigo-600 px-2 py-0.5 rounded-full">
                 {STYLE_HINTS.find(s => s.value === character.styleHint)?.label ?? character.styleHint}
               </span>
             )}
@@ -130,7 +130,7 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
           generateFourViews.mutate();
         }}
         disabled={generateFourViews.isPending || fourViewStatus === "generating"}
-        className="w-full text-sm bg-[#6366f1] hover:bg-[#4338ca] text-white py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full text-sm bg-indigo-600 hover:bg-[#4338ca] text-white py-2 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         data-testid={`button-generate-fourviews-${character.id}`}
       >
         {fourViewStatus === "generating" ? "⏳ 生成中…" :
@@ -140,12 +140,12 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
 
       <div className="grid grid-cols-2 gap-2">
         <Link href={`/character-library/sheet?character=${character.id}`}>
-          <span className="block text-center text-sm border border-[#6366f1] text-[#4f46e5] hover:bg-[#6366f1]/10 py-2 rounded-lg cursor-pointer" data-testid={`link-sheet-${character.id}`}>
+          <span className="block text-center text-sm border border-indigo-500 text-indigo-600 hover:bg-indigo-600/10 py-2 rounded-lg cursor-pointer" data-testid={`link-sheet-${character.id}`}>
             🧩 角色九宮格
           </span>
         </Link>
         <Link href={`/photoset?mode=kit&character=${character.id}`}>
-          <span className="block text-center text-sm border border-[#e2e8f0] text-[#475569] hover:border-[#6366f1] hover:text-[#4f46e5] py-2 rounded-lg cursor-pointer" data-testid={`link-photoset-${character.id}`}>
+          <span className="block text-center text-sm border border-[#e2e8f0] text-[#475569] hover:border-indigo-500 hover:text-indigo-600 py-2 rounded-lg cursor-pointer" data-testid={`link-photoset-${character.id}`}>
             📸 拍寫真
           </span>
         </Link>
@@ -208,7 +208,7 @@ function CharacterFormModal({ character, onClose }: { character?: CharacterLibra
           <div>
             <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">名稱</label>
             <input value={name} onChange={e => setName(e.target.value)} placeholder="例：林婉婷"
-              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#6366f1]"
+              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500"
               data-testid="input-character-name" />
           </div>
 
@@ -216,14 +216,14 @@ function CharacterFormModal({ character, onClose }: { character?: CharacterLibra
             <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">外觀描述</label>
             <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3}
               placeholder="例：25歲女性，黑色長直髮，戴金絲眼鏡，氣質知性"
-              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-[#6366f1]"
+              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm resize-none focus:outline-none focus:border-indigo-500"
               data-testid="input-character-description" />
           </div>
 
           <div>
             <label className="text-xs text-[#64748b] uppercase tracking-wide mb-1.5 block">風格</label>
             <select value={styleHint} onChange={e => setStyleHint(e.target.value)}
-              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-[#6366f1]">
+              className="w-full bg-[#f8fafc] border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">
               {STYLE_HINTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
@@ -242,7 +242,7 @@ function CharacterFormModal({ character, onClose }: { character?: CharacterLibra
               ))}
               {refImageUrls.length < CHARACTER_PACK_MAX_IMAGES && (
                 <button onClick={() => fileRef.current?.click()} disabled={uploading}
-                  className="w-16 h-16 rounded-lg border-2 border-dashed border-[#cbd5e1] flex flex-col items-center justify-center text-[#94a3b8] hover:border-[#6366f1] hover:text-[#6366f1] transition-all"
+                  className="w-16 h-16 rounded-lg border-2 border-dashed border-[#cbd5e1] flex flex-col items-center justify-center text-[#94a3b8] hover:border-indigo-500 hover:text-indigo-500 transition-all"
                   data-testid="button-upload-ref">
                   {uploading ? <span className="text-xs">…</span> : <><span className="text-xl leading-none">+</span><span className="text-[9px]">上傳</span></>}
                 </button>
@@ -255,7 +255,7 @@ function CharacterFormModal({ character, onClose }: { character?: CharacterLibra
           <button
             onClick={() => saveMutation.mutate({ name, description, styleHint, refImageUrls })}
             disabled={!name.trim() || saveMutation.isPending}
-            className="w-full bg-[#6366f1] hover:bg-[#4338ca] text-white py-2 rounded-lg text-sm transition-colors disabled:opacity-40"
+            className="w-full bg-indigo-600 hover:bg-[#4338ca] text-white py-2 rounded-lg text-sm transition-colors disabled:opacity-40"
             data-testid="button-save-character"
           >
             {saveMutation.isPending ? "儲存中…" : "儲存"}
@@ -303,13 +303,13 @@ export default function CharacterLibraryPage() {
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
             <button onClick={() => setShowWizard(true)}
-              className="flex-1 sm:flex-none h-11 px-4 rounded-xl bg-[#6366f1] text-white text-sm font-semibold whitespace-nowrap"
+              className="flex-1 sm:flex-none h-11 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold whitespace-nowrap"
               data-testid="button-open-wizard">
               <i className="fas fa-camera mr-2 text-xs" />三張照片建立角色
             </button>
             <button
               onClick={() => setShowCreate(true)}
-              className="h-11 px-4 rounded-xl border border-[#cbd5e1] bg-white text-[#334155] text-sm font-medium whitespace-nowrap hover:border-[#6366f1]"
+              className="h-11 px-4 rounded-xl border border-[#cbd5e1] bg-white text-[#334155] text-sm font-medium whitespace-nowrap hover:border-indigo-500"
               data-testid="button-create-character"
             >
               ＋ 手動新增
@@ -324,7 +324,7 @@ export default function CharacterLibraryPage() {
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="🔍 搜尋角色（名稱／描述／風格）"
-              className="w-full md:w-80 px-3 py-2 rounded-lg border border-[#cbd5e1] bg-white text-sm focus:outline-none focus:border-[#6366f1]"
+              className="w-full md:w-80 px-3 py-2 rounded-lg border border-[#cbd5e1] bg-white text-sm focus:outline-none focus:border-indigo-500"
               data-testid="input-character-search"
             />
             {search && (
@@ -337,7 +337,7 @@ export default function CharacterLibraryPage() {
 
         {isLoading ? (
           <div className="flex items-center justify-center h-40">
-            <div className="w-8 h-8 rounded-full border-2 border-t-transparent border-[#6366f1] animate-spin" />
+            <div className="w-8 h-8 rounded-full border-2 border-t-transparent border-indigo-500 animate-spin" />
           </div>
         ) : characters.length === 0 ? (
           <div className="text-center py-24 bg-white rounded-2xl border border-[#e2e8f0]">
@@ -345,7 +345,7 @@ export default function CharacterLibraryPage() {
             <p className="text-lg font-medium text-[#334155] mb-2">還沒有角色</p>
             <p className="text-sm text-[#64748b] mb-6">建立角色後，可在漫劇場景中重複使用，並一鍵生成四視圖確保不同視角的一致性</p>
             <button onClick={() => setShowCreate(true)}
-              className="bg-[#6366f1] hover:bg-[#4338ca] text-white px-5 py-2.5 rounded-lg text-sm font-medium">
+              className="bg-indigo-600 hover:bg-[#4338ca] text-white px-5 py-2.5 rounded-lg text-sm font-medium">
               ＋ 建立第一個角色
             </button>
           </div>

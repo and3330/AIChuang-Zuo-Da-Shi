@@ -95,11 +95,11 @@ export function Onboarding() {
             <div className="space-y-3">
               <div className="rounded-2xl border border-sky-200 bg-brand-soft p-4">
                 <p className="text-sm font-bold text-slate-900"><i className="fas fa-crown text-fuchsia-500 mr-2" />積分用完時：開通會員 US${MEMBERSHIP.priceUsd}</p>
-                <p className="text-xs text-slate-600 mt-1">只付一次，拿 {MEMBERSHIP.credits} 積分，沒有月費。開通後可以隨時加購積分。位置：我的 → 帳戶與儲值。</p>
+                <p className="text-xs text-slate-600 mt-1">只付一次，拿 {MEMBERSHIP.credits} 積分，沒有月費。開通後可以隨時加購積分。位置：我的 → 會員商城。</p>
               </div>
               <div className="rounded-2xl border border-slate-200 p-4">
                 <p className="text-sm font-bold text-slate-900"><i className="fas fa-shield-halved text-indigo-500 mr-2" />安全與隱私</p>
-                <p className="text-xs text-slate-600 mt-1">成人內容預設關閉。需要的話，到帳戶頁設定生日並同意條款後才能啟用；啟用後的成品會先模糊顯示。</p>
+                <p className="text-xs text-slate-600 mt-1">生日只用來確認年齡，不會公開。作品只有你自己看得到，可以隨時在作品庫刪除。</p>
               </div>
             </div>
           )}

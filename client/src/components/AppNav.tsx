@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useUser } from "@/hooks/use-user";
+import { hasGoldAccess, inGoldZone } from "@/lib/zone";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -29,6 +30,8 @@ type Destination = {
   icon: string;
   group: Group;
   adminOnly?: boolean;
+  /** Listed only for gold members (and admins). */
+  goldOnly?: boolean;
 };
 
 export const DESTINATIONS: Destination[] = [
@@ -38,11 +41,12 @@ export const DESTINATIONS: Destination[] = [
   { href: "/library", label: "素材圖庫", short: "圖庫", icon: "fa-images", group: "main" },
   { href: "/vault", label: "作品庫", icon: "fa-photo-film", group: "me" },
   { href: "/edit", label: "編輯器", icon: "fa-pen-ruler", group: "me" },
-  { href: "/account", label: "帳戶與儲值", icon: "fa-wallet", group: "me" },
+  { href: "/store", label: "會員商城", icon: "fa-store", group: "me" },
+  { href: "/account", label: "帳戶設定", icon: "fa-user-gear", group: "me" },
   { href: "/transactions", label: "交易記錄", icon: "fa-receipt", group: "me" },
   { href: "/character-library", label: "角色庫", icon: "fa-user-group", group: "assets" },
   { href: "/scene-library", label: "場景庫", icon: "fa-mountain-sun", group: "assets" },
-  { href: "/nsfw", label: "成人專區", icon: "fa-user-lock", group: "admin", adminOnly: true },
+  { href: "/gold", label: "黃金專區", icon: "fa-crown", group: "admin", goldOnly: true },
   { href: "/admin", label: "管理後台", icon: "fa-gear", group: "admin", adminOnly: true },
 ];
 
@@ -51,11 +55,20 @@ const PRIMARY = ["/", "/photoset", "/drama", "/library"];
 /** Shortcuts shown as tiles at the top of the mobile 「我的」 sheet. */
 const QUICK = ["/vault", "/edit", "/character-library", "/scene-library"];
 
+/** The gold zone: the same pages as the ordinary ones, under /gold. */
+const GOLD_PAGES = [
+  { href: "/gold/image", label: "圖片生成", icon: "fa-image" },
+  { href: "/gold/video", label: "影片生成", icon: "fa-clapperboard" },
+  { href: "/gold/photoset", label: "寫真工作室", icon: "fa-camera-retro" },
+  { href: "/gold/library", label: "素材圖庫", icon: "fa-images" },
+];
+
 /** Pages reached from another page. They show a back button on phones. */
 const SUBPAGES: Destination[] = [
   { href: "/create/image", label: "圖片生成", icon: "fa-image", group: "main" },
   { href: "/create/video", label: "影片生成", icon: "fa-clapperboard", group: "main" },
   { href: "/character-library/sheet", label: "角色九宮格", icon: "fa-table-cells", group: "assets" },
+  ...GOLD_PAGES.map(g => ({ href: g.href, label: `黃金・${g.label}`, icon: g.icon, group: "admin" as Group })),
 ];
 
 function find(href: string): Destination {
@@ -91,7 +104,7 @@ function Logo({ size = "w-8 h-8 text-sm" }: { size?: string }) {
 
 function CreditsPill({ credits }: { credits: number }) {
   return (
-    <Link href="/account">
+    <Link href="/store">
       <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold cursor-pointer hover:border-amber-300" data-testid="pill-credits" title="積分餘額，點擊前往儲值">
         <i className="fas fa-coins text-amber-500 text-xs" />
         {credits.toLocaleString()}
@@ -118,7 +131,7 @@ export function NavigationHeader() {
   const logout = useLogout();
   if (!user) return null;
 
-  const visible = DESTINATIONS.filter(d => !d.adminOnly || user.isAdmin);
+  const visible = DESTINATIONS.filter(d => (!d.adminOnly || user.isAdmin) && (!d.goldOnly || hasGoldAccess(user)));
   const inGroup = (g: Group) => visible.filter(d => d.group === g);
   const here = currentDestination(location);
   const isRootTab = !!here && PRIMARY.includes(here.href) && !SUBPAGES.includes(here);
@@ -202,6 +215,29 @@ export function NavigationHeader() {
           </DropdownMenu>
         </div>
       </div>
+
+      {/* ── 黃金專區：專區內的頁面切換 ── */}
+      {inGoldZone(location) && hasGoldAccess(user) && (
+        <div className="border-t border-amber-200/70 bg-amber-50/90" data-testid="gold-zone-bar">
+          <div className="max-w-7xl mx-auto h-10 px-2 md:px-6 flex items-center gap-1 overflow-x-auto whitespace-nowrap text-sm">
+            <Link href="/gold">
+              <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-amber-400 text-amber-950 text-xs font-bold cursor-pointer shrink-0">
+                <i className="fas fa-crown text-[10px]" />黃金專區
+              </span>
+            </Link>
+            {GOLD_PAGES.map(g => {
+              const active = location === g.href;
+              return (
+                <Link key={g.href} href={g.href}>
+                  <span className={`inline-flex items-center h-7 px-2.5 rounded-full cursor-pointer shrink-0 ${active ? "bg-white text-amber-900 font-semibold shadow-sm" : "text-amber-800 hover:bg-white/70"}`} aria-current={active ? "page" : undefined} data-testid={`gold-nav-${g.href}`}>
+                    {g.label}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </header>
   );
 }
@@ -216,7 +252,7 @@ export default function MobileTabBar() {
   if (!user) return null;
 
   const tabs = PRIMARY.map(find);
-  const visible = DESTINATIONS.filter(d => !d.adminOnly || user.isAdmin);
+  const visible = DESTINATIONS.filter(d => (!d.adminOnly || user.isAdmin) && (!d.goldOnly || hasGoldAccess(user)));
   const rest = visible.filter(d => !PRIMARY.includes(d.href));
   const meActive = rest.some(d => isActive(location, d.href));
   const quick = QUICK.map(find);
@@ -255,7 +291,7 @@ export default function MobileTabBar() {
                 <span className="block text-base text-slate-900 truncate">{user.username}</span>
                 <span className="block text-xs font-normal text-slate-500">積分 {(user.credits ?? 0).toLocaleString()}</span>
               </span>
-              <Link href="/account" onClick={() => setSheetOpen(false)}>
+              <Link href="/store" onClick={() => setSheetOpen(false)}>
                 <span className="h-9 px-4 rounded-full bg-brand text-white text-xs font-semibold flex items-center shadow-glow">儲值</span>
               </Link>
             </SheetTitle>

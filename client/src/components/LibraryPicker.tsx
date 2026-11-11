@@ -1,3 +1,4 @@
+import { inGoldZone } from "@/lib/zone";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { LIBRARIES, type LibraryId } from "@shared/libraryCatalog";
@@ -38,6 +39,7 @@ export function LibraryPicker({ library, max = 1, initial = [], onConfirm, onClo
   const params = new URLSearchParams({ library, page: String(page), pageSize: String(PAGE_SIZE) });
   if (category) params.set("category", category);
   if (query) params.set("q", query);
+  if (inGoldZone()) params.set("zone", "gold");
   const { data, isLoading, error } = useQuery<GroupResponse>({ queryKey: [`/api/library/groups?${params.toString()}`] });
   const groups = data?.groups ?? [];
   const pages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;

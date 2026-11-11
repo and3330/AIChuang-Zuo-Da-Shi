@@ -14,6 +14,11 @@ import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor, type ImageRatioId, type ImageT
 import type { LibraryId } from "@shared/libraryCatalog";
 import { loadRecipe, type Recipe, type RecipeItem } from "@/lib/recipe";
 import { WATERMARK_REMOVAL_COST, imageCost } from "@shared/pricing";
+import { inGoldZone } from "@/lib/zone";
+/** Price of one image on the page being shown (the gold zone costs more). */
+const priceHere = (watermark: boolean) => imageCost(watermark, inGoldZone());
+/** What removing the watermark adds on this page. */
+const removalHere = () => priceHere(false) - priceHere(true);
 import {
   EXPRESSIONS, MAX_PROPS, PHOTO_LOOKS, PROP_PRESETS, REF_BUDGET, SETTINGS, SHOT_STYLES,
   photoLookSuffix, poseRefNote, referenceNote, shootControlText, studioReferenceNote,
@@ -249,7 +254,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const outputSize = imageSizeFor(ratioId, tierId);
   const shots = plan?.shots ?? [];
   const validShots = shots.filter(s => s.prompt.trim().length > 0);
-  const perImage = imageCost(watermark);
+  const perImage = priceHere(watermark);
   const totalCost = validShots.length * perImage;
   const credits = user?.credits ?? 0;
   const anyPoseRef = plan ? validShots.some(s => !!s.poseRef) : !!pose;
@@ -686,8 +691,8 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       )}
       <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3 cursor-pointer">
         <span className="min-w-0">
-          <span className="block text-sm font-semibold text-slate-800">去除浮水印 <span className="text-xs font-normal text-fuchsia-600">+{WATERMARK_REMOVAL_COST} 積分／張</span></span>
-          <span className="block text-[11px] text-slate-500">{isSheet ? "定裝圖會當參考圖用，建議去除，否則浮水印可能被帶進之後的圖。" : `每張 ${imageCost(true)} 積分；去除浮水印為 ${imageCost(false)} 積分。`}</span>
+          <span className="block text-sm font-semibold text-slate-800">去除浮水印 <span className="text-xs font-normal text-fuchsia-600">+{removalHere()} 積分／張</span></span>
+          <span className="block text-[11px] text-slate-500">{isSheet ? "定裝圖會當參考圖用，建議去除，否則浮水印可能被帶進之後的圖。" : `每張 ${priceHere(true)} 積分；去除浮水印為 ${priceHere(false)} 積分。`}</span>
         </span>
         <button role="switch" aria-checked={removeWatermark} onClick={() => setRemoveWatermark(v => !v)} disabled={busy}
           className={`shrink-0 w-12 h-7 rounded-full p-0.5 transition-colors ${removeWatermark ? "bg-indigo-600" : "bg-slate-300"}`} data-testid="switch-remove-watermark">
@@ -876,7 +881,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
                 <span>{removeWatermark ? "已去除浮水印" : "含浮水印"}（可在「張數{isSheet ? "" : "與輸出"}」步驟更改）</span>
                 <span>共 <b className="text-slate-900">{validShots.length}</b> 張 × {perImage} ＝ <b className="text-indigo-700">{totalCost} 積分</b><span className="text-xs text-slate-400 ml-2">（餘額 {credits.toLocaleString()}）</span></span>
               </div>
-              {credits < totalCost && <p className="text-xs text-red-500">積分不足，請先 <Link href="/account"><span className="underline cursor-pointer">加購積分</span></Link> 或減少張數。</p>}
+              {credits < totalCost && <p className="text-xs text-red-500">積分不足，請先 <Link href="/store"><span className="underline cursor-pointer">加購積分</span></Link> 或減少張數。</p>}
               {validShots.length < MIN_SHOTS && <p className="text-xs text-red-500">至少需要 {MIN_SHOTS} 個有內容的鏡頭。</p>}
 
               <button onClick={() => generateMutation.mutate()} disabled={!canGenerate} className="w-full h-12 rounded-xl bg-indigo-600 text-white text-sm font-semibold shadow-glow disabled:opacity-40 disabled:shadow-none" data-testid="button-photoset-generate">

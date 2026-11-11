@@ -1,5 +1,10 @@
 import { VaultPicker } from "@/components/VaultPicker";
 import { IMAGE_COST, WATERMARK_REMOVAL_COST, imageCost } from "@shared/pricing";
+import { inGoldZone } from "@/lib/zone";
+/** Price of one image on the page being shown (the gold zone costs more). */
+const priceHere = (watermark: boolean) => imageCost(watermark, inGoldZone());
+/** What removing the watermark adds on this page. */
+const removalHere = () => priceHere(false) - priceHere(true);
 import { useState, useRef, useEffect } from "react";
 import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -970,7 +975,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
       return Math.round(videoDuration * per);
     }
     if (mode === "text-to-video") return Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15));
-    const perImageCost = imageCost(watermark);
+    const perImageCost = priceHere(watermark);
     if (mode === "text-to-image") return isSequentialMode ? perImageCost * sequentialCount : perImageCost;
     if (isBatchMode) return perImageCost * batchPrompts.filter(p => p.trim()).length;
     if (isI2ISequentialMode) return perImageCost * i2iSequentialCount;
@@ -1090,7 +1095,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
           <p className="text-sm text-slate-500 md:mt-1">
             {section === "video"
               ? "把一張圖變成會動的短片，或直接用文字生成影片。使用 WAN 3.0。"
-              : `用文字畫圖，或上傳圖片請 AI 修改。每張 ${imageCost(true)} 積分，去除浮水印 +${WATERMARK_REMOVAL_COST} 積分。使用 Seedream 5.5。`}
+              : `用文字畫圖，或上傳圖片請 AI 修改。每張 ${priceHere(true)} 積分，去除浮水印 +${removalHere()} 積分。使用 Seedream 5.5。`}
           </p>
         </div>
         <div className="space-y-6">
@@ -1118,7 +1123,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                       <div className="text-left">
                         <h3 className={`font-semibold text-sm ${mode === "text-to-image" ? "text-blue-700" : "text-gray-700"}`}>文字生圖<InfoTooltip text="輸入文字描述，AI 直接生成一張全新的圖片。例如：「一隻貓在海灘上散步」" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">用文字描述創建圖片</p>
-                        <span className={`inline-block mt-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${!watermark ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>{imageCost(watermark)} 積分/張</span>
+                        <span className={`inline-block mt-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${!watermark ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>{priceHere(watermark)} 積分/張</span>
                       </div>
                     </div>
                   </button>
@@ -1139,7 +1144,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                       <div className="text-left">
                         <h3 className={`font-semibold text-sm ${mode === "image-to-image" ? "text-blue-700" : "text-gray-700"}`}>圖片編輯<InfoTooltip text="上傳一張現有圖片，搭配文字描述，AI 會根據指示修改圖片。例如：「把天空改成日落顏色」" /></h3>
                         <p className="text-xs text-gray-500 mt-0.5">AI 編輯現有圖片</p>
-                        <span className={`inline-block mt-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${!watermark ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>{imageCost(watermark)} 積分/張</span>
+                        <span className={`inline-block mt-1.5 text-xs font-medium px-2 py-0.5 rounded-full ${!watermark ? "bg-orange-100 text-orange-700" : "bg-blue-100 text-blue-700"}`}>{priceHere(watermark)} 積分/張</span>
                       </div>
                     </div>
                   </button>
@@ -1293,7 +1298,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                         className="w-20 px-3 py-1.5 border border-blue-200 rounded-lg"
                       />
                       <span className="text-sm text-gray-500">張 (2-10)</span>
-                      <span className="ml-auto text-sm font-semibold text-blue-600">{sequentialCount * imageCost(watermark)} 積分</span>
+                      <span className="ml-auto text-sm font-semibold text-blue-600">{sequentialCount * priceHere(watermark)} 積分</span>
                     </div>
                     <p className="text-xs text-blue-600 mt-2">
                       <i className="fas fa-info-circle mr-1"></i>
@@ -1466,7 +1471,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                               className="w-20 px-3 py-1.5 border border-purple-200 rounded-lg"
                             />
                             <span className="text-sm text-gray-500">張 (2-10)</span>
-                            <span className="ml-auto text-sm font-semibold text-purple-600">{i2iSequentialCount * imageCost(watermark)} 積分</span>
+                            <span className="ml-auto text-sm font-semibold text-purple-600">{i2iSequentialCount * priceHere(watermark)} 積分</span>
                           </div>
                           <p className="text-xs text-purple-600 mt-2">
                             <i className="fas fa-info-circle mr-1"></i>
@@ -1488,7 +1493,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                         >
                           {[2,3,4,5,6].map(n => <option key={n} value={n}>{n} 張</option>)}
                         </select>
-                        <span className="ml-auto text-sm font-semibold text-blue-600">{batchPrompts.filter(p => p.trim()).length * imageCost(watermark)} 積分</span>
+                        <span className="ml-auto text-sm font-semibold text-blue-600">{batchPrompts.filter(p => p.trim()).length * priceHere(watermark)} 積分</span>
                       </div>
                       <div className="space-y-3">
                         {batchPrompts.map((p, index) => (
@@ -2031,7 +2036,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
             {!watermark && (
               <div className="mt-2 text-xs text-orange-600 bg-orange-100 rounded-lg px-3 py-1.5 flex items-center gap-1.5">
                 <i className="fas fa-coins"></i>
-                去除浮水印：每張圖片額外 +{WATERMARK_REMOVAL_COST} 積分（共 {IMAGE_COST + WATERMARK_REMOVAL_COST} 積分/張）
+                去除浮水印：每張圖片額外 +{removalHere()} 積分（共 {priceHere(false)} 積分/張）
               </div>
             )}
           </div>
@@ -2052,7 +2057,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                 </div>
 
                 <div className="bg-gray-50 rounded-lg p-4 text-sm text-gray-700 space-y-2 max-h-48 overflow-y-auto border">
-                  <p><strong>1. 額外費用：</strong>去除浮水印將對每張圖片額外收取 {WATERMARK_REMOVAL_COST} 積分（原價 {IMAGE_COST} 積分 + 去浮水印 {WATERMARK_REMOVAL_COST} 積分 = 每張 {IMAGE_COST + WATERMARK_REMOVAL_COST} 積分）。</p>
+                  <p><strong>1. 額外費用：</strong>去除浮水印將對每張圖片額外收取 {removalHere()} 積分（原價 {priceHere(true)} 積分 + 去浮水印 {removalHere()} 積分 = 每張 {priceHere(false)} 積分）。</p>
                   <p><strong>2. 版權責任：</strong>去除浮水印後的圖片，使用者須自行承擔所有版權及法律責任。本平台不對去除浮水印後圖片的使用方式及其衍生之任何法律糾紛負責。</p>
                   <p><strong>3. 商業使用：</strong>使用者將去浮水印圖片用於商業用途時，應確保內容不侵犯第三方權益，並遵守相關法律法規。</p>
                   <p><strong>4. 禁止濫用：</strong>嚴禁將去浮水印圖片用於任何違法、侵權、詐騙、冒名或損害他人名譽之用途。</p>
@@ -2634,7 +2639,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
               <p className="text-red-500 text-sm flex items-center gap-1">
                 <i className="fas fa-exclamation-triangle"></i>
                 積分不足！需要 {creditsNeeded} 積分，目前餘額 {user?.credits ?? 0} 積分。
-                <a href="/account" className="text-blue-600 underline ml-1">前往充值</a>
+                <a href="/store" className="text-blue-600 underline ml-1">前往儲值</a>
               </p>
             )}
             <p className="text-xs text-gray-400 text-center max-w-md">
@@ -2755,7 +2760,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">序列生成結果 ({generation.generatedImageUrls.length} 張)</span>
-                        <span className="text-sm font-semibold text-blue-600">{generation.generatedImageUrls.length * imageCost(generation.watermark !== false)} 積分</span>
+                        <span className="text-sm font-semibold text-blue-600">{generation.generatedImageUrls.length * priceHere(generation.watermark !== false)} 積分</span>
                       </div>
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                         {generation.generatedImageUrls.map((url, index) => (
@@ -2826,7 +2831,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                     <div className="space-y-4">
                       <div className="flex items-center justify-between">
                         <span className="text-sm text-gray-600">序列生成結果 ({generation.generatedImageUrls.length} 張)</span>
-                        <span className="text-sm font-semibold text-purple-600">{generation.generatedImageUrls.length * imageCost(watermark)} 積分</span>
+                        <span className="text-sm font-semibold text-purple-600">{generation.generatedImageUrls.length * priceHere(watermark)} 積分</span>
                       </div>
                       <div className="mb-3 space-y-1">
                         <h3 className="text-sm font-medium text-gray-600">原始圖片</h3>
@@ -2945,7 +2950,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                       <div className="flex justify-between"><span>引導強度</span><span>{generation.guidanceScale}</span></div>
                       <div className="flex justify-between"><span>種子值</span><span>{generation.seed}</span></div>
                       <div className="flex justify-between"><span>處理時間</span><span>{generation.processingTime?.toFixed(1)}s</span></div>
-                      <div className="flex justify-between"><span>費用</span><span className="font-semibold">{generation.watermark === false ? `${imageCost(false)} 積分（含去浮水印）` : `${IMAGE_COST} 積分`}</span></div>
+                      <div className="flex justify-between"><span>費用</span><span className="font-semibold">{generation.watermark === false ? `${priceHere(false)} 積分（含去浮水印）` : `${priceHere(true)} 積分`}</span></div>
                     </div>
                   </details>
                 </div>
@@ -2964,7 +2969,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                   </h2>
                   <div className="flex items-center gap-3">
                     <span className="text-sm text-gray-500">已完成 {batchData.completedCount}/{batchData.totalCount}</span>
-                    <span className="text-sm font-semibold text-blue-600">{batchData.completedCount * imageCost(watermark)} 積分</span>
+                    <span className="text-sm font-semibold text-blue-600">{batchData.completedCount * priceHere(watermark)} 積分</span>
                   </div>
                 </div>
 

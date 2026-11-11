@@ -23,7 +23,7 @@ import sharp from "sharp";
 import { z } from "zod";
 import { db } from "./db";
 import { libraryAssets, users, type LibraryAsset } from "@shared/schema";
-import { canUseNsfw } from "@shared/safety";
+import { GOLD_ZONE_HEADER, GOLD_ZONE_VALUE, canUseNsfw } from "@shared/safety";
 import { libraryCatalog, LIBRARIES, type LibraryId } from "@shared/libraryCatalog";
 import { libraryConcurrencySchema, libraryConcurrencyError } from "@shared/libraryGeneration";
 import { atlasGenerateLibraryImage, atlasIsConfigured, ATLAS_LIBRARY_MODEL, ATLAS_LIBRARY_PRICE_USD } from "./atlasProvider";
@@ -73,16 +73,17 @@ export function registerAssetLibraryRoutes(
   const { requireAuth, requireAdmin, bunnyStorage, cdnUrl } = deps;
 
   /**
-   * Adult-flagged assets are shown to admins and to members who turned on
-   * 成人內容 in their account (which requires a birth date of legal age and
-   * accepting the terms). Everyone else never receives those rows.
+   * Adult-flagged assets are returned only to requests made from the gold zone
+   * (header or ?zone=gold) by a gold member who is 18+ and accepted the terms,
+   * or by an admin. Every other request never receives those rows.
    */
   async function canSeeAdult(req: Request): Promise<boolean> {
     const session = req.session as any;
-    if (session?.isAdmin) return true;
+    if (session?.isAdmin) return true; // admins see them on every page
+    if (req.get(GOLD_ZONE_HEADER) !== GOLD_ZONE_VALUE && req.query.zone !== GOLD_ZONE_VALUE) return false;
     if (!session?.userId) return false;
     try {
-      const [u] = await db.select({ birthDate: users.birthDate, nsfwEnabled: users.nsfwEnabled })
+      const [u] = await db.select({ birthDate: users.birthDate, nsfwEnabled: users.nsfwEnabled, isGold: users.isGold })
         .from(users).where(eq(users.id, session.userId)).limit(1);
       return canUseNsfw(u);
     } catch {
@@ -337,6 +338,7 @@ export function registerAssetLibraryRoutes(
 
   const listQuery = z.object({
     library: z.enum(LIBRARY_IDS),
+    zone: z.string().max(10).optional(),
     category: z.string().max(60).optional(),
     q: z.string().max(60).optional(),
     page: z.coerce.number().int().min(1).max(1000).default(1),
@@ -352,6 +354,7 @@ export function registerAssetLibraryRoutes(
 
   const groupQuery = z.object({
     library: z.enum(LIBRARY_IDS),
+    zone: z.string().max(10).optional(),
     category: z.string().max(60).optional(),
     q: z.string().max(60).optional(),
     /** Only keep variants with this label (e.g. a pose view such as 正面). */

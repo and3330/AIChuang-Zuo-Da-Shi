@@ -1,6 +1,12 @@
 import type { Config } from "tailwindcss";
 import colors from "tailwindcss/colors";
 
+/** A palette whose shades come from CSS variables (see "Zone colours" in client/src/index.css). */
+function zonePalette(name: string): Record<string, string> {
+  return Object.fromEntries([50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 950].map(shade => [String(shade), `rgb(var(--${name}-${shade}) / <alpha-value>)`]));
+}
+const brandPalette = zonePalette("brand");
+
 export default {
   darkMode: ["class"],
   content: ["./client/index.html", "./client/src/**/*.{js,jsx,ts,tsx}"],
@@ -22,9 +28,13 @@ export default {
         // aliasing those names makes every page render the same brand colour
         // and neutral without touching each file. Use sky-* where a second
         // accent is really needed.
-        purple: colors.indigo,
-        blue: colors.indigo,
-        violet: colors.indigo,
+        // indigo (and its aliases) and sky are read from CSS variables: the
+        // gold zone (html.gold-zone) swaps them for amber and yellow.
+        indigo: brandPalette,
+        purple: brandPalette,
+        blue: brandPalette,
+        violet: brandPalette,
+        sky: zonePalette("brand2"),
         gray: colors.slate,
         background: "var(--background)",
         foreground: "var(--foreground)",
@@ -37,7 +47,7 @@ export default {
           foreground: "var(--popover-foreground)",
         },
         primary: {
-          DEFAULT: "#4f46e5", // indigo-600, the brand colour
+          DEFAULT: "rgb(var(--brand-600) / <alpha-value>)", // indigo-600, the brand colour
           foreground: "var(--primary-foreground)",
         },
         secondary: {
@@ -79,12 +89,12 @@ export default {
         surface: "#FFFFFF",
       },
       backgroundImage: {
-        brand: "linear-gradient(135deg, #7c3aed 0%, #4f46e5 48%, #2563eb 100%)",
-        "brand-soft": "linear-gradient(135deg, #f5f3ff 0%, #eef2ff 50%, #e0f2fe 100%)",
-        "brand-night": "linear-gradient(135deg, #1e1b4b 0%, #312e81 45%, #1e3a8a 100%)",
+        brand: "var(--grad-brand)",
+        "brand-soft": "var(--grad-brand-soft)",
+        "brand-night": "var(--grad-brand-night)",
       },
       boxShadow: {
-        glow: "0 10px 28px -10px rgba(99, 70, 229, 0.55)",
+        glow: "0 10px 28px -10px var(--glow)",
         "glow-sky": "0 10px 28px -10px rgba(14, 165, 233, 0.5)",
       },
       fontFamily: {

@@ -13,9 +13,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService } from "./bunnyStorage";
-import { enhanceImagePrompt } from "./promptEnhancer";
+import { plainImagePrompt } from "./promptEnhancer";
 import { FOUR_VIEW_PRESETS, FOUR_VIEW_SIZE, fourViewPrompt } from "@shared/fourViews";
-import { containsNsfw } from "@shared/safety";
 import { motionPromptRequest, finishMotionPrompt } from "@shared/dramaMotion";
 import {
   insertCharacterLibrarySchema,
@@ -167,7 +166,7 @@ export function registerDramaLibraryRoutes(
           for (const preset of FOUR_VIEW_PRESETS) {
             try {
               const plainPrompt = fourViewPrompt(preset.promptZh, character.description, character.styleHint);
-              const fullPrompt = containsNsfw(plainPrompt) ? enhanceImagePrompt(plainPrompt) : plainPrompt;
+              const fullPrompt = plainPrompt;
               const requestBody: any = {
                 prompt: fullPrompt,
                 image: refBase64s.length === 1 ? refBase64s[0] : refBase64s,
@@ -651,7 +650,7 @@ ${rawText}`;
           const genOne = async (framePrompt: string, label: "first" | "last"): Promise<string | null> => {
             try {
               const requestBody: any = {
-                prompt: enhanceImagePrompt(framePrompt),
+                prompt: plainImagePrompt(framePrompt),
                 size: imageSize,
               };
               if (allRefs.length > 0) {

@@ -10,9 +10,9 @@ import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextT
 import nodemailer from "nodemailer";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
-import { enhanceImagePrompt, enhanceVideoPrompt } from "./promptEnhancer";
-import { IMAGE_COST, MEMBERSHIP, MIN_TOPUP, SIGNUP_CREDITS, VIDEO_COST_PER_SECOND, imageCost } from "@shared/pricing";
-import { ADULT_AGE, ageFromBirthDate, canUseNsfw, containsNsfw } from "@shared/safety";
+import { enhanceImagePrompt, enhanceVideoPrompt, plainImagePrompt } from "./promptEnhancer";
+import { GOLD_MEMBERSHIP, IMAGE_COST, MEMBERSHIP, MIN_TOPUP, TRIAL, topupCredits, SIGNUP_CREDITS, VIDEO_COST_PER_SECOND, imageCost } from "@shared/pricing";
+import { ADULT_AGE, GOLD_ZONE_HEADER, GOLD_ZONE_VALUE, ageFromBirthDate, canUseNsfw, containsMinorTerms, containsNsfw, hasAdultConsent } from "@shared/safety";
 import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
 import { registerPhotosetRoutes, createPhotosetPlanner } from "./photoset";
@@ -96,6 +96,46 @@ declare module "express-session" {
     username: string;
     isAdmin: boolean;
   }
+}
+
+/**
+ * True when the request comes from the gold zone AND the account may use it.
+ * Adult prompts are accepted only then; every other page refuses them.
+ */
+function inGoldZone(req: Request, user: { isAdmin?: boolean | null; isGold?: boolean | null; birthDate?: string | null; nsfwEnabled?: boolean | null }): boolean {
+  return req.get(GOLD_ZONE_HEADER) === GOLD_ZONE_VALUE && (!!user.isAdmin || canUseNsfw(user));
+}
+
+/** What a paid Stripe session unlocks besides credits: "trial" → 小試身手 used up, "membership" → 正式會員, "gold" → 黃金會員. */
+async function applyPurchasedTier(userId: string, kind: string | undefined): Promise<void> {
+  if (kind !== "trial" && kind !== "membership" && kind !== "gold") return;
+  const buyer = await storage.getUser(userId);
+  if (!buyer) return;
+  const now = new Date();
+  if (kind === "trial") {
+    await storage.updateUserProfile(userId, { trialUsedAt: buyer.trialUsedAt ?? now });
+    return;
+  }
+  await storage.updateUserProfile(userId, {
+    isMember: true,
+    memberSince: buyer.memberSince ?? now,
+    ...(kind === "gold" ? { isGold: true, goldSince: buyer.goldSince ?? now } : {}),
+  });
+}
+
+/**
+ * Refusal for a prompt the current page does not accept. Null when it may go ahead.
+ * Admins are not held to the ordinary-page rule: their adult prompts go through anywhere.
+ */
+function promptRefusal(promptText: string, goldZone: boolean, isAdmin: boolean = false): { status: number; body: { error: string; code: string } } | null {
+  if (goldZone) {
+    return containsMinorTerms(promptText)
+      ? { status: 400, body: { error: "這裡不接受與未成年人或學生相關的內容，請修改提示詞。", code: "minor_content" } }
+      : null;
+  }
+  return containsNsfw(promptText) && !isAdmin
+    ? { status: 403, body: { error: "這段提示詞包含目前無法生成的內容，請修改後再試。", code: "content_not_allowed" } }
+    : null;
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -470,16 +510,19 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       isAdmin: user.isAdmin || false,
       createdAt: user.createdAt,
       isMember: user.isMember || false,
+      isGold: user.isGold || false,
+      trialUsedAt: user.trialUsedAt ?? null,
       birthDate: user.birthDate ?? null,
-      nsfwEnabled: canUseNsfw(user),
+      nsfwEnabled: hasAdultConsent(user),
       onboardedAt: user.onboardedAt ?? null,
     });
   });
 
   // ===== ACCOUNT: SAFETY & PRIVACY =====
 
-  // Birthday (set once) and the adult-content switch. Turning the switch on
-  // needs an 18+ birthday and acceptance of the terms shown in the UI.
+  // Birthday (set once) and the 18+ confirmation. Confirming needs an 18+
+  // birthday and acceptance of the terms shown in the UI; it is required
+  // before the gold tier can be bought.
   app.patch("/api/account/safety", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser(req.session.userId!);
@@ -499,7 +542,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       if (nsfwEnabled === true) {
         const age = ageFromBirthDate(effectiveBirthDate);
         if (age === null) return res.status(400).json({ error: "請先設定生日。" });
-        if (age < ADULT_AGE) return res.status(403).json({ error: `未滿 ${ADULT_AGE} 歲無法啟用成人內容。` });
+        if (age < ADULT_AGE) return res.status(403).json({ error: `未滿 ${ADULT_AGE} 歲無法升級。` });
         if (acceptTerms !== true) return res.status(400).json({ error: "請先閱讀並同意使用條款。" });
         patch.nsfwEnabled = true;
         patch.nsfwConsentAt = new Date();
@@ -508,7 +551,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
 
       const updated = Object.keys(patch).length > 0 ? await storage.updateUserProfile(user.id, patch) : user;
-      res.json({ birthDate: updated?.birthDate ?? null, nsfwEnabled: canUseNsfw(updated) });
+      res.json({ birthDate: updated?.birthDate ?? null, nsfwEnabled: hasAdultConsent(updated) });
     } catch (error) {
       console.error("Error updating safety settings:", error);
       res.status(500).json({ error: "設定儲存失敗，請稍後再試。" });
@@ -623,29 +666,60 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         return res.status(404).json({ error: "用戶不存在" });
       }
       const isMembership = req.body?.kind === "membership";
+      const isGoldUpgrade = req.body?.kind === "gold";
+      const isTrial = req.body?.kind === "trial";
       const amount = req.body?.amount;
 
-      if (isMembership) {
+      if (isTrial) {
+        if (user.isMember) return res.status(400).json({ error: "你已經是會員了，直接加購積分即可。" });
+        if (user.trialUsedAt) return res.status(400).json({ error: "小試身手每個帳號只能買一次，歡迎開通會員。" });
+      } else if (isGoldUpgrade) {
+        if (user.isGold) return res.status(400).json({ error: "你已經是黃金會員了。" });
+        if (!user.isMember && !user.isAdmin) {
+          return res.status(403).json({ error: "請先開通會員，才能升級黃金會員。", code: "membership_required" });
+        }
+        if (!hasAdultConsent(user)) {
+          return res.status(403).json({ error: `升級黃金會員須年滿 ${ADULT_AGE} 歲並同意條款。`, code: "age_confirmation_required" });
+        }
+      } else if (isMembership) {
         if (user.isMember) return res.status(400).json({ error: "你已經是會員了，直接加購積分即可。" });
       } else {
         if (!user.isMember && !user.isAdmin) {
           return res.status(403).json({ error: "請先開通會員，之後就能加購積分。", code: "membership_required" });
         }
         if (!amount || !Number.isInteger(amount) || amount < MIN_TOPUP) {
-          return res.status(400).json({ error: `充值金額最少 ${MIN_TOPUP} 積分` });
+          return res.status(400).json({ error: `儲值金額最少 NT$${MIN_TOPUP}` });
         }
       }
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host;
       const baseUrl = `${protocol}://${host}`;
-      const credits = isMembership ? MEMBERSHIP.credits : amount;
+      const credits = isTrial ? TRIAL.credits : isGoldUpgrade ? GOLD_MEMBERSHIP.credits : isMembership ? MEMBERSHIP.credits : topupCredits(amount);
 
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ["card"],
         line_items: [
           {
-            price_data: isMembership
+            price_data: isTrial
+              ? {
+                  currency: "usd",
+                  product_data: {
+                    name: "AI 創意工坊 - 小試身手",
+                    description: `${TRIAL.credits} 積分，每個帳號限購一次`,
+                  },
+                  unit_amount: Math.round(TRIAL.priceUsd * 100),
+                }
+              : isGoldUpgrade
+              ? {
+                  currency: "usd",
+                  product_data: {
+                    name: "AI 創意工坊 - 黃金會員",
+                    description: `一次性升級黃金會員，含 ${GOLD_MEMBERSHIP.credits} 積分`,
+                  },
+                  unit_amount: Math.round(GOLD_MEMBERSHIP.priceUsd * 100),
+                }
+              : isMembership
               ? {
                   currency: "usd",
                   product_data: {
@@ -657,8 +731,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
               : {
                   currency: "twd",
                   product_data: {
-                    name: `AI 創意工坊 - ${amount} 積分`,
-                    description: `充值 ${amount} 積分（1 積分 = 1 元新台幣）`,
+                    name: `AI 創意工坊 - ${credits} 積分`,
+                    description: `儲值 NT$${amount}，獲得 ${credits} 積分`,
                   },
                   unit_amount: amount * 100,
                 },
@@ -666,12 +740,12 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           },
         ],
         mode: "payment",
-        success_url: `${baseUrl}/account?payment=success&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}/account?payment=cancelled`,
+        success_url: `${baseUrl}/store?payment=success&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${baseUrl}/store?payment=cancelled`,
         metadata: {
           userId: user.id,
           credits: String(credits),
-          kind: isMembership ? "membership" : "topup",
+          kind: isTrial ? "trial" : isGoldUpgrade ? "gold" : isMembership ? "membership" : "topup",
         },
       });
 
@@ -715,9 +789,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           const existingTx = await storage.getCreditTransactionByDescription(stripeDesc);
           if (!existingTx) {
             await storage.atomicAddCredits(userId, credits, stripeDesc);
-            if (session.metadata?.kind === "membership") {
-              await storage.updateUserProfile(userId, { isMember: true, memberSince: new Date() });
-            }
+            await applyPurchasedTier(userId, session.metadata?.kind);
             console.log(`Stripe webhook: credited ${credits} to user ${userId}`);
           } else {
             console.log(`Stripe webhook: session ${session.id} already processed, skipping`);
@@ -760,7 +832,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const existingTx = await storage.getCreditTransactionByDescription(stripeDesc);
       if (existingTx) {
         console.log(`Stripe session ${sessionId} already processed, skipping`);
-        return res.json({ success: true, credits, alreadyProcessed: true, membership: session.metadata?.kind === "membership" });
+        return res.json({ success: true, credits, alreadyProcessed: true, membership: session.metadata?.kind === "membership", gold: session.metadata?.kind === "gold", kind: session.metadata?.kind ?? "topup" });
       }
 
       const user = await storage.getUser(userId);
@@ -769,13 +841,11 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
 
       await storage.atomicAddCredits(userId, credits, stripeDesc);
-      if (session.metadata?.kind === "membership") {
-        await storage.updateUserProfile(userId, { isMember: true, memberSince: new Date() });
-      }
+      await applyPurchasedTier(userId, session.metadata?.kind);
 
       const updatedUser = await storage.getUser(userId);
       console.log(`Stripe verify: credited ${credits} to user ${userId}, new balance: ${updatedUser?.credits}`);
-      res.json({ success: true, credits, newBalance: updatedUser?.credits, membership: session.metadata?.kind === "membership" });
+      res.json({ success: true, credits, newBalance: updatedUser?.credits, membership: session.metadata?.kind === "membership", gold: session.metadata?.kind === "gold", kind: session.metadata?.kind ?? "topup" });
     } catch (error: any) {
       console.error("Error verifying Stripe session:", error?.message || error);
       res.status(500).json({ error: "驗證付款失敗" });
@@ -894,18 +964,17 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       // `provider` / `model` fields sent by an old client are ignored.
       // Per-image credit cost honours the watermark removal premium.
       const hasWatermark = req.body.watermark !== false;
-      const perImageCost = imageCost(hasWatermark);
+      const perImageCost = imageCost(hasWatermark, inGoldZone(req, user));
 
-      // Adult prompts need an account that has turned adult content on
-      // (18+ and terms accepted). Checked before any credits move.
+      // Adult prompts are accepted only from the gold zone, by a gold member
+      // (18+ and terms accepted). Checked before any credits move. Everything
+      // made in the gold zone is stored as sensitive (blurred until opened).
       const promptText = batchValidated ? batchValidated.prompts.join("\n") : String((singleValidated as any)?.prompt ?? "");
-      const sensitive = containsNsfw(promptText);
-      if (sensitive && !user.isAdmin && !canUseNsfw(user)) {
-        return res.status(403).json({
-          error: "這段提示詞包含成人內容。請先到「帳戶 → 安全與隱私」設定生日並啟用成人內容。",
-          code: "nsfw_not_enabled",
-        });
-      }
+      const goldZone = inGoldZone(req, user);
+      const refusal = promptRefusal(promptText, goldZone, !!user.isAdmin);
+      if (refusal) return res.status(refusal.status).json(refusal.body);
+      // Also sensitive: an admin's adult prompt sent from an ordinary page.
+      const sensitive = goldZone || containsNsfw(promptText);
 
       let creditsNeeded: number;
       if (batchValidated) {
@@ -1116,7 +1185,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
 
       const sizeValue = generation.size || (generation.type === "text-to-image" ? "1:1" : "2K");
-      const finalPrompt = opts.rawPrompt || !containsNsfw(generation.prompt) ? generation.prompt : enhanceImagePrompt(generation.prompt);
+      // The adult prefix goes on every image sent from the gold zone (stored as sensitive), and on nothing else.
+      const finalPrompt = opts.rawPrompt || !generation.sensitive ? generation.prompt : enhanceImagePrompt(generation.prompt);
 
       // One Seedream 5.5 image via AtlasCloud (submit + poll). Throws on any
       // failure so the outer catch refunds the user's credits.
@@ -1295,12 +1365,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const duration = Math.max(4, Math.min(12, req.body.duration || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
       const VIDEO_CREDITS_PER_SECOND = VIDEO_COST_PER_SECOND[resolution];
-      if (containsNsfw(String(req.body.prompt ?? "")) && !user.isAdmin && !canUseNsfw(user)) {
-        return res.status(403).json({
-          error: "這段提示詞包含成人內容。請先到「帳戶 → 安全與隱私」設定生日並啟用成人內容。",
-          code: "nsfw_not_enabled",
-        });
-      }
+      const videoRefusal = promptRefusal(String(req.body.prompt ?? ""), inGoldZone(req, user), !!user.isAdmin);
+      if (videoRefusal) return res.status(videoRefusal.status).json(videoRefusal.body);
       const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
 
       if ((user.credits || 0) < creditsNeeded) {
@@ -1701,6 +1767,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
             email: user.email,
             credits: user.credits || 0,
             isAdmin: user.isAdmin || false,
+            isMember: user.isMember || false,
+            isGold: user.isGold || false,
             createdAt: user.createdAt,
             totalGenerations: stats.totalGenerations,
             totalCreditsUsed: stats.totalCreditsUsed,
@@ -1747,6 +1815,12 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           email: user.email,
           credits: user.credits || 0,
           isAdmin: user.isAdmin || false,
+          isMember: user.isMember || false,
+          isGold: user.isGold || false,
+          memberSince: user.memberSince ?? null,
+          goldSince: user.goldSince ?? null,
+          birthDate: user.birthDate ?? null,
+          adultConfirmed: hasAdultConsent(user),
           createdAt: user.createdAt,
         },
         stats,
@@ -1757,6 +1831,31 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
     } catch (error) {
       console.error("Error fetching user details:", error);
       res.status(500).json({ error: "獲取用戶詳情失敗" });
+    }
+  });
+
+  // Set a user's tier by hand: none → 未開通, member → 正式會員, gold → 黃金會員.
+  // Gold still needs the user to be 18+ and to accept the terms before the zone opens.
+  app.patch("/api/admin/users/:userId/membership", requireAuth, requireAdmin, async (req, res) => {
+    try {
+      const tier = req.body?.tier;
+      if (tier !== "none" && tier !== "member" && tier !== "gold") {
+        return res.status(400).json({ error: "請選擇會員階級。" });
+      }
+      const user = await storage.getUser(req.params.userId);
+      if (!user) return res.status(404).json({ error: "用戶不存在" });
+      const now = new Date();
+      const updated = await storage.updateUserProfile(user.id, {
+        isMember: tier !== "none",
+        memberSince: tier === "none" ? null : user.memberSince ?? now,
+        isGold: tier === "gold",
+        goldSince: tier === "gold" ? user.goldSince ?? now : null,
+      });
+      console.log(`Admin ${req.session.userId} set user ${user.id} tier to ${tier}`);
+      res.json({ isMember: updated?.isMember || false, isGold: updated?.isGold || false, adultConfirmed: hasAdultConsent(updated) });
+    } catch (error) {
+      console.error("Error updating membership:", error);
+      res.status(500).json({ error: "調整會員階級失敗" });
     }
   });
 
@@ -2547,7 +2646,7 @@ Requirements:
         : (story.globalSeed ?? undefined);
 
       let requestBody: any;
-      const enhancedScenePrompt = enhanceImagePrompt(scenePrompt);
+      const enhancedScenePrompt = plainImagePrompt(scenePrompt);
       if (globalBase64s.length > 0) {
         requestBody = {
           prompt: enhancedScenePrompt,
@@ -2798,13 +2897,13 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
             const fullPrompt = `${scenePrompt}${labelNote}`;
             requestBody = {
-              prompt: enhanceImagePrompt(fullPrompt),
+              prompt: plainImagePrompt(fullPrompt),
               image: globalBase64s.length === 1 ? globalBase64s[0] : globalBase64s,
               size: imageSize,
             };
           } else {
             requestBody = {
-              prompt: enhanceImagePrompt(scenePrompt),
+              prompt: plainImagePrompt(scenePrompt),
               size: imageSize,
             };
           }
@@ -3947,13 +4046,13 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             }
             const labelNote = labelParts.length > 0 ? `（${labelParts.join("；")}）` : "";
             requestBody = {
-              prompt: enhanceImagePrompt(`${scenePrompt}${labelNote}`),
+              prompt: plainImagePrompt(`${scenePrompt}${labelNote}`),
               image: allRefs.length === 1 ? allRefs[0] : allRefs,
               size: imageSize,
             };
           } else {
             requestBody = {
-              prompt: enhanceImagePrompt(scenePrompt),
+              prompt: plainImagePrompt(scenePrompt),
               size: imageSize,
             };
           }
@@ -4125,13 +4224,13 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         if (sceneRefList.length > 0) { labelParts.push(`第 ${idx} 張圖為場景構圖參考`); idx += sceneRefList.length; }
         if (styleList.length > 0) { labelParts.push(`第 ${idx}${styleList.length > 1 ? `-${idx + styleList.length - 1}` : ""} 張圖為畫風風格參考`); }
         requestBody = {
-          prompt: enhanceImagePrompt(`${scenePrompt}（${labelParts.join("；")}）`),
+          prompt: plainImagePrompt(`${scenePrompt}（${labelParts.join("；")}）`),
           image: allRefs.length === 1 ? allRefs[0] : allRefs,
           size: imageSize,
         };
       } else {
         requestBody = {
-          prompt: enhanceImagePrompt(scenePrompt),
+          prompt: plainImagePrompt(scenePrompt),
           size: imageSize,
         };
       }
@@ -4240,7 +4339,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       if (!firstImageUrl) throw new Error("此幕尚未生成圖片，無法製作動畫");
 
       const result = await atlasGenerateVideo({
-        prompt: containsNsfw(videoPrompt) ? enhanceVideoPrompt(videoPrompt) : videoPrompt,
+        prompt: videoPrompt,
         image: firstImageUrl,
         lastImage: lastImageUrl,
         resolution: opts.resolution,
