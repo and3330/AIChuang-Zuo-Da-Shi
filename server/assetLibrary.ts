@@ -24,6 +24,7 @@ import { z } from "zod";
 import { db } from "./db";
 import { libraryAssets, type LibraryAsset } from "@shared/schema";
 import { libraryCatalog, LIBRARIES, type LibraryId } from "@shared/libraryCatalog";
+import { libraryConcurrencySchema, libraryConcurrencyError } from "@shared/libraryGeneration";
 import { atlasGenerateLibraryImage, atlasIsConfigured, ATLAS_LIBRARY_MODEL, ATLAS_LIBRARY_PRICE_USD } from "./atlasProvider";
 import { assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
 import type { BunnyStorageService } from "./bunnyStorage";
@@ -265,12 +266,12 @@ export function registerAssetLibraryRoutes(
     library: z.enum(["all", ...LIBRARY_IDS]).default("all"),
     /** Hard cap on images for this run — the spending limit. */
     limit: z.number().int().min(1).max(5000),
-    concurrency: z.number().int().min(1).max(32).default(8),
+    concurrency: libraryConcurrencySchema.default(8),
   });
 
   app.post("/api/admin/library/generate", requireAuth, requireAdmin, async (req, res) => {
     const parsed = generateBody.safeParse(req.body);
-    if (!parsed.success) return res.status(400).json({ error: "請指定圖庫與這次最多生成幾張（1–5000）。" });
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.issues.some(issue => issue.path[0] === "concurrency") ? libraryConcurrencyError : "請指定圖庫與這次最多生成幾張（1–5000）。" });
     if (run.running) return res.status(409).json({ error: "已有一批正在生成，請先等它完成或按停止。" });
     if (!atlasIsConfigured()) return res.status(400).json({ error: "尚未設定 ATLASCLOUD_API_KEY，無法生成。" });
     if (!bunnyStorage.isConfigured()) return res.status(400).json({ error: "尚未設定 Bunny CDN，生成的圖沒有地方存放。" });

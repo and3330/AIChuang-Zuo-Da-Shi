@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { libraryConcurrencySchema, libraryConcurrencyError } from "@shared/libraryGeneration";
 
 // 後台：素材圖庫的清單同步與批次生成。
 // 生成一定由管理員手動啟動，且每次都要填「這次最多幾張」，那就是這次的花費上限。
@@ -49,6 +50,7 @@ export function LibraryAdminPanel() {
       const n = Number(limit);
       const c = Number(concurrency);
       if (!Number.isInteger(n) || n < 1 || n > 5000) throw new Error("「這次最多幾張」請填 1–5000 的整數");
+      if (!libraryConcurrencySchema.safeParse(c).success) throw new Error(libraryConcurrencyError);
       return (await apiRequest("POST", "/api/admin/library/generate", { library, limit: n, concurrency: c })).json();
     },
     onSuccess: () => { refresh(); toast({ title: "已開始生成", description: "可以離開這個頁面，生成會在背景繼續。" }); },
@@ -70,6 +72,7 @@ export function LibraryAdminPanel() {
   if (error || !status) return <p className="text-sm text-red-600">{errorText(error)}</p>;
 
   const run = status.run;
+  const concurrencyInvalid = !libraryConcurrencySchema.safeParse(Number(concurrency)).success;
   const totals = status.libraries.reduce((a, l) => ({ total: a.total + l.total, ready: a.ready + l.ready, todo: a.todo + l.pending + l.failed, catalog: a.catalog + l.inCatalog }), { total: 0, ready: 0, todo: 0, catalog: 0 });
   const selected = library === "all" ? null : status.libraries.find(l => l.id === library);
   const waiting = selected ? selected.pending + selected.failed : totals.todo;
@@ -157,10 +160,14 @@ export function LibraryAdminPanel() {
             <input value={limit} onChange={e => setLimit(e.target.value)} inputMode="numeric" disabled={run.running} className={inputCls} data-testid="input-library-limit" />
           </div>
           <div>
-            <label className="text-xs text-gray-600 block mb-1">同時生成幾張</label>
-            <select value={concurrency} onChange={e => setConcurrency(e.target.value)} disabled={run.running} className={inputCls}>
-              {[1, 2, 4, 8, 12, 16, 24, 32].map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <label htmlFor="library-concurrency" className="text-xs text-gray-600 block mb-1">同時生成幾張</label>
+            <input id="library-concurrency" type="number" min={2} max={128} step={2} inputMode="numeric"
+              value={concurrency} onChange={e => setConcurrency(e.target.value)} disabled={run.running}
+              aria-invalid={concurrencyInvalid} aria-describedby="library-concurrency-help"
+              className={inputCls} data-testid="input-library-concurrency" />
+            <p id="library-concurrency-help" aria-live="polite" className={`text-xs mt-1 ${concurrencyInvalid ? "text-red-700" : "text-gray-600"}`}>
+              {concurrencyInvalid ? libraryConcurrencyError : "可輸入 2、4、6…128；高併發可能觸發供應商限流。"}
+            </p>
           </div>
         </div>
 
@@ -178,7 +185,7 @@ export function LibraryAdminPanel() {
           ) : (
             <button
               onClick={() => { if (window.confirm(`確定要生成最多 ${willGenerate} 張、預估最多 ${estimate} 美元嗎？`)) generateMutation.mutate(); }}
-              disabled={generateMutation.isPending || willGenerate === 0 || !status.configured.atlas || !status.configured.cdn}
+              disabled={generateMutation.isPending || concurrencyInvalid || willGenerate === 0 || !status.configured.atlas || !status.configured.cdn}
               className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50" data-testid="button-library-generate">
               開始生成
             </button>
