@@ -22,7 +22,7 @@ export const VIDEO_COST_PER_SECOND = { "720p": 8, "1080p": 15 } as const;
 export const SIGNUP_CREDITS = 10;
 
 /** 一次性開通會員：付這個金額、拿這些積分。開通後才能加購積分。 */
-export const MEMBERSHIP = { priceUsd: 9.9, credits: 300 } as const;
+export const MEMBERSHIP = { priceUsd: 9.9, credits: 200 } as const;
 
 /** 黃金會員：正式會員再付這個金額升級、拿這些積分。須先是正式會員、年滿 18 歲並同意條款。 */
 export const GOLD_MEMBERSHIP = { priceUsd: 22, credits: 600 } as const;

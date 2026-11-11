@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { MEMBERSHIP } from "@shared/pricing";
 
 // 後台：成本與毛利。
 // 上半部是 AtlasCloud 帳務 API 回報的真實餘額與花費；下半部是本站自己記的每次生成估算成本，
@@ -116,7 +117,7 @@ export function CostPanel() {
         </div>
         <p className="text-xs text-gray-500 mt-3">
           免費額度：註冊送 {data.economics.freebies.signupCredits} 積分，最壞情況成本約 {usd(data.economics.freebies.signupWorstCostUsd, 3)}／人。
-          會員首購實收約 {usd(data.economics.freebies.membershipNetUsd)}，300 積分全部拿去做最貴的圖，成本約 {usd(data.economics.freebies.membershipWorstCostUsd)}。
+          會員首購實收約 {usd(data.economics.freebies.membershipNetUsd)}，{MEMBERSHIP.credits} 積分全部拿去做最貴的圖，成本約 {usd(data.economics.freebies.membershipWorstCostUsd)}。
         </p>
       </div>
 
