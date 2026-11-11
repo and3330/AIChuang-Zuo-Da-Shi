@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { inGoldZone, zonePath } from "@/lib/zone";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -69,6 +70,7 @@ export default function LibraryPage() {
   const params = new URLSearchParams({ library, page: String(page), pageSize: String(layout === "group" ? GROUP_PAGE : SINGLE_PAGE) });
   if (category) params.set("category", category);
   if (query) params.set("q", query);
+  if (inGoldZone()) params.set("zone", "gold"); // separate cache entry and server-side adult filter
   if (isAdmin && showUnready) params.set("includeUnready", "1");
   if (layout === "group" && variant) params.set("variant", variant);
   const listKey = `/api/library/${layout === "group" ? "groups" : "assets"}?${params.toString()}`;
@@ -110,7 +112,7 @@ export default function LibraryPage() {
   const isEmpty = !isLoading && !error && (layout === "group" ? (groupData?.groups.length ?? 0) === 0 : (listData?.items.length ?? 0) === 0);
   const inRecipe = (id: string) => recipe[library]?.id === id;
   const count = recipeCount(recipe);
-  const chip = (on: boolean) => `px-3 py-1 rounded-full text-xs border ${on ? "bg-[#6366f1] text-white border-[#6366f1]" : "bg-white text-[#475569] border-[#e2e8f0] hover:border-[#6366f1]/50"}`;
+  const chip = (on: boolean) => `px-3 py-1 rounded-full text-xs border ${on ? "bg-indigo-600 text-white border-indigo-500" : "bg-white text-[#475569] border-[#e2e8f0] hover:border-indigo-500/50"}`;
 
   return (
     <div className="min-h-screen bg-[#f8fafc] pb-40">
@@ -135,7 +137,7 @@ export default function LibraryPage() {
         <div className="flex gap-2 mb-4 flex-wrap">
           {LIBRARIES.map(l => (
             <button key={l.id} onClick={() => switchLibrary(l.id)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${library === l.id ? "bg-[#0f172a] text-white border-[#0f172a]" : "bg-white text-[#475569] border-[#e2e8f0] hover:border-[#6366f1]/50"}`}
+              className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${library === l.id ? "bg-[#0f172a] text-white border-[#0f172a]" : "bg-white text-[#475569] border-[#e2e8f0] hover:border-indigo-500/50"}`}
               data-testid={`tab-library-${l.id}`}>
               {l.label}{recipe[l.id] ? " ✓" : ""}
             </button>
@@ -154,7 +156,7 @@ export default function LibraryPage() {
           </div>
           <div className="flex gap-3 items-center flex-wrap">
             <input value={search} onChange={e => setSearch(e.target.value.slice(0, 60))} placeholder="搜尋名稱或標籤，例如：坐姿、風衣、短髮"
-              className="flex-1 min-w-[200px] px-3 py-2 border border-[#e2e8f0] rounded-lg text-sm focus:ring-2 focus:ring-[#6366f1] focus:border-transparent" data-testid="input-library-search" />
+              className="flex-1 min-w-[200px] px-3 py-2 border border-[#e2e8f0] rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-testid="input-library-search" />
             {layout === "group" && (groupData?.variantOptions.length ?? 0) > 0 && (
               <div className="flex gap-1 flex-wrap" data-testid="filter-variant">
                 <button onClick={() => { setVariant(""); setPage(1); }} className={chip(variant === "")}>全部視角</button>
@@ -168,7 +170,7 @@ export default function LibraryPage() {
             )}
             {isAdmin && (
               <label className="flex items-center gap-2 text-xs text-[#475569] cursor-pointer">
-                <input type="checkbox" checked={showUnready} onChange={e => { setShowUnready(e.target.checked); setPage(1); }} className="accent-[#6366f1]" />
+                <input type="checkbox" checked={showUnready} onChange={e => { setShowUnready(e.target.checked); setPage(1); }} className="accent-indigo-500" />
                 顯示尚未生成的項目（管理員）
               </label>
             )}
@@ -184,7 +186,7 @@ export default function LibraryPage() {
             <i className="fas fa-images text-3xl mb-3" />
             <p className="text-sm">{query || category || variant ? "沒有符合條件的素材。" : "這個圖庫還沒有圖片。"}</p>
             {isAdmin && !query && !category && !variant && (
-              <p className="text-xs mt-2">請到 <Link href="/admin"><span className="text-[#6366f1] underline cursor-pointer">後台 → 素材圖庫</span></Link> 同步清單並開始生成。</p>
+              <p className="text-xs mt-2">請到 <Link href="/admin"><span className="text-indigo-500 underline cursor-pointer">後台 → 素材圖庫</span></Link> 同步清單並開始生成。</p>
             )}
           </div>
         ) : (
@@ -209,7 +211,7 @@ export default function LibraryPage() {
                         <span className="absolute top-2 right-2 px-1.5 py-0.5 rounded bg-white/90 text-[10px] font-medium text-[#0f172a]">{current.label}</span>
                         {current.imageUrl && (
                           <button onClick={() => addToRecipe(library, item)}
-                            className={`absolute bottom-2 left-2 px-2.5 py-1 rounded-full text-[11px] font-medium ${inRecipe(current.id) ? "bg-[#6366f1] text-white" : "bg-black/70 text-white hover:bg-black/85"}`}
+                            className={`absolute bottom-2 left-2 px-2.5 py-1 rounded-full text-[11px] font-medium ${inRecipe(current.id) ? "bg-indigo-600 text-white" : "bg-black/70 text-white hover:bg-black/85"}`}
                             data-testid={`button-recipe-${current.id}`}>
                             {inRecipe(current.id) ? "✓ 已在配方" : "＋ 加入配方"}
                           </button>
@@ -224,7 +226,7 @@ export default function LibraryPage() {
                           <div className="flex gap-1 overflow-x-auto pb-1">
                             {g.variants.map(v => (
                               <button key={v.id} onClick={() => setPicked(p => ({ ...p, [g.key]: v.id }))} title={v.label}
-                                className={`shrink-0 w-11 rounded-md border overflow-hidden ${v.id === current.id ? "border-[#0f172a]" : "border-[#e2e8f0] hover:border-[#6366f1]/60"}`}>
+                                className={`shrink-0 w-11 rounded-md border overflow-hidden ${v.id === current.id ? "border-[#0f172a]" : "border-[#e2e8f0] hover:border-indigo-500/60"}`}>
                                 <div className="h-11 bg-[#f8fafc] flex items-center justify-center">
                                   {v.thumbUrl || v.imageUrl
                                     ? <img src={v.thumbUrl || v.imageUrl || ""} alt={v.label} loading="lazy" className="w-full h-full object-contain" />
@@ -257,7 +259,7 @@ export default function LibraryPage() {
                         )}
                         {a.imageUrl && (
                           <button onClick={() => addToRecipe(library, item)}
-                            className={`absolute bottom-2 left-2 px-2.5 py-1 rounded-full text-[11px] font-medium ${inRecipe(a.id) ? "bg-[#6366f1] text-white" : "bg-black/70 text-white hover:bg-black/85"}`}>
+                            className={`absolute bottom-2 left-2 px-2.5 py-1 rounded-full text-[11px] font-medium ${inRecipe(a.id) ? "bg-indigo-600 text-white" : "bg-black/70 text-white hover:bg-black/85"}`}>
                             {inRecipe(a.id) ? "✓ 已在配方" : "＋ 加入配方"}
                           </button>
                         )}
@@ -289,12 +291,12 @@ export default function LibraryPage() {
           {RECIPE_SLOTS.map(slot => {
             const it = recipe[slot.id];
             return (
-              <div key={slot.id} className={`flex items-center gap-2 flex-1 min-w-[96px] sm:min-w-[150px] rounded-xl border px-2 py-1.5 ${it ? "border-[#6366f1]/40 bg-[#6366f1]/5" : "border-dashed border-[#cbd5e1]"}`}>
+              <div key={slot.id} className={`flex items-center gap-2 flex-1 min-w-[96px] sm:min-w-[150px] rounded-xl border px-2 py-1.5 ${it ? "border-indigo-500/40 bg-indigo-600/5" : "border-dashed border-[#cbd5e1]"}`}>
                 {it ? (
                   <>
                     <img src={it.thumbUrl || it.imageUrl || ""} alt={it.name} className="w-9 h-9 rounded-md object-contain bg-[#f8fafc] shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <div className="text-[10px] text-[#6366f1]">{slot.label}</div>
+                      <div className="text-[10px] text-indigo-500">{slot.label}</div>
                       <div className="text-xs text-[#0f172a] truncate" title={it.name}>{it.name}</div>
                     </div>
                     <button onClick={() => removeFromRecipe(slot.id)} className="text-[#94a3b8] hover:text-[#ef4444] px-1" title="移除">×</button>
@@ -310,11 +312,11 @@ export default function LibraryPage() {
           })}
           <div className="flex items-center gap-1.5">
             <button onClick={() => copy(recipeText(recipe), "配方描述")} disabled={count === 0}
-              className="px-3 py-2 rounded-lg border border-[#e2e8f0] text-xs text-[#475569] hover:border-[#6366f1] disabled:opacity-40" data-testid="button-recipe-copy">複製詞</button>
+              className="px-3 py-2 rounded-lg border border-[#e2e8f0] text-xs text-[#475569] hover:border-indigo-500 disabled:opacity-40" data-testid="button-recipe-copy">複製詞</button>
             <button onClick={() => updateRecipe({})} disabled={count === 0}
               className="px-2 py-2 rounded-lg border border-[#e2e8f0] text-xs text-[#94a3b8] hover:text-[#ef4444] disabled:opacity-40" title="清空配方">清空</button>
-            <button onClick={() => navigate("/photoset?recipe=1")} disabled={count === 0}
-              className="px-4 py-2 rounded-lg bg-[#6366f1] text-white text-xs font-semibold disabled:opacity-40" data-testid="button-recipe-use">
+            <button onClick={() => navigate(zonePath("/photoset?recipe=1"))} disabled={count === 0}
+              className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold disabled:opacity-40" data-testid="button-recipe-use">
               <i className="fas fa-bolt mr-1.5" />生成寫真（{count}/3）
             </button>
           </div>
@@ -340,14 +342,14 @@ export default function LibraryPage() {
               </div>
               <div className="flex gap-2 flex-wrap">
                 <button onClick={() => { addToRecipe(preview.library, preview); setPreview(null); }} disabled={!preview.imageUrl}
-                  className="px-3 py-2 rounded-lg bg-[#6366f1] text-white text-sm hover:bg-[#4f46e5] disabled:opacity-40">＋ 加入配方</button>
-                <button onClick={() => copy(preview.usage)} className="px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm text-[#475569] hover:border-[#6366f1]" data-testid="button-asset-copy">複製描述</button>
+                  className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm hover:bg-indigo-600 disabled:opacity-40">＋ 加入配方</button>
+                <button onClick={() => copy(preview.usage)} className="px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm text-[#475569] hover:border-indigo-500" data-testid="button-asset-copy">複製描述</button>
                 {preview.imageUrl && (
-                  <a href={preview.imageUrl} target="_blank" rel="noreferrer" download className="px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm text-[#475569] hover:border-[#6366f1]">下載圖片</a>
+                  <a href={preview.imageUrl} target="_blank" rel="noreferrer" download className="px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm text-[#475569] hover:border-indigo-500">下載圖片</a>
                 )}
                 {isAdmin && (
                   <button onClick={() => { requeueMutation.mutate(preview.id); setPreview(null); }} disabled={requeueMutation.isPending}
-                    className="px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm text-[#475569] hover:border-[#6366f1] disabled:opacity-50">排入重生</button>
+                    className="px-3 py-2 rounded-lg border border-[#e2e8f0] text-sm text-[#475569] hover:border-indigo-500 disabled:opacity-50">排入重生</button>
                 )}
                 <button onClick={() => setPreview(null)} className="px-3 py-2 rounded-lg text-sm text-[#94a3b8] hover:text-[#475569]">關閉</button>
               </div>

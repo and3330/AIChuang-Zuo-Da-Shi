@@ -46,7 +46,7 @@ export default function TransactionsPage() {
                   <p className="text-2xl font-bold text-yellow-600">{user.credits ?? 0} <span className="text-sm font-normal text-gray-500">積分</span></p>
                 </div>
               </div>
-              <Link href="/account">
+              <Link href="/store">
                 <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
                   <i className="fas fa-plus mr-2"></i> 充值
                 </Button>

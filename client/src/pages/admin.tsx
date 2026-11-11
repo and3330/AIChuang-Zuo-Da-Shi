@@ -20,6 +20,8 @@ interface AdminUser {
   email: string;
   credits: number;
   isAdmin: boolean;
+  isMember: boolean;
+  isGold: boolean;
   createdAt: string;
   totalGenerations: number;
   totalCreditsUsed: number;
@@ -79,6 +81,10 @@ interface UserDetail {
     email: string;
     credits: number;
     isAdmin: boolean;
+    isMember: boolean;
+    isGold: boolean;
+    birthDate: string | null;
+    adultConfirmed: boolean;
     createdAt: string;
   };
   stats: {
@@ -188,6 +194,18 @@ export default function AdminPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/chats"] });
     } catch (err: any) {
       toast({ title: "錯誤", description: err?.message || "回覆失敗", variant: "destructive" });
+    }
+  };
+
+  const handleSetTier = async (tier: "none" | "member" | "gold") => {
+    if (!selectedUserId) return;
+    try {
+      await apiRequest("PATCH", `/api/admin/users/${selectedUserId}/membership`, { tier });
+      toast({ title: "成功", description: `會員階級已改為${tier === "gold" ? "黃金會員" : tier === "member" ? "正式會員" : "未開通"}` });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users", selectedUserId] });
+    } catch (err: any) {
+      toast({ title: "錯誤", description: err?.message || "操作失敗", variant: "destructive" });
     }
   };
 
@@ -971,6 +989,11 @@ export default function AdminPage() {
                               {u.isAdmin && (
                                 <span className="px-1.5 py-0.5 text-[10px] bg-red-100 text-red-700 rounded">管理員</span>
                               )}
+                              {u.isGold ? (
+                                <span className="px-1.5 py-0.5 text-[10px] bg-amber-100 text-amber-800 rounded">黃金</span>
+                              ) : u.isMember ? (
+                                <span className="px-1.5 py-0.5 text-[10px] bg-indigo-100 text-indigo-700 rounded">會員</span>
+                              ) : null}
                             </div>
                             <div className="text-xs text-gray-400 mt-0.5">{u.email}</div>
                           </div>
@@ -1040,6 +1063,27 @@ export default function AdminPage() {
                       </div>
                     </div>
 
+                    <div className="border-t pt-4 mb-4" data-testid="admin-membership">
+                      <h4 className="text-sm font-medium mb-3">
+                        <i className="fas fa-crown mr-1 text-amber-500"></i>會員階級
+                      </h4>
+                      <div className="flex flex-wrap gap-2">
+                        {([["none", "未開通"], ["member", "正式會員"], ["gold", "黃金會員"]] as const).map(([tier, label]) => {
+                          const current = userDetail.user.isGold ? "gold" : userDetail.user.isMember ? "member" : "none";
+                          return (
+                            <button key={tier} onClick={() => handleSetTier(tier)} disabled={current === tier}
+                              className={`px-4 py-2 rounded-lg border text-sm ${current === tier ? "border-amber-400 bg-amber-50 text-amber-900 font-semibold" : "border-gray-200 text-gray-600 hover:border-amber-300"}`}
+                              data-testid={`admin-tier-${tier}`}>
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs text-gray-500 mt-2">
+                        生日：{userDetail.user.birthDate ?? "未設定"}・年滿 18 歲並同意條款：{userDetail.user.adultConfirmed ? "已確認" : "尚未確認"}。
+                        黃金會員要本人確認年滿 18 歲並同意條款後，黃金專區才會開啟；手動設定不會收費，也不會增減積分。
+                      </p>
+                    </div>
                     <div className="border-t pt-4">
                       <h4 className="text-sm font-medium mb-3">
                         <i className="fas fa-coins mr-1 text-yellow-500"></i>調整積分

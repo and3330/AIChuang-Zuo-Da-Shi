@@ -49,7 +49,7 @@ const LIBRARY_TABS = [
 const ME: Action[] = [
   { href: "/vault", label: "作品庫", icon: "fa-photo-film" },
   { href: "/edit", label: "編輯器", icon: "fa-pen-ruler" },
-  { href: "/account", label: "帳戶與儲值", icon: "fa-wallet" },
+  { href: "/store", label: "會員商城", icon: "fa-store" },
 ];
 const SECONDARY: Array<Action & { desc: string }> = [
   { href: "/character-library", label: "角色庫", icon: "fa-user-group", desc: "三張照片建立角色、生成角色九宮格" },
@@ -110,7 +110,7 @@ export default function CreateHub() {
                 已生成 {(stats?.totalGenerations ?? 0).toLocaleString()} 次・已使用 {(stats?.totalCreditsUsed ?? 0).toLocaleString()} 積分
               </p>
             </div>
-            <Link href="/account">
+            <Link href="/store">
               <span className="inline-flex items-center gap-2 h-11 px-5 rounded-full bg-white text-indigo-700 text-sm font-semibold cursor-pointer hover:bg-indigo-50 active:scale-[0.98]" data-testid="hub-topup">
                 <i className="fas fa-plus text-xs" />儲值積分
               </span>
@@ -121,6 +121,7 @@ export default function CreateHub() {
         {credits < IMAGE_COST * 2 && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
             積分快用完了，生成一張圖片需要 {IMAGE_COST} 積分。
+            <Link href="/store"><span className="ml-2 font-semibold underline underline-offset-4 cursor-pointer" data-testid="hub-low-credits-store">前往會員商城</span></Link>
           </p>
         )}
 

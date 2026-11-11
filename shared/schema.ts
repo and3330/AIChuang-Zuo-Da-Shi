@@ -16,9 +16,14 @@ export const users = pgTable("users", {
   /** One-time membership (see MEMBERSHIP in shared/pricing.ts). Members can buy credits. */
   isMember: boolean("is_member").default(false),
   memberSince: timestamp("member_since"),
-  /** "YYYY-MM-DD". Set once in 安全與隱私; needed before adult content can be enabled. */
+  /** Second tier (see GOLD_MEMBERSHIP in shared/pricing.ts): opens the gold zone. */
+  isGold: boolean("is_gold").default(false),
+  goldSince: timestamp("gold_since"),
+  /** When the one-time 小試身手 pack (TRIAL in shared/pricing.ts) was bought. */
+  trialUsedAt: timestamp("trial_used_at"),
+  /** "YYYY-MM-DD". Set once in 安全與隱私; needed before the gold tier can be bought. */
   birthDate: text("birth_date"),
-  /** Adult prompts are only accepted when this is on and the user is 18+. */
+  /** The user confirmed being 18+ and accepted the gold-zone terms. */
   nsfwEnabled: boolean("nsfw_enabled").default(false),
   /** When the user accepted the adult-content terms. */
   nsfwConsentAt: timestamp("nsfw_consent_at"),
@@ -60,7 +65,7 @@ export const imageGenerations = pgTable("image_generations", {
   processingTime: real("processing_time"),
   cost: real("cost").default(0.03),
   creditsUsed: integer("credits_used").default(3),
-  /** The prompt was adult content: the UI blurs the result until the user asks to see it. */
+  /** Made in the gold zone: the UI blurs the result until the user asks to see it. */
   sensitive: boolean("sensitive").default(false),
   /** Generation backend. New rows are always "atlas" (AtlasCloud Seedream
    *  5.5); "byteplus" / "gmi" only appear on historical rows. */

@@ -16,7 +16,7 @@ export interface IStorage {
   /** Sets the stored balance as-is. For partner sub-accounts, whose real balance lives in the partner's wallet. */
   setCreditsMirror(userId: string, credits: number): Promise<void>;
   setUserAdmin(userId: string, isAdmin: boolean): Promise<User | undefined>;
-  updateUserProfile(userId: string, patch: Partial<Pick<User, "isMember" | "memberSince" | "birthDate" | "nsfwEnabled" | "nsfwConsentAt" | "onboardedAt">>): Promise<User | undefined>;
+  updateUserProfile(userId: string, patch: Partial<Pick<User, "isMember" | "memberSince" | "isGold" | "goldSince" | "trialUsedAt" | "birthDate" | "nsfwEnabled" | "nsfwConsentAt" | "onboardedAt">>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
 
   createCreditTransaction(transaction: { userId: string; type: string; amount: number; balance: number; description: string | null }): Promise<CreditTransaction>;
@@ -359,7 +359,7 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
-  async updateUserProfile(userId: string, patch: Partial<Pick<User, "isMember" | "memberSince" | "birthDate" | "nsfwEnabled" | "nsfwConsentAt" | "onboardedAt">>): Promise<User | undefined> {
+  async updateUserProfile(userId: string, patch: Partial<Pick<User, "isMember" | "memberSince" | "isGold" | "goldSince" | "trialUsedAt" | "birthDate" | "nsfwEnabled" | "nsfwConsentAt" | "onboardedAt">>): Promise<User | undefined> {
     const [user] = await db.update(users).set(patch).where(eq(users.id, userId)).returning();
     return user;
   }

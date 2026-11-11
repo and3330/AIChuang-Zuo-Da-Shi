@@ -39,6 +39,16 @@ function applyEnhancement(rawPrompt: string | null | undefined): string {
   return `${NSFW_PREFIX}${withAge}`;
 }
 
+/**
+ * For ordinary pages (漫劇、角色四視圖): only the age note, never the adult
+ * prefix. The adult prefix is applied by enhanceImagePrompt / enhanceVideoPrompt,
+ * which are used only for prompts accepted in the gold zone.
+ */
+export function plainImagePrompt(rawPrompt: string | null | undefined): string {
+  const prompt = (rawPrompt || "").trim();
+  return prompt ? ensureAgeAnnotation(prompt) : prompt;
+}
+
 export function enhanceImagePrompt(rawPrompt: string | null | undefined): string {
   return applyEnhancement(rawPrompt);
 }
