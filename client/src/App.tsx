@@ -26,6 +26,7 @@ import WallPostPage from "@/pages/wall-post";
 import CreatorPage from "@/pages/creator";
 import { hasGoldAccess, inGoldZone } from "@/lib/zone";
 import PhotosetPage from "@/pages/photoset";
+import ProductPage from "@/pages/product";
 import LibraryPage from "@/pages/library";
 import VaultPage from "@/pages/vault";
 import EditPage from "@/pages/edit";
@@ -374,6 +375,7 @@ function Router() {
       <Route path="/character-library" component={CharacterLibraryPage} />
       <Route path="/scene-library" component={SceneLibraryPage} />
       <Route path="/photoset">{() => <PhotosetPage />}</Route>
+      <Route path="/product" component={ProductPage} />
       <Route path="/library" component={LibraryPage} />
       <Route path="/vault" component={VaultPage} />
       <Route path="/edit" component={EditPage} />

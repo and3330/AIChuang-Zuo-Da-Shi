@@ -133,3 +133,4 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 帳號的第一個角色至少要 6 張照片（`FIRST_CHARACTER_MIN_PHOTOS`，只在 `CharacterWizard` 前端檢查；之後的角色 1 張即可）。精靈會提醒成品取決於照片品質，短邊小於 640 像素的照片標「解析度低」。
 - 四視圖改為 30 積分（`FOUR_VIEW_COST`，夥伴 API 價格不變）。第二個角色開始，精靈建立角色時一律生成四視圖並收 30 積分，積分不夠不能建立；第一個角色仍免費。帳戶 Email 驗證信改用 `sendVerificationEmail`（Resend）。
 - 影片頁可選模型（`VIDEO_MODELS`，`shared/pricing.ts`）：WAN 3.0（8／15 積分每秒）與 Kling 4.0（12／20）。請求帶 `videoModel`，伺服器依模型計價並驗證文字生影片的畫面比例（WAN 多 4:3、3:4；Kling 多 21:9）。Kling 走 `kwaivgi/kling-v4.0/*`，參數是 `aspect_ratio`、沒有 `audio`。夥伴 API 與故事動畫仍只用 WAN。
+- 商品帶貨圖（`/product`，`client/src/pages/product.tsx`）：上傳商品照（最多 3 張）＋選角色＋選範本（UGC 實拍、生活情境、服飾商拍、Listing 套圖、圖片廣告、美食飲品）→ `POST /api/photosets/plan`（mode `product`）回傳鏡頭與貼文文案、標籤 → 走寫真同一個批次生成端點。圖片順序 `[...角色圖, ...商品圖]`。

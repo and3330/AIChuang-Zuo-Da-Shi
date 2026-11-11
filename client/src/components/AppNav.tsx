@@ -38,6 +38,7 @@ type Destination = {
 export const DESTINATIONS: Destination[] = [
   { href: "/", label: "創作", icon: "fa-wand-magic-sparkles", group: "main" },
   { href: "/photoset", label: "寫真工作室", short: "寫真", icon: "fa-camera-retro", group: "main" },
+  { href: "/product", label: "商品帶貨", icon: "fa-bag-shopping", group: "main" },
   { href: "/drama", label: "漫劇工作室", short: "漫劇", icon: "fa-film", group: "main" },
   { href: "/library", label: "素材圖庫", short: "圖庫", icon: "fa-images", group: "main" },
   { href: "/wall", label: "作品牆", icon: "fa-globe", group: "main" },
@@ -54,8 +55,8 @@ export const DESTINATIONS: Destination[] = [
 
 /** The main modules: desktop bar and the first four mobile tabs. */
 const PRIMARY = ["/", "/photoset", "/drama", "/library"];
-/** Desktop bar only: the phone tab bar has room for four, so 作品牆 is in the 「我的」 sheet there. */
-const DESKTOP_PRIMARY = [...PRIMARY, "/wall"];
+/** Desktop bar only: the phone tab bar has room for four, so 商品帶貨 and 作品牆 are in the 「我的」 sheet there. */
+const DESKTOP_PRIMARY = ["/", "/photoset", "/product", "/drama", "/library", "/wall"];
 /** Shortcuts shown as tiles at the top of the mobile 「我的」 sheet. */
 const QUICK = ["/vault", "/edit", "/character-library", "/scene-library"];
 

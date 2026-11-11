@@ -7,7 +7,7 @@ import { Onboarding } from "@/components/Onboarding";
 
 // 創作中心：登入後的首頁。一眼看到三個主要模組與素材圖庫，一次點擊就進到要用的功能。
 //
-//   主要模組   創作（圖片／影片）、寫真工作室（素材套圖／照片同款）、漫劇工作室
+//   主要模組   創作（圖片／影片）、寫真工作室（素材套圖／照片同款）、商品帶貨圖、漫劇工作室
 //   素材圖庫   賣點：選好人像、服裝、姿勢就能直接生成
 //   個人專區   作品庫、編輯器、帳戶
 //   次要素材   角色庫（含上傳照片建立角色）、場景庫
@@ -32,6 +32,11 @@ const MODULES: Module[] = [
       { href: "/photoset?mode=kit", label: "素材套圖", icon: "fa-layer-group" },
       { href: "/photoset?mode=scene", label: "照片同款", icon: "fa-panorama" },
     ],
+  },
+  {
+    href: "/product", icon: "fa-bag-shopping", title: "商品帶貨圖", meta: `${IMAGE_COST} 積分／張`,
+    desc: "給一件商品，用你的角色生成帶貨照與貼文文案。", tile: "from-fuchsia-500 to-indigo-600",
+    actions: [{ href: "/product", label: "開始製作", icon: "fa-arrow-right" }],
   },
   {
     href: "/drama", icon: "fa-film", title: "漫劇工作室", meta: "依幕數計費",
@@ -127,7 +132,7 @@ export default function CreateHub() {
 
         <section>
           <h2 className="text-sm font-semibold text-slate-900 mb-3">主要模組</h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
             {MODULES.map(m => <ModuleCard key={m.title} m={m} />)}
           </div>
         </section>
