@@ -1,5 +1,5 @@
 import { useState, useEffect, type ReactNode } from "react";
-import { Switch, Route, Link, Redirect } from "wouter";
+import { Switch, Route, Link, Redirect, useLocation } from "wouter";
 import { queryClient, apiRequest, getQueryFn } from "./lib/queryClient";
 import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -28,6 +28,7 @@ import NotFound from "@/pages/not-found";
 import ChatWidget from "@/components/ChatWidget";
 import MobileTabBar from "@/components/MobileTabBar";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
+import EmbedBar, { useEmbed } from "@/components/EmbedBar";
 import type { User } from "@shared/schema";
 
 // Kept as a re-export so existing imports from "@/App" keep working.
@@ -322,7 +323,24 @@ function AdminOnly({ children }: { children: ReactNode }) {
   return <>{children}</>;
 }
 
+// 嵌入模式（客戶小鎮的工作區）不能儲值、改帳號或進後台。成人內容照本站原本的規則，由對方平台為該工作區開啟。
+const EMBED_HIDDEN = ["/account", "/transactions", "/admin"];
+
+/** Support chat and the install prompt are for people with their own account. */
+function PersonalExtras() {
+  if (useEmbed()) return null;
+  return (
+    <>
+      <ChatWidget />
+      <PWAInstallPrompt />
+    </>
+  );
+}
+
 function Router() {
+  const embed = useEmbed();
+  const [location] = useLocation();
+  if (embed && EMBED_HIDDEN.some(p => location === p || location.startsWith(p + "/"))) return <Redirect to="/" />;
   return (
     <Switch>
       <Route path="/" component={CreateHub} />
@@ -391,9 +409,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <Toaster />
       <AppContent />
-      <ChatWidget />
       <MobileTabBar />
-      <PWAInstallPrompt />
+      <EmbedBar />
+      <PersonalExtras />
     </QueryClientProvider>
   );
 }

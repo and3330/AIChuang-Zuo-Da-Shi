@@ -4,6 +4,7 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationHeader } from "@/components/AppNav";
+import { useSendBack } from "@/components/EmbedBar";
 
 // 作品庫：所有完成的圖片與影片集中在這裡，不管是哪個功能做出來的。
 // 從這裡可以放大、下載、複製提示詞，或把圖片送到編輯器繼續修改。
@@ -22,6 +23,7 @@ function formatDate(iso: string | null): string {
 }
 
 export default function VaultPage() {
+  const sendBack = useSendBack();
   const { toast } = useToast();
   const [kind, setKind] = useState<"all" | "image" | "video">("all");
   const [page, setPage] = useState(1);
@@ -121,6 +123,11 @@ export default function VaultPage() {
                       <i className="fas fa-wand-magic-sparkles text-xs" />編輯
                     </span>
                   </Link>
+                )}
+                {sendBack && (
+                  <button onClick={() => sendBack(open.url)} className="flex items-center justify-center gap-2 h-11 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800" data-testid="button-vault-send-back">
+                    <i className="fas fa-reply text-xs" />送回小鎮
+                  </button>
                 )}
                 <a href={open.url} download target="_blank" rel="noreferrer"
                   className="flex items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:border-indigo-300">

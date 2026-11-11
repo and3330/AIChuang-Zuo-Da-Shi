@@ -259,6 +259,7 @@ curl https://你的網域/api/v1/partner/jobs/0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e
 | 403 | `character_disabled` | 角色已被管理員停用 |
 | 404 | `not_found` | 任務或角色不存在、不屬於這個帳號、`owner_ref` 不符，或端點不存在 |
 | 409 | `four_views_in_progress` | 角色的四視圖還在生成（重做四視圖或刪除角色時） |
+| 503 | `wallet_not_configured` | 嵌入模式需要的錢包端點尚未設定 |
 | 409 | `character_limit_reached` | 這個 `owner_ref` 的角色已達 50 個 |
 | 409 | `character_not_ready` | 角色沒有可用的參考圖 |
 | 413 | `file_too_large` | 上傳檔案超過 10 MB |
@@ -554,6 +555,77 @@ HTTP/1.1 404 Not Found
 ### 肖像下架（管理員）
 
 除了對方自己呼叫 DELETE，管理員可以在「後台 → 對外 API → 對外 API 的 AI 角色」依 `owner_ref` 或角色代號搜尋，停用單一角色，或一次停用某個工作區的全部角色。停用後不能再用來生成或做四視圖；資料與圖片保留，重新啟用即可恢復。對方查詢時會看到 `"disabled": true`。
+
+## 嵌入模式：讓工作區直接使用本站的完整介面
+
+適合不想自己重做一套畫面的情況。對方後端替某個工作區建立「嵌入工作階段」，拿到一次性的進入網址，在使用者的瀏覽器用新視窗開啟；使用者就以該工作區專屬的子帳號登入本站，看不到其他工作區的任何東西。
+
+| 項目 | 行為 |
+|---|---|
+| 隔離 | 每個 `owner_ref` 對應一個子帳號，作品、角色庫、作品庫都各自獨立。子帳號沒有密碼，只能經由進入網址登入 |
+| 錢包 | **子帳號在本站沒有自己的積分。** 每一次扣點與退點，本站都即時呼叫對方的錢包端點（見下方），畫面上顯示的餘額就是對方回傳的餘額 |
+| 服務帳號 | 每次扣點同時扣服務帳號的積分（兩個系統之間的對帳）；服務帳號不足時這次扣點取消，並把對方已扣的點數退回 |
+| 進入網址 | 10 分鐘內有效、只能用一次。登入後 12 小時內有效。請用 `window.open` 開新視窗，不要用 iframe（本站登入使用第一方 cookie） |
+| 成人內容 | 預設關閉。由對方平台在建立工作階段時帶 `adult_birth_date` 為個別工作區開啟；每次建立都會重設，所以對方關掉後下一次就失效。工作區自己不能在本站開啟 |
+| 限制 | 嵌入模式不能儲值、不能改帳號與成人內容設定、不能進後台；客服對話與安裝提示不顯示。網站的每日上限（圖 50、影片 10）以子帳號計 |
+| 送回成品 | 使用者在作品庫按「送回小鎮」，或用畫面下方的「挑成品送回小鎮」，本站對開啟它的視窗送出 `postMessage`，目標來源限定為建立時的 `return_origin` |
+
+### 設定錢包端點（本站的環境變數）
+
+| 變數 | 說明 |
+|---|---|
+| `PARTNER_WALLET_URL` | 對方的錢包端點，必須是 https |
+| `PARTNER_WALLET_SECRET` | 雙方約定的密鑰，本站以 `Authorization: Bearer` 送出，不會寫入日誌 |
+
+兩者都設定後嵌入模式才能使用，否則建立工作階段回 `503 wallet_not_configured`。
+
+### 本站呼叫對方錢包的格式
+
+`POST {PARTNER_WALLET_URL}`，內容：
+
+```json
+{ "action": "charge", "owner_ref": "ws_12", "amount": 6, "ref": "8f0c…（UUID）", "description": "圖片生成" }
+```
+
+- `action`：`charge`（扣點）、`refund`（退點）或 `balance`（只查餘額，`amount` 為 0）。
+- `ref`：這一筆的唯一單號。連線逾時重送時會帶同一個 `ref`，對方必須保證同一個 `ref` 只入帳一次。
+- 成功回 `200 { "balance": 新餘額 }`。
+- 點數不足回 `402`，本站會告訴使用者積分不足，且不會重試。
+- 其他錯誤：扣點重試 1 次、退點重試 3 次。退點最後仍送不到時，本站會在該子帳號的交易紀錄留下「退點未送達」供人工補發。
+
+### POST /api/v1/partner/embed-sessions
+
+| 欄位 | 必填 | 說明 |
+|---|---|---|
+| `owner_ref` | 是 | 工作區代號 |
+| `return_origin` | 是 | 你們網站的來源，例如 `https://town.example.com`。必須是 https |
+| `balance` | 是 | 該工作區目前在你們錢包裡的餘額，用來在第一次扣點前顯示 |
+| `adult_birth_date` | 否 | 該工作區負責人的生日（`YYYY-MM-DD`）。有帶就代表對方已確認此人年滿 18 歲並同意成人內容條款；沒帶則關閉。需權杖已開放 NSFW，否則回 `403 nsfw_not_allowed`；未滿 18 歲回 `400` |
+
+```bash
+curl -X POST https://你的網域/api/v1/partner/embed-sessions   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json"   -d '{"owner_ref":"ws_12","balance":480,"return_origin":"https://town.example.com"}'
+```
+
+```json
+HTTP/1.1 201 Created
+{ "session_id": "6f0e…", "owner_ref": "ws_12", "url": "https://你的網域/embed/enter?ticket=…", "nsfw_allowed": false, "ticket_expires_at": "2026-11-11T08:10:00.000Z" }
+```
+
+不需要結算。同一個工作區可以重複建立，都會登入同一個子帳號。
+
+### 接收送回的成品
+
+在開啟視窗的那一頁監聽：
+
+```js
+window.addEventListener("message", (e) => {
+  if (e.origin !== "https://你的網域" || e.data?.source !== "ai-studio") return;
+  if (e.data.type === "pick") useMedia(e.data.url);   // 成品的永久 CDN 網址
+  if (e.data.type === "done") refreshBalance();       // 使用者按了「完成」
+});
+```
+
+第一次使用前要再執行一次 `npm run db:push`（新增 `partner_embed_sessions`）。
 
 ## 後台操作：建立與撤銷權杖
 

@@ -4,13 +4,13 @@
  * network imports and can be tested with in-memory fakes.
  */
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
 import sharp from "sharp";
 import { db } from "./db";
-import { partnerTokens, partnerJobs, partnerCharacters, type PartnerJob, type PartnerToken } from "@shared/schema";
+import { partnerTokens, partnerJobs, partnerCharacters, partnerEmbedSessions, type PartnerJob, type PartnerToken } from "@shared/schema";
 import { PartnerIdempotencyRace, PartnerIngestError, PartnerUploadError, type PartnerStore, type PartnerUploadFormat } from "./partnerApi";
 import { assertPublicHttpsUrl } from "./ssrfGuard";
 import type { BunnyStorageService } from "./bunnyStorage";
@@ -21,6 +21,19 @@ function isUniqueViolation(e: any): boolean {
 }
 
 export const partnerStore: PartnerStore = {
+  async createEmbedSession(data) {
+    const [row] = await db.insert(partnerEmbedSessions).values(data).returning();
+    return row;
+  },
+  async findEmbedSessionByTicket(hash) {
+    const [row] = await db.select().from(partnerEmbedSessions).where(eq(partnerEmbedSessions.ticketHash, hash));
+    return row;
+  },
+  async redeemEmbedTicket(id) {
+    const [row] = await db.update(partnerEmbedSessions).set({ redeemedAt: new Date() })
+      .where(and(eq(partnerEmbedSessions.id, id), isNull(partnerEmbedSessions.redeemedAt))).returning();
+    return !!row;
+  },
   async findTokenByHash(hash) {
     const [row] = await db.select().from(partnerTokens).where(eq(partnerTokens.tokenHash, hash));
     return row;
@@ -267,4 +280,12 @@ export function createPartnerUploadStore(
     if (!url) throw new Error("CDN upload returned no URL");
     return { url, width, height };
   };
+}
+
+/** The partner wallet a sub-account spends from, or null for an ordinary account. */
+export async function embedWalletAccount(userId: string): Promise<{ ownerRef: string; serviceUserId: string } | null> {
+  const [session] = await db.select().from(partnerEmbedSessions).where(eq(partnerEmbedSessions.userId, userId)).orderBy(desc(partnerEmbedSessions.createdAt)).limit(1);
+  if (!session) return null;
+  const [token] = await db.select().from(partnerTokens).where(eq(partnerTokens.id, session.tokenId));
+  return token ? { ownerRef: session.ownerRef, serviceUserId: token.userId } : null;
 }

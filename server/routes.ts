@@ -16,12 +16,13 @@ import { ADULT_AGE, ageFromBirthDate, canUseNsfw, containsNsfw } from "@shared/s
 import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
 import { registerPhotosetRoutes, createPhotosetPlanner } from "./photoset";
-import { registerPartnerRoutes } from "./partnerApi";
+import { registerPartnerRoutes, partnerEmbedGuard } from "./partnerApi";
+import { partnerWalletConfigured, setWalletAccountLookup, forgetWalletAccount, walletAccountFor, walletBalance } from "./partnerWallet";
 import { registerAssetLibraryRoutes } from "./assetLibrary";
 import { registerVaultRoutes } from "./vault";
 import { registerCostRoutes, recordProviderUsage } from "./costs";
 import { setAtlasUsageListener } from "./atlasProvider";
-import { partnerStore, createPartnerImageIngestor, createPartnerUploadStore } from "./partnerStore";
+import { partnerStore, embedWalletAccount, createPartnerImageIngestor, createPartnerUploadStore } from "./partnerStore";
 import { atlasSizeDimensions } from "./atlasProvider";
 import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
 import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIsConfigured, ATLAS_EDIT_MODEL, ATLAS_T2I_MODEL, ATLAS_I2V_MODEL, ATLAS_T2V_MODEL, ATLAS_MAX_REFERENCE_IMAGES } from "./atlasProvider";
@@ -95,6 +96,8 @@ declare module "express-session" {
     userId: string;
     username: string;
     isAdmin: boolean;
+    /** Set when a partner workspace entered through /embed/enter. */
+    embed?: { sessionId: string; returnOrigin: string };
   }
 }
 
@@ -108,6 +111,8 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
   const bunnyStorage = new BunnyStorageService();
+  app.use(partnerEmbedGuard);
+  setWalletAccountLookup(embedWalletAccount);
   if (bunnyStorage.isConfigured()) {
     console.log("✅ Bunny.net storage configured");
   } else {
@@ -461,6 +466,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
     if (!user) {
       return res.status(401).json({ error: "用户不存在" });
     }
+    if (req.session.embed) {
+      // Show the partner's live balance; fall back to the last known one if it cannot be reached.
+      try {
+        const wallet = await walletAccountFor(user.id);
+        if (wallet) { user.credits = await walletBalance(wallet.ownerRef); await storage.setCreditsMirror(user.id, user.credits); }
+      } catch { /* keep the mirror */ }
+    }
 
     res.json({
       id: user.id,
@@ -473,6 +485,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       birthDate: user.birthDate ?? null,
       nsfwEnabled: canUseNsfw(user),
       onboardedAt: user.onboardedAt ?? null,
+      embed: req.session.embed ? { returnOrigin: req.session.embed.returnOrigin } : null,
     });
   });
 
@@ -4331,6 +4344,18 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     core: {
       getUser: (id) => storage.getUser(id),
       getUserByEmail: (email) => storage.getUserByEmail(email),
+      setCreditsMirror: async (userId, credits) => { forgetWalletAccount(userId); await storage.setCreditsMirror(userId, credits); },
+      setPartnerUserAdult: async (userId, birthDate) => {
+        await storage.updateUserProfile(userId, birthDate
+          ? { birthDate, nsfwEnabled: true, nsfwConsentAt: new Date() }
+          : { nsfwEnabled: false });
+      },
+      createPartnerUser: async ({ username, email }) => {
+        // "!" can never match a bcrypt hash, so this account has no password sign-in.
+        const user = await storage.createUser({ username, email, password: "!" + randomBytes(24).toString("hex") });
+        await storage.updateUserProfile(user.id, { onboardedAt: new Date() });
+        return { id: user.id };
+      },
       atomicDeductCredits: (userId, amount, description) => storage.atomicDeductCredits(userId, amount, description),
       atomicAddCredits: (userId, amount, description) => storage.atomicAddCredits(userId, amount, description),
       createImageGeneration: (data) => storage.createImageGeneration(data as any),
@@ -4347,6 +4372,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     isCdnUrl: (url) => bunnyStorage.isOwnCdnUrl(url),
     deleteStored: (url) => bunnyStorage.deleteByCdnUrl(url),
     storageReady: () => bunnyStorage.isConfigured(),
+    walletReady: partnerWalletConfigured,
     planPhotoset: (input) => createPhotosetPlanner(objectStorageService).plan(input),
     sizeDimensions: atlasSizeDimensions,
     cdnUrl: fixBunnyCdnUrl,

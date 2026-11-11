@@ -3,6 +3,7 @@ import { type User, type InsertUser, type ImageGeneration, type InsertImageGener
 import { db } from "./db";
 import { eq, desc, sql, and, gt, gte, like } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import { walletAccountFor, walletCharge, walletRefund, type WalletAccount } from "./partnerWallet";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -12,6 +13,8 @@ export interface IStorage {
   createUser(user: InsertUser): Promise<User>;
   updateUserGoogleId(userId: string, googleId: string, avatarUrl?: string): Promise<User | undefined>;
   updateUserCredits(userId: string, credits: number): Promise<User | undefined>;
+  /** Sets the stored balance as-is. For partner sub-accounts, whose real balance lives in the partner's wallet. */
+  setCreditsMirror(userId: string, credits: number): Promise<void>;
   setUserAdmin(userId: string, isAdmin: boolean): Promise<User | undefined>;
   updateUserProfile(userId: string, patch: Partial<Pick<User, "isMember" | "memberSince" | "birthDate" | "nsfwEnabled" | "nsfwConsentAt" | "onboardedAt">>): Promise<User | undefined>;
   getAllUsers(): Promise<User[]>;
@@ -147,12 +150,61 @@ export class DatabaseStorage implements IStorage {
     return user;
   }
 
+  async setCreditsMirror(userId: string, credits: number): Promise<void> {
+    await db.update(users).set({ credits }).where(eq(users.id, userId));
+  }
+
+  /**
+   * Moves money for a partner sub-account. The customer's points live in the partner's
+   * wallet; the service account pays this site. Returns the customer's new balance.
+   */
+  private async walletMove(userId: string, wallet: WalletAccount, delta: number, description: string): Promise<number> {
+    const amount = Math.abs(delta);
+    let balance: number;
+    if (delta < 0) {
+      balance = await walletCharge(wallet.ownerRef, amount, description);
+      const [service] = await db.update(users).set({ credits: sql`${users.credits} - ${amount}` })
+        .where(and(eq(users.id, wallet.serviceUserId), sql`${users.credits} >= ${amount}`)).returning();
+      if (!service) {
+        balance = await walletRefund(wallet.ownerRef, amount, `退回：${description}`).catch(() => balance + amount);
+        await this.setCreditsMirror(userId, balance);
+        throw new Error("生成服務暫時無法使用，請聯絡平台管理員。");
+      }
+      await db.insert(creditTransactions).values({ userId: wallet.serviceUserId, type: "consume", amount: -amount, balance: service.credits || 0, description: `嵌入模式 ${wallet.ownerRef}：${description}` });
+    } else {
+      const [service] = await db.update(users).set({ credits: sql`${users.credits} + ${amount}` }).where(eq(users.id, wallet.serviceUserId)).returning();
+      if (service) await db.insert(creditTransactions).values({ userId: wallet.serviceUserId, type: "refund", amount, balance: service.credits || 0, description: `嵌入模式 ${wallet.ownerRef}：${description}` });
+      try { balance = await walletRefund(wallet.ownerRef, amount, description); }
+      catch {
+        // The customer is owed this; leave a visible trace for manual follow-up.
+        console.error(`[PartnerWallet] refund of ${amount} for ${wallet.ownerRef} was not delivered`);
+        const [current] = await db.select().from(users).where(eq(users.id, userId));
+        balance = current?.credits || 0;
+        description = `退點未送達客戶小鎮，待補 ${amount}：${description}`;
+      }
+    }
+    await this.setCreditsMirror(userId, balance);
+    await db.insert(creditTransactions).values({ userId, type: delta < 0 ? "consume" : "refund", amount: delta, balance, description });
+    return balance;
+  }
+
   async updateUserCredits(userId: string, credits: number): Promise<User | undefined> {
+    const wallet = await walletAccountFor(userId);
+    if (wallet) {
+      // Callers pass the new balance; what matters for a wallet account is the change.
+      const [current] = await db.select().from(users).where(eq(users.id, userId));
+      const delta = credits - (current?.credits || 0);
+      if (delta !== 0) await this.walletMove(userId, wallet, delta, "創作工坊使用");
+      const [after] = await db.select().from(users).where(eq(users.id, userId));
+      return after;
+    }
     const [user] = await db.update(users).set({ credits }).where(eq(users.id, userId)).returning();
     return user;
   }
 
   async atomicAddCredits(userId: string, amount: number, description: string): Promise<void> {
+    const wallet = amount !== 0 ? await walletAccountFor(userId) : null;
+    if (wallet) { await this.walletMove(userId, wallet, amount, description); return; }
     const isStripePayment = description.startsWith("Stripe");
     const [updated] = await db.update(users)
       .set({ credits: sql`${users.credits} + ${amount}` })
@@ -175,6 +227,8 @@ export class DatabaseStorage implements IStorage {
    */
   async atomicDeductCredits(userId: string, amount: number, description: string): Promise<{ newBalance: number }> {
     if (amount <= 0) throw new Error("Deduct amount must be positive");
+    const wallet = await walletAccountFor(userId);
+    if (wallet) return { newBalance: await this.walletMove(userId, wallet, -amount, description) };
     // Conditional update: only succeeds when current balance is sufficient.
     const [updated] = await db.update(users)
       .set({ credits: sql`${users.credits} - ${amount}` })
