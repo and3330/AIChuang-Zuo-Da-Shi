@@ -23,6 +23,8 @@ export interface IStorage {
   getCreditTransactions(userId: string): Promise<CreditTransaction[]>;
   getCreditTransactionByDescription(description: string): Promise<CreditTransaction | undefined>;
   getAllTopupTransactions(): Promise<(CreditTransaction & { username?: string; email?: string })[]>;
+  /** Records what Stripe collected on the credit row written for that payment. */
+  setTransactionPayment(description: string, amount: number, currency: string): Promise<void>;
 
   createImageGeneration(generation: InsertImageGeneration & { userId: string; sequentialGeneration?: boolean; maxImages?: number | null; additionalImageUrls?: string[] }): Promise<ImageGeneration>;
   createBatchImageGenerations(batchData: InsertBatchImageToImage & { userId: string }): Promise<ImageGeneration[]>;
@@ -398,6 +400,8 @@ export class DatabaseStorage implements IStorage {
         balance: creditTransactions.balance,
         description: creditTransactions.description,
         createdAt: creditTransactions.createdAt,
+        paidAmount: creditTransactions.paidAmount,
+        paidCurrency: creditTransactions.paidCurrency,
         username: users.username,
         email: users.email,
       })
@@ -406,6 +410,12 @@ export class DatabaseStorage implements IStorage {
       .where(eq(creditTransactions.type, "topup"))
       .orderBy(desc(creditTransactions.createdAt));
     return rows as any;
+  }
+
+  async setTransactionPayment(description: string, amount: number, currency: string): Promise<void> {
+    if (!(amount > 0) || !currency) return;
+    await db.update(creditTransactions).set({ paidAmount: Math.round(amount), paidCurrency: currency.toLowerCase() })
+      .where(eq(creditTransactions.description, description));
   }
 
   async createImageGeneration(insertGeneration: InsertImageGeneration & {

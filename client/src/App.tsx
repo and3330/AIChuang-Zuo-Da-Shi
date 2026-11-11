@@ -369,7 +369,8 @@ function Router() {
       <Route path="/create/image">{() => <Home key="image" section="image" />}</Route>
       <Route path="/create/video">{() => <Home key="video" section="video" />}</Route>
       <Route path="/drama" component={DramaPage} />
-      <Route path="/character-library/sheet">{() => <PhotosetPage variant="sheet" />}</Route>
+      {/* 角色九宮格已停用：舊連結回到角色庫 */}
+      <Route path="/character-library/sheet">{() => <Redirect to="/character-library" />}</Route>
       <Route path="/character-library" component={CharacterLibraryPage} />
       <Route path="/scene-library" component={SceneLibraryPage} />
       <Route path="/photoset">{() => <PhotosetPage />}</Route>

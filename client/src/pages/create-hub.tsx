@@ -7,10 +7,10 @@ import { Onboarding } from "@/components/Onboarding";
 
 // 創作中心：登入後的首頁。一眼看到三個主要模組與素材圖庫，一次點擊就進到要用的功能。
 //
-//   主要模組   創作（圖片／影片）、寫真工作室（情境寫真／素材套圖）、漫劇工作室
+//   主要模組   創作（圖片／影片）、寫真工作室（素材套圖／照片同款）、漫劇工作室
 //   素材圖庫   賣點：選好人像、服裝、姿勢就能直接生成
 //   個人專區   作品庫、編輯器、帳戶
-//   次要素材   角色庫（含三張照片建立角色、角色九宮格）、場景庫
+//   次要素材   角色庫（含上傳照片建立角色）、場景庫
 
 type Stats = { totalGenerations: number; totalCreditsUsed: number; credits: number };
 type Action = { href: string; label: string; icon: string };
@@ -29,8 +29,8 @@ const MODULES: Module[] = [
     href: "/photoset", icon: "fa-camera-retro", title: "寫真工作室", meta: `${IMAGE_COST} 積分／張`,
     desc: "一次生成整組可貼社群的寫真。", tile: "from-indigo-500 to-blue-600",
     actions: [
-      { href: "/photoset?mode=scene", label: "情境寫真", icon: "fa-panorama" },
       { href: "/photoset?mode=kit", label: "素材套圖", icon: "fa-layer-group" },
+      { href: "/photoset?mode=scene", label: "照片同款", icon: "fa-panorama" },
     ],
   },
   {
@@ -52,7 +52,7 @@ const ME: Action[] = [
   { href: "/store", label: "會員商城", icon: "fa-store" },
 ];
 const SECONDARY: Array<Action & { desc: string }> = [
-  { href: "/character-library", label: "角色庫", icon: "fa-user-group", desc: "三張照片建立角色、生成角色九宮格" },
+  { href: "/character-library", label: "角色庫", icon: "fa-user-group", desc: "上傳照片建立角色，寫真與漫劇直接套用" },
   { href: "/scene-library", label: "場景庫", icon: "fa-mountain-sun", desc: "保存常用場景，寫真與漫劇直接套用" },
 ];
 

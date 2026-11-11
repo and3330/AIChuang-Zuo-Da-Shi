@@ -1,9 +1,11 @@
 import { IMAGE_COST } from "@shared/pricing";
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useUser } from "@/hooks/use-user";
+import { useEmbed } from "@/components/EmbedBar";
 import { NavigationHeader } from "./account";
 import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type FourViewUrls } from "@shared/schema";
 import { CharacterWizard } from "@/components/CharacterWizard";
@@ -37,32 +39,76 @@ function FourViewGrid({ urls, status }: { urls: FourViewUrls | null | undefined;
     { key: "side", label: "正側" },
     { key: "back", label: "背面" },
   ];
+  // Click a view to see it large; arrows (or ← →) move between the views that exist.
+  const ready = labels.filter(l => !!urls?.[l.key]);
+  const [zoom, setZoom] = useState<keyof FourViewUrls | null>(null);
+  const zoomIndex = ready.findIndex(l => l.key === zoom);
+  const step = (d: number) => { if (ready.length > 0) setZoom(ready[(zoomIndex + d + ready.length) % ready.length].key); };
+  useEffect(() => {
+    if (zoom === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setZoom(null);
+      else if (e.key === "ArrowLeft") step(-1);
+      else if (e.key === "ArrowRight") step(1);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  });
   return (
-    <div className="grid grid-cols-4 gap-2">
-      {labels.map(({ key, label }) => {
-        const url = urls?.[key];
-        return (
-          <div key={key} className="aspect-[3/4] rounded-lg border border-[#e2e8f0] bg-[#f8fafc] overflow-hidden flex flex-col items-center justify-center">
-            {url ? (
-              <img src={url} alt={label} className="w-full h-full object-cover" data-testid={`img-fourview-${key}`} />
-            ) : status === "generating" ? (
-              <>
-                <div className="w-6 h-6 rounded-full border-2 border-t-transparent border-[#ca8a04] animate-spin" />
-                <span className="text-[10px] text-[#ca8a04] mt-1">{label}</span>
-              </>
-            ) : (
-              <span className="text-[10px] text-[#94a3b8]">{label}</span>
-            )}
-          </div>
-        );
-      })}
-    </div>
+    <>
+      <div className="grid grid-cols-4 gap-2">
+        {labels.map(({ key, label }) => {
+          const url = urls?.[key];
+          return (
+            <div key={key} className="aspect-[3/4] rounded-lg border border-[#e2e8f0] bg-[#f8fafc] overflow-hidden flex flex-col items-center justify-center">
+              {url ? (
+                <button type="button" onClick={() => setZoom(key)} className="group relative w-full h-full cursor-zoom-in" aria-label={`放大${label}`} data-testid={`button-fourview-zoom-${key}`}>
+                  <img src={url} alt={label} className="w-full h-full object-cover" data-testid={`img-fourview-${key}`} />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
+                    <i className="fas fa-magnifying-glass-plus text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </span>
+                </button>
+              ) : status === "generating" ? (
+                <>
+                  <div className="w-6 h-6 rounded-full border-2 border-t-transparent border-[#ca8a04] animate-spin" />
+                  <span className="text-[10px] text-[#ca8a04] mt-1">{label}</span>
+                </>
+              ) : (
+                <span className="text-[10px] text-[#94a3b8]">{label}</span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {zoom !== null && zoomIndex >= 0 && (
+        <div className="fixed inset-0 z-[70] bg-black/85 flex items-center justify-center p-4" onClick={() => setZoom(null)} role="dialog" aria-modal="true" aria-label="四視圖放大" data-testid="fourview-lightbox">
+          <img src={urls![ready[zoomIndex].key]!} alt={ready[zoomIndex].label} className="max-w-full max-h-[86vh] object-contain rounded-xl" onClick={e => e.stopPropagation()} />
+          <span className="absolute top-4 left-1/2 -translate-x-1/2 px-3 py-1 rounded-full bg-black/60 text-white text-sm">{ready[zoomIndex].label}・{zoomIndex + 1}／{ready.length}</span>
+          <button onClick={() => setZoom(null)} className="absolute top-3 right-3 w-11 h-11 rounded-full bg-black/60 text-white text-xl hover:bg-black/80" aria-label="關閉">×</button>
+          {ready.length > 1 && (
+            <>
+              <button onClick={e => { e.stopPropagation(); step(-1); }} className="absolute left-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 text-white hover:bg-black/80" aria-label="上一張"><i className="fas fa-chevron-left" /></button>
+              <button onClick={e => { e.stopPropagation(); step(1); }} className="absolute right-3 top-1/2 -translate-y-1/2 w-11 h-11 rounded-full bg-black/60 text-white hover:bg-black/80" aria-label="下一張"><i className="fas fa-chevron-right" /></button>
+            </>
+          )}
+          <a href={urls![ready[zoomIndex].key]!} download target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 px-4 h-10 rounded-full bg-white text-slate-900 text-sm font-medium flex items-center gap-2">
+            <i className="fas fa-download text-xs" />下載
+          </a>
+        </div>
+      )}
+    </>
   );
 }
 
 function CharacterCard({ character }: { character: CharacterLibraryItem }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { user } = useUser();
+  // Each account's first 四視圖 generation is free (not in a partner workspace).
+  const freeFourView = !!user && !user.freeFourViewUsedAt && !useEmbed();
+  const fourViewCost = 4 * IMAGE_COST;
   const [showEdit, setShowEdit] = useState(false);
 
   const generateFourViews = useMutation({
@@ -70,7 +116,8 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
       apiRequest("POST", `/api/character-library/${character.id}/generate-four-views`, {}).then(r => r.json()),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/character-library"] });
-      toast({ title: `四視圖生成中（-${data.creditsUsed} 積分）` });
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: data.free ? "四視圖生成中（首次免費）" : `四視圖生成中（-${data.creditsUsed} 積分）` });
     },
     onError: (e: any) => toast({ title: "生成失敗", description: e.message, variant: "destructive" }),
   });
@@ -126,7 +173,9 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
       <button
         onClick={() => {
           if (refCount === 0) { toast({ title: "請先上傳至少 1 張參考圖", variant: "destructive" }); return; }
-          if (!confirm(`即將生成 4 張視圖（正面/3-4側/正側/背面），共消耗 12 積分，確定？`)) return;
+          if (!confirm(freeFourView
+            ? "即將生成 4 張視圖（正面/3-4側/正側/背面）。這是你的首次生成，免費。確定？"
+            : `即將生成 4 張視圖（正面/3-4側/正側/背面），共消耗 ${fourViewCost} 積分，確定？`)) return;
           generateFourViews.mutate();
         }}
         disabled={generateFourViews.isPending || fourViewStatus === "generating"}
@@ -134,16 +183,12 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
         data-testid={`button-generate-fourviews-${character.id}`}
       >
         {fourViewStatus === "generating" ? "⏳ 生成中…" :
-         fourViewStatus === "completed" ? `🔄 重新生成四視圖 (-${4 * IMAGE_COST} 積分)` :
-         `✨ 生成四視圖 (-${4 * IMAGE_COST} 積分)`}
+         freeFourView ? "✨ 生成四視圖（首次免費）" :
+         fourViewStatus === "completed" ? `🔄 重新生成四視圖 (-${fourViewCost} 積分)` :
+         `✨ 生成四視圖 (-${fourViewCost} 積分)`}
       </button>
 
-      <div className="grid grid-cols-2 gap-2">
-        <Link href={`/character-library/sheet?character=${character.id}`}>
-          <span className="block text-center text-sm border border-indigo-500 text-indigo-600 hover:bg-indigo-600/10 py-2 rounded-lg cursor-pointer" data-testid={`link-sheet-${character.id}`}>
-            🧩 角色九宮格
-          </span>
-        </Link>
+      <div className="grid grid-cols-1 gap-2">
         <Link href={`/photoset?mode=kit&character=${character.id}`}>
           <span className="block text-center text-sm border border-[#e2e8f0] text-[#475569] hover:border-indigo-500 hover:text-indigo-600 py-2 rounded-lg cursor-pointer" data-testid={`link-photoset-${character.id}`}>
             📸 拍寫真
@@ -299,13 +344,13 @@ export default function CharacterLibraryPage() {
         <div className="flex items-start justify-between gap-3 flex-wrap mb-6">
           <div className="min-w-0">
             <h1 className="hidden md:block text-2xl font-bold text-[#0f172a]">角色庫</h1>
-            <p className="text-sm text-[#64748b] md:mt-1">建立固定角色，寫真與漫劇都能重複使用。角色卡片上可以生成九宮格定裝圖。</p>
+            <p className="text-sm text-[#64748b] md:mt-1">上傳最多 10 張照片建立固定角色，建好就在這裡，寫真與漫劇都能重複使用。</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
             <button onClick={() => setShowWizard(true)}
               className="flex-1 sm:flex-none h-11 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold whitespace-nowrap"
               data-testid="button-open-wizard">
-              <i className="fas fa-camera mr-2 text-xs" />三張照片建立角色
+              <i className="fas fa-camera mr-2 text-xs" />上傳照片建立角色
             </button>
             <button
               onClick={() => setShowCreate(true)}

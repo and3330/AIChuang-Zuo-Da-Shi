@@ -14,6 +14,7 @@ import { NavigationHeader } from "@/components/AppNav";
 import { LibraryAdminPanel } from "@/components/LibraryAdminPanel";
 import { CostPanel } from "@/components/CostPanel";
 import { ShowcaseAdminPanel } from "@/components/ShowcaseAdminPanel";
+import { OrderStatsPanel } from "@/components/OrderStatsPanel";
 
 interface AdminUser {
   id: string;
@@ -54,6 +55,8 @@ interface OrderRecord {
   balance: number;
   description: string | null;
   createdAt: string;
+  paidAmount?: number | null;
+  paidCurrency?: string | null;
   username: string;
   email: string;
 }
@@ -531,6 +534,8 @@ export default function AdminPage() {
         {activeTab === "tokens" && (
           <PartnerTokensPanel users={(users ?? []).map((u: any) => ({ id: u.id, username: u.username, email: u.email ?? null, credits: u.credits ?? 0 }))} />
         )}
+
+        {activeTab === "orders" && <OrderStatsPanel orders={orders ?? []} />}
 
         {activeTab === "orders" && (
           <Card>

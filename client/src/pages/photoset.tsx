@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "@/components/AppNav";
 import { LibraryPicker } from "@/components/LibraryPicker";
+import { CharacterWizard } from "@/components/CharacterWizard";
 import { VaultPicker } from "@/components/VaultPicker";
 import { ReferenceCollage, type CollageTile } from "@/components/ReferenceCollage";
 import { SensitiveGate } from "@/components/SensitiveGate";
@@ -26,9 +27,11 @@ import {
 } from "@shared/photosetOptions";
 
 // 寫真工作室（/photoset）與角色九宮格（/character-library/sheet）共用這個頁面。
-// 畫面是一步一步的：做完一步，下一步在下方展開；做過的步驟收成一行摘要，點了可以回去改。
+// 畫面是一步一步的：一開始只看得到第一步，按「下一步」才出現下一步（還沒走到的步驟完全不顯示）；
+// 做過的步驟收成一行摘要，點了可以回去改。全部走完才出現「規劃鏡頭」。從素材圖庫帶配方進來時直接全部顯示。
 //
-//   情境寫真  ① 情境（文字描述，或一張要模仿的照片；下方可放人物參考圖）
+//   照片同款（mode "scene"）：有一張喜歡的照片，用同樣的場景與風格，換成自己的角色、也可以換服裝，生成一系列。
+//             ① 要模仿的照片（沒有照片才改用文字描述場景）
 //             ② 角色（選填，從角色庫帶入四視圖）③ 姿勢與服裝（各選一個，選填）④ 張數與輸出
 //   素材套圖  ① 人物 ② 服裝 ③ 姿勢 ④ 張數與輸出 —— 人像／服裝／姿勢都可以隨機
 //   角色九宮格（variant="sheet"） ① 角色 ② 張數，固定規格
@@ -52,7 +55,7 @@ const MIN_SHOTS = 2;
 const MAX_SHOTS = 10;
 const SHEET_MAX_REFS = 9;
 /** A library character brings its four views (front, 3/4, side, back). */
-const CHARACTER_IMAGES = 4;
+const CHARACTER_IMAGES = REF_BUDGET.character;
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 async function uploadToObjectStorage(file: File): Promise<string> {
@@ -80,12 +83,17 @@ function checkImageFile(file: File): string | null {
   return null;
 }
 
-/** The four views when they exist, otherwise the first images of the pack. */
+/**
+ * The character's person references, most faithful first: the real photos it was
+ * built from (the first one is the face), then its AI-made four views to fill
+ * what is left. Real photos come first because a picture copied from an AI
+ * picture drifts a little further from the person each time.
+ */
 function characterImages(c: CharacterLibraryItem | null): string[] {
   if (!c) return [];
   const v = (c.fourViewUrls ?? {}) as FourViewUrls;
   const views = [v.front, v.threeQuarter, v.side, v.back].filter((u): u is string => !!u);
-  return (views.length > 0 ? views : c.refImageUrls ?? []).slice(0, CHARACTER_IMAGES);
+  return Array.from(new Set([...(c.refImageUrls ?? []), ...views])).slice(0, CHARACTER_IMAGES);
 }
 
 /** One random ready-made asset from the library. */
@@ -199,12 +207,15 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
     const recipe: Recipe = !isSheet && q.get("recipe") === "1" ? loadRecipe() : {};
     const hasRecipe = Object.keys(recipe).length > 0;
     const asked = q.get("mode");
-    const mode: Mode = isSheet ? "sheet" : asked === "kit" || asked === "character" || (hasRecipe && asked !== "scene") ? "kit" : "scene";
+    const mode: Mode = isSheet ? "sheet" : asked === "scene" ? "scene" : "kit";
     return { mode, characterId: q.get("character") || "", recipe };
   }, [isSheet]);
 
   const [mode, setMode] = useState<Mode>(initial.mode);
   const [active, setActive] = useState(0);
+  // The furthest step shown so far. Steps beyond it stay hidden until "下一步" reaches them.
+  const [reached, setReached] = useState(() => (Object.keys(initial.recipe).length > 0 ? 99 : 0));
+  const goTo = (i: number) => { setActive(i); setReached(r => Math.max(r, i)); };
   const [sceneText, setSceneText] = useState("");
   const [situationPath, setSituationPath] = useState("");
   const [characterId, setCharacterId] = useState(initial.recipe.portrait ? "" : initial.characterId);
@@ -234,7 +245,15 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const [showCollage, setShowCollage] = useState(false);
 
   const { data: savedScenes = [] } = useQuery<SceneLibraryItem[]>({ queryKey: ["/api/scene-library"], enabled: !isSheet });
-  const { data: characters = [] } = useQuery<CharacterLibraryItem[]>({ queryKey: ["/api/character-library"] });
+  const { data: characters = [], isSuccess: charactersLoaded } = useQuery<CharacterLibraryItem[]>({ queryKey: ["/api/character-library"] });
+  // Someone with no character yet starts by making one: the wizard opens by itself once.
+  const [showWizard, setShowWizard] = useState(false);
+  const wizardOffered = useRef(false);
+  useEffect(() => {
+    if (isSheet || wizardOffered.current || !charactersLoaded) return;
+    wizardOffered.current = true;
+    if (characters.length === 0 && !initial.recipe.portrait) setShowWizard(true);
+  }, [isSheet, charactersLoaded, characters.length, initial.recipe.portrait]);
   const character = characters.find(c => c.id === characterId) ?? null;
   const characterRefs = character?.refImageUrls ?? [];
   // The sheet builds the pack, so it reads the whole pack; a shoot takes the four views.
@@ -268,7 +287,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
 
   const resetPlan = () => { setPlan(null); setBatchId(""); setSavedUrls([]); };
   useEffect(() => { resetPlan(); }, [mode, characterId]); // eslint-disable-line react-hooks/exhaustive-deps
-  const switchMode = (m: Mode) => { if (m !== mode) { setMode(m); setActive(0); } };
+  const switchMode = (m: Mode) => { if (m !== mode) { setMode(m); setActive(0); setReached(0); } };
 
   const collageTiles: CollageTile[] = [
     ...(personRefs[0] ? [{ label: "人像", name: portrait?.name ?? character?.name ?? "人物參考圖", url: personRefs[0] }] : []),
@@ -539,24 +558,26 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         <option value="">{mode === "scene" ? "不指定角色" : "從角色庫選擇…"}</option>
         {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
-      {!isSheet && <Link href="/character-library"><span className="shrink-0 h-11 px-3 flex items-center border border-slate-200 rounded-xl text-xs text-slate-600 hover:border-indigo-300 cursor-pointer whitespace-nowrap">角色庫</span></Link>}
+      {!isSheet && (
+        <button onClick={() => setShowWizard(true)} disabled={busy}
+          className="shrink-0 h-11 px-3 flex items-center gap-1.5 border border-indigo-300 bg-indigo-50 rounded-xl text-xs font-semibold text-indigo-700 hover:bg-indigo-100 whitespace-nowrap disabled:opacity-50" data-testid="button-new-character">
+          <i className="fas fa-plus text-[10px]" />新角色
+        </button>
+      )}
     </div>
   );
 
   const sceneBody = (
     <>
       <div>
-        <label className="text-xs font-semibold text-slate-600 block mb-1">描述場景</label>
-        <textarea value={sceneText} onChange={e => { setSceneText(e.target.value.slice(0, 400)); if (plan) resetPlan(); }} rows={3} disabled={busy}
-          placeholder="例如：午後的老咖啡店，靠窗的位置，暖色的陽光斜照進來"
-          className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-testid="input-scene-text" />
-      </div>
-      <div>
-        <label className="text-xs font-semibold text-slate-600 block mb-1">或放一張要模仿的照片 <span className="font-normal text-slate-400">場景、光線與氛圍會照它來</span></label>
+        <p className="text-sm font-semibold text-slate-800">放一張你喜歡的照片</p>
+        <p className="text-xs text-slate-500 mt-1 mb-3 leading-relaxed">
+          例如你在外面拍的、或在網路上看到想要同款的照片。AI 會照它的場景、光線和風格，換成你的角色，再生成一系列不同鏡頭。下一步選角色，再下一步可以換服裝。
+        </p>
         <input ref={situationInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleSituationFile(e.target.files?.[0])} data-testid="input-photoset-situation" />
         {situationPath && (
           <div className="relative mb-2">
-            <img src={situationPath} alt="情境圖" className="w-full max-h-56 object-contain rounded-xl bg-slate-100" />
+            <img src={situationPath} alt="要模仿的照片" className="w-full max-h-56 object-contain rounded-xl bg-slate-100" />
             <button onClick={() => { setSituationPath(""); resetPlan(); }} disabled={busy} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white" title="移除"><i className="fas fa-xmark text-xs" /></button>
           </div>
         )}
@@ -571,9 +592,12 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         )}
       </div>
       <div className="border-t border-slate-100 pt-4">
-        <label className="text-xs font-semibold text-slate-600 block mb-2">人物參考圖 <span className="font-normal text-slate-400">{situationPath ? "選填，不放就沿用照片裡的人" : "只寫文字時，需要至少一張人物照或下一步選角色"}</span></label>
-        {extraRefs.length > 0 && <div className="mb-2">{refThumbs}</div>}
-        {refUploader}
+        <label className="text-xs font-semibold text-slate-600 block mb-1">
+          {situationPath ? "想調整的地方" : "沒有照片？用文字描述場景"} <span className="font-normal text-slate-400">{situationPath ? "選填" : "二選一"}</span>
+        </label>
+        <textarea value={sceneText} onChange={e => { setSceneText(e.target.value.slice(0, 400)); if (plan) resetPlan(); }} rows={2} disabled={busy}
+          placeholder={situationPath ? "例如：改成傍晚的光線、人少一點" : "例如：午後的老咖啡店，靠窗的位置，暖色的陽光斜照進來"}
+          className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-testid="input-scene-text" />
       </div>
     </>
   );
@@ -581,15 +605,27 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const personBody = (
     <>
       {characterSelect}
-      {character && characterShown.length === 0 && <p className="text-xs text-red-500">這個角色還沒有圖片，請到角色庫上傳或生成四視圖。</p>}
+      {character && characterShown.length === 0 && <p className="text-xs text-red-500">這個角色還沒有圖片，請到角色庫上傳照片。</p>}
       {mode === "kit" && (
         <LibrarySlot label="人像" icon="fa-face-smile" item={portrait} disabled={busy} randomizing={randomizing === "portrait" || randomizing === "all"}
           onPick={() => setPicker({ library: "portrait", purpose: "portrait" })} onRandom={() => pickRandom(["portrait"])} onClear={() => { setPortrait(undefined); resetPlan(); }} />
       )}
       {wantedRefs.length > 0 && refThumbs}
-      {mode !== "scene" && refUploader}
+      {!isSheet && characters.length === 0 && !portrait && (
+        <button onClick={() => setShowWizard(true)} disabled={busy}
+          className="w-full text-left rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/60 p-4 hover:bg-indigo-50 disabled:opacity-50" data-testid="button-first-character">
+          <span className="block text-sm font-bold text-indigo-800"><i className="fas fa-user-plus mr-2" />先建立你的角色</span>
+          <span className="block text-xs text-slate-600 mt-1">上傳最多 10 張自己的照片，之後每一組寫真都是你。第一次建立會免費幫你生成四視圖。</span>
+        </button>
+      )}
+      {wantedRefs.length < refCap && (
+        <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-fuchsia-50 border border-fuchsia-200 text-xs font-semibold text-fuchsia-700" data-testid="hint-more-refs">
+          <i className="fas fa-circle-plus" />再上傳幾張你的照片，會更像你自己
+        </p>
+      )}
+      {refUploader}
       <p className="text-[11px] text-slate-400">
-        人物參考圖 {personRefs.length}／{refCap} 張。{isSheet ? "" : `選角色會帶入它的四視圖（最多 ${CHARACTER_IMAGES} 張）。`}臉部清楚的正面照效果最好。
+        人物參考圖 {personRefs.length}／{refCap} 張。{isSheet ? "" : `選角色會帶入它的照片（最多 ${CHARACTER_IMAGES} 張，本人照片優先）。`}臉部清楚的正面照效果最好。
       </p>
     </>
   );
@@ -712,7 +748,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       ]
     : mode === "scene"
       ? [
-          { title: "情境", summary: situationPath ? `模仿照片${sceneText.trim() ? "＋文字描述" : ""}` : sceneText.trim() || "輸入場景，或放一張要模仿的照片", done: !!situationPath || sceneText.trim().length > 0, body: sceneBody },
+          { title: "要模仿的照片", summary: situationPath ? `已放照片${sceneText.trim() ? "＋調整說明" : ""}` : sceneText.trim() || "放一張喜歡的照片（沒有照片可以用文字描述）", done: !!situationPath || sceneText.trim().length > 0, body: sceneBody },
           { title: "角色", summary: personSummary, done: firstStepDone, body: personBody },
           { title: "姿勢與服裝", summary: [pose ? `姿勢：${pose.name}` : "姿勢由 AI 安排", costume ? `服裝：${costume.name}` : "服裝不指定"].join("・"), done: true, body: <>{poseSlot}{costumeSlot}{outfitSource}</> },
           { title: "張數與輸出", summary: outputSummary, done: true, body: outputBody },
@@ -728,8 +764,8 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const lastStep = steps.length - 1;
 
   const MODES: Array<{ id: Mode; icon: string; title: string; desc: string }> = [
-    { id: "scene", icon: "fa-panorama", title: "情境寫真", desc: "寫下場景，或放一張要模仿的照片。" },
     { id: "kit", icon: "fa-layer-group", title: "素材套圖", desc: "選人物，配素材圖庫的服裝與姿勢。" },
+    { id: "scene", icon: "fa-panorama", title: "照片同款", desc: "放一張喜歡的照片，換成你的角色和服裝，生成同風格的一系列。" },
   ];
 
   return (
@@ -777,13 +813,13 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
 
         {/* ── 步驟 ── */}
         <div className="space-y-3">
-          {steps.map((s, i) => (
+          {steps.map((s, i) => i > reached ? null : (
             <Step key={`${mode}-${i}`} n={i + 1} title={s.title} summary={s.summary} open={active === i} done={s.done && (active > i || !!plan)} locked={!reachable(i)} onOpen={() => setActive(i)}>
               {s.body}
               {i < lastStep
-                ? <NextButton onClick={() => setActive(i + 1)} disabled={!s.done || !reachable(i + 1)} />
-                : <NextButton onClick={() => setActive(steps.length)} label="設定完成" />}
-              {i === 0 && mode === "scene" && !s.done && <p className="text-[11px] text-slate-400">請輸入場景，或放一張照片。</p>}
+                ? <NextButton onClick={() => goTo(i + 1)} disabled={!s.done || !reachable(i + 1)} />
+                : <NextButton onClick={() => goTo(steps.length)} label="設定完成" />}
+              {i === 0 && mode === "scene" && !s.done && <p className="text-[11px] text-slate-400">請放一張照片；沒有照片的話，在下面用文字描述場景。</p>}
             </Step>
           ))}
         </div>
@@ -811,8 +847,8 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
           </div>
         )}
 
-        {/* ── 規劃 ── */}
-        <div className="mt-4 space-y-2">
+        {/* ── 規劃：所有步驟走完才出現 ── */}
+        <div className={`mt-4 space-y-2 ${reached >= steps.length || plan ? "" : "hidden"}`} data-testid="plan-section">
           {isSheet && (
             <button onClick={() => planMutation.mutate("preset")} disabled={!inputsReady || busy} className="w-full h-12 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-photoset-preset">
               使用標準九宮格（立即產生）
@@ -953,6 +989,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       </div>
 
       {picker && <LibraryPicker library={picker.library} onConfirm={onPicked} onClose={() => setPicker(null)} />}
+      {showWizard && <CharacterWizard onClose={() => setShowWizard(false)} onCreated={(id) => { setPortrait(undefined); setCharacterId(id); }} />}
       {vaultTarget && <VaultPicker onPick={onVaultPicked} onClose={() => setVaultTarget(null)} />}
       {showCollage && <ReferenceCollage tiles={collageTiles} onClose={() => setShowCollage(false)} />}
       {lightbox && (
