@@ -114,3 +114,4 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 黃金會員：必須先是正式會員才能付 US$22 升級，含 600 積分（`GOLD_MEMBERSHIP.credits`）。成人前綴（`enhanceImagePrompt`）現在套用在黃金專區送出的每一張圖（`image_generations.sensitive`），其他地方都不加；影片沒有這個欄位，仍然只在提示詞命中 `containsNsfw()` 時加前綴，而這種提示詞只有黃金專區收。
 - **會員商城 `/store`（2026-11-11）**：所有付費集中在這頁（帳戶頁只剩摘要、生日、計價）。三階段：非會員看到小試身手 US$2／40 積分（`TRIAL`，每帳號一次，`users.trial_used_at`，不算會員）與正式會員 US$9.9；正式會員可買儲值包（`TOPUP_PACKS`：NT$100→100、300→320、500→550、1,000→1,150、3,000→3,600，自訂金額用 `topupCredits()` 套同級距比例）；黃金會員卡片只在「正式會員＋已填生日且滿 18」才出現。計價：一般區有浮水印 5、去浮水印 6（`WATERMARK_REMOVAL_COST` = 1）；黃金專區有浮水印 5、去浮水印 8（`GOLD_WATERMARK_REMOVAL_COST` = 3）。影片價格兩區相同。對外 API 價格固定為 5／6，不跟著變。Stripe 付款完成回到 `/store`。
 - 管理員不受一般區限制：成人提示詞在任何頁面都收（成品標記 `sensitive`、加成人前綴），成人向圖庫素材在任何頁面都看得到。其他帳號（含正式會員、黃金會員）在一般區一律被擋，要到黃金專區才能用。
+- 嵌入模式（客戶小鎮工作區）：對方用 `adult_birth_date` 為工作區開啟成人內容時，該子帳號會設為黃金會員，一樣要到黃金專區 `/gold` 才能用；關閉時取消。嵌入模式看不到會員商城。

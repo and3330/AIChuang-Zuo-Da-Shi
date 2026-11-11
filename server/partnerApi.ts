@@ -30,7 +30,8 @@ import { IMAGE_COST } from "@shared/pricing";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createHash, randomBytes, randomUUID } from "crypto";
 import { z } from "zod";
-import { CHARACTER_PACK_MAX_IMAGES, type ImageGeneration, type VideoGeneration, type PartnerToken, type PartnerJob, type PartnerCharacter, type FourViewUrls } from "@shared/schema";
+import { isAdult } from "@shared/safety";
+import { CHARACTER_PACK_MAX_IMAGES, type ImageGeneration, type VideoGeneration, type PartnerToken, type PartnerJob, type PartnerCharacter, type PartnerEmbedSession, type FourViewUrls } from "@shared/schema";
 import { FOUR_VIEW_PRESETS, FOUR_VIEW_SIZE, fourViewPrompt } from "@shared/fourViews";
 import { IMAGE_RATIOS, IMAGE_TIERS } from "@shared/imageSizes";
 import { PHOTO_LOOKS, POSES, photoLookSuffix, poseById, referenceNote, type PhotoLookId } from "@shared/photosetOptions";
@@ -114,6 +115,11 @@ export interface PartnerStore {
   updateCharacter(id: string, updates: Partial<PartnerCharacter>): Promise<PartnerCharacter | undefined>;
   deleteCharacter(id: string): Promise<void>;
   adminListCharacters(filter: { ownerRef?: string; id?: string }): Promise<PartnerCharacter[]>;
+
+  createEmbedSession(data: { tokenId: string; ownerRef: string; userId: string; ticketHash: string; budget: number; returnOrigin: string }): Promise<PartnerEmbedSession>;
+  findEmbedSessionByTicket(hash: string): Promise<PartnerEmbedSession | undefined>;
+  /** True only for the first caller: marks the one-time ticket as used. */
+  redeemEmbedTicket(id: string): Promise<boolean>;
 }
 
 export class PartnerIdempotencyRace extends Error {}
@@ -123,6 +129,12 @@ export type PartnerDeps = {
   core: {
     getUser(id: string): Promise<{ id: string; credits: number | null; username?: string | null } | undefined>;
     getUserByEmail(email: string): Promise<{ id: string } | undefined>;
+    /** Creates a sub-account nobody can sign in to with a password. */
+    createPartnerUser(data: { username: string; email: string }): Promise<{ id: string }>;
+    /** Turns adult prompts on (with the responsible adult's birth date) or off for a sub-account. */
+    setPartnerUserAdult(userId: string, birthDate: string | null): Promise<void>;
+    /** Sets the displayed balance of a sub-account without moving any money. */
+    setCreditsMirror(userId: string, credits: number): Promise<void>;
     /** Throws when the balance is insufficient. */
     atomicDeductCredits(userId: string, amount: number, description: string): Promise<{ newBalance: number }>;
     atomicAddCredits(userId: string, amount: number, description: string): Promise<void>;
@@ -146,6 +158,8 @@ export type PartnerDeps = {
   deleteStored(url: string): Promise<boolean>;
   /** False when the CDN is not configured (results could not be returned). */
   storageReady(): boolean;
+  /** True when the partner wallet endpoint is configured (needed for embed mode). */
+  walletReady(): boolean;
   /** Same planner as POST /api/photosets/plan. */
   planPhotoset(input: Record<string, any>): Promise<{ analysis: string; shots: { title: string; prompt: string }[] }>;
   /** Width/height an app-level image size resolves to. */
@@ -187,6 +201,21 @@ function sendError(res: Response, e: unknown) {
   // Never echo unexpected error text: it may contain provider or path details.
   console.error("[Partner] unexpected error:", e instanceof Error ? e.message : "unknown");
   return res.status(500).json({ error: "伺服器發生錯誤，請稍後再試。", code: "internal_error" });
+}
+
+/* ───────────────────────── embed guard ───────────────────────── */
+
+/**
+ * Embed-mode browser sessions belong to a partner workspace, not to a person.
+ * They must not buy credits, change account or adult-content settings, or sign
+ * in another way. Mount before the site's own routes.
+ */
+const EMBED_BLOCKED = [/^\/api\/stripe\//, /^\/api\/credits\/topup/, /^\/api\/account\/safety/, /^\/api\/auth\/google/, /^\/api\/admin\//];
+export function partnerEmbedGuard(req: Request, res: Response, next: NextFunction) {
+  if (req.session?.embed && req.method !== "GET" && EMBED_BLOCKED.some(p => p.test(req.path))) {
+    return res.status(403).json({ error: "這個功能在客戶小鎮的創作模式中無法使用。", code: "embed_not_allowed" });
+  }
+  next();
 }
 
 /* ───────────────────────── tokens ───────────────────────── */
@@ -1362,6 +1391,94 @@ export function registerPartnerRoutes(app: Express, deps: PartnerDeps) {
         daily_videos: token.dailyVideoLimit ?? null,
       },
     });
+  });
+
+  /* ───────────── embed mode: a workspace opens this site's own UI ───────────── */
+  // Each owner_ref gets its own sub-account, so the whole site works unchanged and
+  // workspaces never see each other's work. A sub-account holds no credits here: every
+  // deduction and refund goes to the partner's wallet (server/partnerWallet.ts).
+
+  const EMBED_TICKET_MS = 10 * 60 * 1000;
+  const EMBED_LOGIN_MS = 12 * 60 * 60 * 1000;
+  const embedCreateSchema = z.object({
+    owner_ref: z.string().regex(/^[\x21-\x7e]{1,100}$/, "owner_ref 必須是 1–100 個英數或符號字元"),
+    return_origin: z.string().max(200),
+    /** The workspace's current balance in the partner's wallet, shown until the first charge. */
+    balance: z.number().int().min(0).max(100_000_000),
+    /** Birth date of the adult responsible for this workspace. Present = adult prompts allowed in this session. */
+    adult_birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "adult_birth_date 必須是 YYYY-MM-DD").optional(),
+  }).strict();
+
+  function embedOrigin(raw: string): string {
+    let url: URL;
+    try { url = new URL(raw); } catch { throw new PartnerError(400, "invalid_request", "return_origin 必須是網址來源，例如 https://example.com。"); }
+    const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && local)) throw new PartnerError(400, "invalid_request", "return_origin 必須是 https。");
+    return url.origin;
+  }
+
+  async function embedUser(token: PartnerToken, ownerRef: string): Promise<string> {
+    const key = createHash("sha256").update(token.id + "\n" + ownerRef).digest("hex").slice(0, 24);
+    const email = `embed-${key}@partner.invalid`;
+    const existing = await deps.core.getUserByEmail(email);
+    if (existing) return existing.id;
+    return (await deps.core.createPartnerUser({ username: `partner-${key}`, email })).id;
+  }
+
+  app.post(`${BASE}/embed-sessions`, authenticate, async (req: AuthedRequest, res) => {
+    try {
+      const token = req.partnerToken!;
+      const body = parseBody(embedCreateSchema, req.body);
+      const origin = embedOrigin(body.return_origin);
+      if (!deps.walletReady()) throw new PartnerError(503, "wallet_not_configured", "尚未設定對方的錢包端點，暫時無法開啟。");
+      if (body.adult_birth_date !== undefined) {
+        if (!token.allowNsfw) throw new PartnerError(403, "nsfw_not_allowed", "這個權杖未開放成人內容，無法為工作區開啟。");
+        if (!isAdult(body.adult_birth_date)) throw new PartnerError(400, "invalid_request", "adult_birth_date 顯示未滿 18 歲，無法開啟成人內容。");
+      }
+      const subUserId = await embedUser(token, body.owner_ref);
+      // Set on every session, so turning it off on the partner's side takes effect next time.
+      await deps.core.setPartnerUserAdult(subUserId, body.adult_birth_date ?? null);
+      const ticket = randomBytes(32).toString("base64url");
+      const session = await deps.store.createEmbedSession({
+        tokenId: token.id, ownerRef: body.owner_ref, userId: subUserId, ticketHash: createHash("sha256").update(ticket).digest("hex"),
+        budget: body.balance, returnOrigin: origin,
+      });
+      await deps.core.setCreditsMirror(subUserId, body.balance);
+      res.status(201).json({
+        session_id: session.id, owner_ref: session.ownerRef,
+        url: `${req.protocol}://${req.get("host")}/embed/enter?ticket=${ticket}`,
+        nsfw_allowed: body.adult_birth_date !== undefined,
+        ticket_expires_at: new Date(now() + EMBED_TICKET_MS).toISOString(),
+      });
+    } catch (e) {
+      sendError(res, e);
+    }
+  });
+
+  // Browser entry: trades the one-time ticket for a site session as the workspace's sub-account.
+  app.get("/embed/enter", async (req, res) => {
+    const fail = () => res.status(410).type("html").send(
+      '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:sans-serif;padding:2rem;text-align:center"><h1 style="font-size:1.25rem">這個連結已經失效</h1><p>請回到客戶小鎮，重新開啟創作工坊。</p></body>');
+    try {
+      const ticket = typeof req.query.ticket === "string" ? req.query.ticket : "";
+      if (!/^[A-Za-z0-9_-]{20,100}$/.test(ticket)) return fail();
+      const s = await deps.store.findEmbedSessionByTicket(createHash("sha256").update(ticket).digest("hex"));
+      if (!s || s.redeemedAt || now() - new Date(s.createdAt ?? 0).getTime() > EMBED_TICKET_MS) return fail();
+      if (!(await deps.store.redeemEmbedTicket(s.id))) return fail();
+      req.session.regenerate((err) => {
+        if (err) return fail();
+        req.session.userId = s.userId;
+        req.session.username = "客戶小鎮";
+        req.session.isAdmin = false;
+        req.session.embed = { sessionId: s.id, returnOrigin: s.returnOrigin };
+        // Shorter than a normal sign-in: access follows the partner's own login.
+        if (req.session.cookie) req.session.cookie.maxAge = EMBED_LOGIN_MS;
+        res.setHeader("Referrer-Policy", "no-referrer");
+        req.session.save(() => res.redirect("/"));
+      });
+    } catch {
+      fail();
+    }
   });
 
   // Anything else under the prefix: a JSON 404 instead of the SPA fallback.

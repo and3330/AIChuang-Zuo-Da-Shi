@@ -636,6 +636,35 @@ export const partnerCharacters = pgTable("partner_characters", {
   ownerIdx: index("partner_characters_owner_idx").on(t.userId, t.ownerRef),
 }));
 
+/**
+ * A partner workspace opening this site's own UI ("embed mode"). Each owner_ref
+ * gets its own sub-account, so everything it makes stays apart from other
+ * workspaces. `budget` credits are moved from the service account to the
+ * sub-account when the session is created and whatever is left is moved back
+ * when it is settled.
+ */
+export const partnerEmbedSessions = pgTable("partner_embed_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tokenId: varchar("token_id").notNull(),
+  ownerRef: text("owner_ref").notNull(),
+  /** The sub-account the browser is signed in as. */
+  userId: varchar("user_id").notNull(),
+  /** SHA-256 of the one-time entry ticket. */
+  ticketHash: text("ticket_hash").notNull().unique(),
+  budget: integer("budget").notNull(),
+  /** Set when settled: budget minus what was left. */
+  spent: integer("spent"),
+  /** Origin that may receive the picked results (window.postMessage target). */
+  returnOrigin: text("return_origin").notNull(),
+  /** open | settling | settled */
+  status: text("status").notNull().default("open"),
+  createdAt: timestamp("created_at").defaultNow(),
+  redeemedAt: timestamp("redeemed_at"),
+  settledAt: timestamp("settled_at"),
+}, (t) => ({
+  ownerIdx: index("partner_embed_sessions_owner_idx").on(t.tokenId, t.ownerRef),
+}));
+
 /** One row per successful provider generation, with an estimated cost (後台「成本」). */
 export const providerCosts = pgTable("provider_costs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -691,3 +720,4 @@ export type LibraryAsset = typeof libraryAssets.$inferSelect;
 export type PartnerToken = typeof partnerTokens.$inferSelect;
 export type PartnerJob = typeof partnerJobs.$inferSelect;
 export type PartnerCharacter = typeof partnerCharacters.$inferSelect;
+export type PartnerEmbedSession = typeof partnerEmbedSessions.$inferSelect;
