@@ -20,6 +20,7 @@ const STEPS: Array<{ icon: string; title: string; desc: string }> = [
 const OTHERS: Array<{ href: string; icon: string; title: string; desc: string }> = [
   { href: "/character-library", icon: "fa-user-plus", title: "先建立我的角色", desc: "上傳照片建立角色，第一個角色免費生成四視圖，之後每個功能都能用。" },
   { href: "/photoset?mode=scene", icon: "fa-panorama", title: "照片同款", desc: "放一張喜歡的照片，換成你的角色和服裝。" },
+  { href: "/product", icon: "fa-bag-shopping", title: "商品帶貨圖", desc: "給一件商品，用你的角色生成帶貨照與貼文文案。" },
   { href: "/create/image", icon: "fa-image", title: "圖片生成", desc: "用一句話畫一張圖，或請 AI 修改你的照片。" },
   { href: "/wall", icon: "fa-globe", title: "先看看別人的作品", desc: "作品牆上的作品可以看提示詞、做同款。" },
   { href: "/library", icon: "fa-images", title: "先逛素材圖庫", desc: "人像、服裝、姿勢，免費瀏覽。" },

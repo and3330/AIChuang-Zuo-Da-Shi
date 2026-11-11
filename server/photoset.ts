@@ -13,6 +13,11 @@
  *   character  — no 情境圖. The reference images are one character and the
  *                plan is a character sheet (views, expressions, poses) that
  *                fully establishes them — the "九宮格" pack.
+ *   product    — 商品帶貨圖 (/product). The reference images are one character and
+ *                productImageUrls are photos of one product. The plan is a set of
+ *                shots of that person with the product, plus a ready-to-post
+ *                caption and hashtags. Image order sent to the image model is
+ *                [...reference images, ...product images].
  *
  * POST /api/photosets/plan returns the shot list. planner "ai" asks Claude to
  * look at the images; planner "preset" (character mode only) returns the
@@ -43,9 +48,11 @@ export const PHOTOSET_MAX_SHOTS = 10;
 export const PHOTOSET_MAX_REFERENCES = 9;
 /** How many reference images Claude looks at while planning. */
 const PLANNER_REFERENCE_LOOKS = 3;
+/** Product mode: photos of the product. */
+export const PHOTOSET_MAX_PRODUCT_IMAGES = 3;
 
 const planRequestSchema = z.object({
-  mode: z.enum(["scene", "character"]).default("scene"),
+  mode: z.enum(["scene", "character", "product"]).default("scene"),
   planner: z.enum(["ai", "preset"]).default("ai"),
   /** 情境圖 — required in scene mode. */
   situationImageUrl: z.string().optional(),
@@ -53,6 +60,10 @@ const planRequestSchema = z.object({
   referenceImageUrls: z.array(z.string()).max(PHOTOSET_MAX_REFERENCES).optional().default([]),
   characterName: z.string().max(60).optional(),
   characterDescription: z.string().max(1000).optional(),
+  /** Product mode: photos of the one product (required), its name and what to say about it. */
+  productImageUrls: z.array(z.string()).max(PHOTOSET_MAX_PRODUCT_IMAGES).optional().default([]),
+  productName: z.string().max(80).optional(),
+  sellingPoints: z.string().max(800).optional(),
   /** Character mode: "sheet" = turnaround / expression sheet on a studio
    *  backdrop (default); "shoot" = a photo shoot of the character in a
    *  setting the planner picks, e.g. for a library recipe. */
@@ -80,7 +91,11 @@ const planRequestSchema = z.object({
 
 type PlanRequest = z.infer<typeof planRequestSchema>;
 export type PhotosetShot = { title: string; prompt: string };
-export type PhotosetPlan = { analysis: string; shots: PhotosetShot[] };
+export type PhotosetPlan = {
+  analysis: string; shots: PhotosetShot[];
+  /** Product mode only: a post to go with the pictures. */
+  caption?: string; hashtags?: string[];
+};
 
 /* ---------- fixed nine-shot character sheet ---------- */
 
@@ -214,6 +229,40 @@ ${SHOT_RULES}
 ${outputFormat(req.count)}`;
 }
 
+function buildProductPrompt(req: PlanRequest, refLooks: number, productLooks: number): string {
+  const info: string[] = [];
+  if (req.productName?.trim()) info.push(`商品名稱：${req.productName.trim()}`);
+  if (req.sellingPoints?.trim()) info.push(`賣家提供的賣點（文案只能根據這些與圖片上看得到的內容）：${req.sellingPoints.trim()}`);
+  return `你是一位社群帶貨內容企劃兼人像攝影師。你會看到 ${refLooks + productLooks} 張圖：前 ${refLooks} 張是同一位「人物」的參考圖，只用來確認這個人的臉部五官、髮型髮色與身形；後 ${productLooks} 張是同一件「商品」的照片。
+
+請規劃一組 ${req.count} 張的「商品帶貨圖」：由這位人物實際拿著、穿戴或使用這件商品，看起來像創作者自己拍來分享的真實使用照，貼在 Instagram、Threads、小紅書上能讓人想點進去看。同時寫一則可以直接搭配這組圖發布的貼文。
+${info.length ? `\n【商品資訊】\n${info.join("\n")}\n` : ""}
+【先分析】
+用 2–3 句繁體中文描述：這件商品是什麼（品類、外觀、顏色、材質、包裝上看得到的特徵），以及你為這組圖選定的「一個」拍攝場景與氛圍（要符合這類商品實際會被使用的地方）。
+
+【再規劃 ${req.count} 個鏡頭】
+${SHOT_RULES}
+
+【商品帶貨圖的要求】
+- 每個鏡頭都要寫出人物如何與商品互動（手持展示、正在使用、穿戴在身上、放在身旁桌面等），以及商品在畫面中的位置與大小；商品必須清楚可辨識。
+- 每個鏡頭的提示詞都要用一句話具體描述商品的外觀（品類、形狀、顏色、材質），因為生成時要靠文字與商品圖一起還原它。
+- 依商品品類決定合理的用法：穿戴類（衣服、鞋包、飾品）要穿戴在身上；手持類（保養品、飲料、3C）要有手部與商品的近景；大型或居家類放在環境中由人物使用。
+- 景別要有變化：至少一張人物與商品都清楚的半身、一張商品為主的手部或細節特寫、一張帶環境的生活情境（張數不足時依序優先）。
+- 第一張適合當封面：人物的臉與商品同時清楚。
+- 所有鏡頭都是同一位人物、同一件商品，不要改變人物身分與年齡，不要讓商品變形或出現第二種商品。
+- 補充資訊若指定了服裝或場景，請遵守。${userExtras(req)}
+
+【貼文文案】
+- caption：繁體中文，80–160 字，第一人稱、口語、像真的在分享使用心得；第一句要能吸引人停下來看；結尾帶一句自然的行動呼籲（例如問問題或邀請留言）。可以用 1–3 個表情符號。
+- 只能寫圖片上看得到的特徵與賣家提供的賣點，不要編造成分、價格、折扣、產地或數據；不要寫療效、醫療功效、「保證有效」「第一」「最」這類宣稱。
+- hashtags：5–8 個，不含 # 符號，混合品類詞與情境詞。
+
+【輸出格式】
+只輸出一個 JSON 物件，不要有任何其他文字或 Markdown：
+{"analysis":"……","shots":[{"title":"4–10 字的鏡頭名稱","prompt":"完整提示詞"}],"caption":"……","hashtags":["……"]}
+shots 陣列必須剛好 ${req.count} 個元素。`;
+}
+
 /** Pull the first JSON object out of the model's text and validate it. */
 function parsePlan(text: string, count: number): PhotosetPlan {
   const match = text.match(/\{[\s\S]*\}/);
@@ -234,9 +283,16 @@ function parsePlan(text: string, count: number): PhotosetPlan {
   if (shots.length < PHOTOSET_MIN_SHOTS) {
     throw new Error("AI 沒有產生足夠的鏡頭，請再試一次。");
   }
+  const hashtags: string[] = (Array.isArray(parsed?.hashtags) ? parsed.hashtags : [])
+    .filter((h: unknown): h is string => typeof h === "string")
+    .map((h: string) => h.replace(/^#+/, "").trim().slice(0, 30))
+    .filter((h: string) => h.length > 0)
+    .slice(0, 10);
   return {
     analysis: typeof parsed?.analysis === "string" ? parsed.analysis.trim() : "",
     shots,
+    ...(typeof parsed?.caption === "string" && parsed.caption.trim() ? { caption: parsed.caption.trim().slice(0, 600) } : {}),
+    ...(hashtags.length > 0 ? { hashtags } : {}),
   };
 }
 
@@ -307,6 +363,10 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
     if (body.mode === "character" && body.referenceImageUrls.length === 0) {
       throw new PhotosetPlanError(400, "請先選擇角色或上傳至少一張角色參考圖。");
     }
+    if (body.mode === "product") {
+      if (body.productImageUrls.length === 0) throw new PhotosetPlanError(400, "請先上傳商品照片。");
+      if (body.referenceImageUrls.length === 0) throw new PhotosetPlanError(400, "請先選擇角色。");
+    }
 
     // Fixed character sheet: no model call needed.
     if (body.mode === "character" && body.planner === "preset") {
@@ -320,14 +380,18 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
       throw new PhotosetPlanError(500, "規劃用的 AI 服務尚未設定。");
     }
 
-    const refsToLook = body.referenceImageUrls.slice(0, PLANNER_REFERENCE_LOOKS);
+    const refsToLook = body.referenceImageUrls.slice(0, body.mode === "product" ? 2 : PLANNER_REFERENCE_LOOKS);
     const imageUrls = body.mode === "scene"
       ? [body.situationImageUrl!, ...refsToLook]
-      : refsToLook;
+      : body.mode === "product"
+        ? [...refsToLook, ...body.productImageUrls]
+        : refsToLook;
     const imageBlocks = await Promise.all(imageUrls.map(loadForVision));
 
     const promptText = body.mode === "scene"
       ? buildScenePrompt(body, refsToLook.length, poses)
+      : body.mode === "product"
+        ? buildProductPrompt(body, refsToLook.length, body.productImageUrls.length)
       : body.characterGoal === "shoot"
         ? buildCharacterShootPrompt(body, refsToLook.length, poses)
         : buildCharacterPrompt(body, refsToLook.length, poses);
