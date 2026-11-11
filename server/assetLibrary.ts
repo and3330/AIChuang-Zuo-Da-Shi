@@ -364,6 +364,28 @@ export function registerAssetLibraryRoutes(
     includeUnready: z.enum(["0", "1"]).default("0"),
   });
 
+  // A few ready, non-adult assets per library for the landing page. No sign-in:
+  // it only ever returns pictures any signed-in visitor could already browse.
+  let samplesCache: { at: number; data: Record<string, Array<{ id: string; name: string; url: string }>> } | null = null;
+  app.get("/api/library/samples", async (_req, res) => {
+    try {
+      if (!samplesCache || Date.now() - samplesCache.at > 10 * 60 * 1000) {
+        const data: Record<string, Array<{ id: string; name: string; url: string }>> = {};
+        for (const library of LIBRARY_IDS) {
+          const rows = await db.select({ id: libraryAssets.id, name: libraryAssets.name, imageUrl: libraryAssets.imageUrl, thumbUrl: libraryAssets.thumbUrl })
+            .from(libraryAssets)
+            .where(and(eq(libraryAssets.library, library), eq(libraryAssets.adult, false), eq(libraryAssets.status, "ready")))
+            .orderBy(sql`random()`).limit(8);
+          data[library] = rows.map(r => ({ id: r.id, name: r.name, url: r.thumbUrl || r.imageUrl || "" })).filter(r => r.url.startsWith("https://"));
+        }
+        samplesCache = { at: Date.now(), data };
+      }
+      res.set("Cache-Control", "public, max-age=300").json(samplesCache.data);
+    } catch {
+      res.json({});
+    }
+  });
+
   app.get("/api/library/groups", requireAuth, async (req, res) => {
     const parsed = groupQuery.safeParse(req.query);
     if (!parsed.success) return res.status(400).json({ error: "查詢參數有誤。" });
