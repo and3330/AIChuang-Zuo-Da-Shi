@@ -22,8 +22,12 @@ import {
   insertSceneLibrarySchema,
   updateSceneLibrarySchema,
   type FourViewUrls,
+  users,
 } from "@shared/schema";
+import { and, eq, isNull } from "drizzle-orm";
+import { db } from "./db";
 import Anthropic from "@anthropic-ai/sdk";
+import sharp from "sharp";
 import archiver from "archiver";
 import mammoth from "mammoth";
 import { assertAllowedRemoteUrl, assertPublicHttpsUrl } from "./ssrfGuard";
@@ -72,11 +76,62 @@ export function registerDramaLibraryRoutes(
     }
   });
 
+  /**
+   * Writes the character's appearance description from its photos (face shape,
+   * features, hair, skin tone, build, distinguishing marks) so every later
+   * generation can carry it in the prompt. Runs in the background after a
+   * character is created without a description; never overwrites one the user
+   * wrote. Failing is harmless: the character simply keeps an empty description.
+   */
+  async function describeCharacterFromPhotos(characterId: string, urls: string[]): Promise<void> {
+    try {
+      const images: Array<{ type: "image"; source: { type: "base64"; media_type: "image/jpeg"; data: string } }> = [];
+      for (const url of urls.slice(0, 4)) {
+        try {
+          const dataUrl = await loadAsBase64(url);
+          // Shrink and re-encode: keeps the request small and the media type always correct.
+          const small = await sharp(Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"))
+            .rotate().resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
+          images.push({ type: "image", source: { type: "base64", media_type: "image/jpeg", data: small.toString("base64") } });
+        } catch { /* skip a photo that cannot be read */ }
+      }
+      if (images.length === 0) return;
+      const anthropic = new Anthropic({
+        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+      });
+      const resp = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 400,
+        messages: [{
+          role: "user",
+          content: [
+            ...images,
+            {
+              type: "text",
+              text: "這些是同一個人的照片，之後要用來讓 AI 繪圖時畫得像這個人。請用繁體中文寫一段 80 到 150 字的外貌描述，只寫看得到的特徵：臉型、眉眼、鼻子、嘴唇、髮型與髮色、膚色、體型，以及明顯的特徵（例如痣、酒窩、眼鏡）。不要猜測姓名、身分、職業或年齡數字，不要描述服裝、背景與拍攝方式，不要加任何前言或結語，只輸出描述本身。",
+            },
+          ],
+        }],
+      });
+      const text = ((resp.content.find((b: any) => b.type === "text") as any)?.text || "").trim().slice(0, 400);
+      if (!text) return;
+      const current = await storage.getCharacter(characterId);
+      if (!current || (current.description ?? "").trim()) return;
+      await storage.updateCharacter(characterId, { description: text } as any);
+    } catch (e: any) {
+      console.warn("[Character] could not describe from photos:", String(e?.message ?? e).slice(0, 120));
+    }
+  }
+
   app.post("/api/character-library", requireAuth, async (req, res) => {
     try {
       const data = insertCharacterLibrarySchema.parse(req.body);
       const c = await storage.createCharacter({ ...data, userId: req.session.userId! });
       res.json(c);
+      if (!(c.description ?? "").trim() && (c.refImageUrls?.length ?? 0) > 0) {
+        void describeCharacterFromPhotos(c.id, c.refImageUrls ?? []);
+      }
     } catch (e: any) {
       res.status(400).json({ error: e.message });
     }
@@ -138,9 +193,19 @@ export function registerDramaLibraryRoutes(
       }
       const previousStatus = claim.previousStatus ?? null;
 
+      // Every account gets one 四視圖 generation free (meant for its first character).
+      // Claimed with a compare-and-set so two requests cannot both be free. Partner
+      // workspaces (embed mode) are not people and do not get it.
+      let free = false;
+      if (!(req.session as any).embed) {
+        const claimed = await db.update(users).set({ freeFourViewUsedAt: new Date() })
+          .where(and(eq(users.id, userId), isNull(users.freeFourViewUsedAt))).returning({ id: users.id });
+        free = claimed.length > 0;
+      }
+
       // Atomic deduction guards against negative balance.
       try {
-        await storage.atomicDeductCredits(
+        if (!free) await storage.atomicDeductCredits(
           userId,
           FOUR_VIEW_CREDIT_COST,
           `角色「${character.name}」四視圖生成（4 張）`
@@ -152,7 +217,7 @@ export function registerDramaLibraryRoutes(
         return res.status(400).json({ error: deductErr.message || `積分不足，需要 ${FOUR_VIEW_CREDIT_COST} 積分` });
       }
       const user = await storage.getUser(userId);
-      res.json({ ok: true, creditsUsed: FOUR_VIEW_CREDIT_COST });
+      res.json({ ok: true, creditsUsed: free ? 0 : FOUR_VIEW_CREDIT_COST, free });
 
       // ── Async background work ────────────────────────────────────────────────
       (async () => {
@@ -163,16 +228,25 @@ export function registerDramaLibraryRoutes(
           const results: FourViewUrls = {};
           let succeeded = 0;
 
+          let frontViewUrl = "";
           for (const preset of FOUR_VIEW_PRESETS) {
             try {
               const plainPrompt = fourViewPrompt(preset.promptZh, character.description, character.styleHint);
-              const fullPrompt = plainPrompt;
+              // The front view is made first and decides the outfit. Every later view gets it as
+              // reference 1, ahead of the person's own photos, so all four wear the same clothes;
+              // without it each view invented its own outfit.
+              const chained = preset.key !== "front" && !!frontViewUrl;
+              const fullPrompt = chained
+                ? `${plainPrompt}（第 1 張參考圖是這個角色已完成的正面定裝圖：服裝、鞋子、髮型與體型必須和它完全一樣。其餘參考圖是本人的照片，用來保持臉部五官一致。）`
+                : plainPrompt;
+              const viewImages = chained ? [frontViewUrl, ...refBase64s.slice(0, 9)] : refBase64s;
               const requestBody: any = {
                 prompt: fullPrompt,
-                image: refBase64s.length === 1 ? refBase64s[0] : refBase64s,
+                image: viewImages.length === 1 ? viewImages[0] : viewImages,
                 size: FOUR_VIEW_SIZE,
               };
               const imageUrl = await atlasGenerateImage({ prompt: requestBody.prompt, images: requestBody.image, size: requestBody.size });
+              if (preset.key === "front") frontViewUrl = imageUrl;
 
               let storedUrl = imageUrl;
               if (bunnyStorage.isConfigured()) {
@@ -196,14 +270,19 @@ export function registerDramaLibraryRoutes(
           }
 
           if (succeeded === 0) {
-            // refund
-            const u2 = await storage.getUser(userId);
-            const refundBal = (u2?.credits ?? 0) + FOUR_VIEW_CREDIT_COST;
-            await storage.updateUserCredits(userId, refundBal);
-            await storage.createCreditTransaction({
-              userId, type: "refund", amount: FOUR_VIEW_CREDIT_COST, balance: refundBal,
-              description: `角色「${character.name}」四視圖生成失敗退款`,
-            });
+            if (free) {
+              // Nothing was charged: give the free generation back instead.
+              await db.update(users).set({ freeFourViewUsedAt: null }).where(eq(users.id, userId));
+            } else {
+              // refund
+              const u2 = await storage.getUser(userId);
+              const refundBal = (u2?.credits ?? 0) + FOUR_VIEW_CREDIT_COST;
+              await storage.updateUserCredits(userId, refundBal);
+              await storage.createCreditTransaction({
+                userId, type: "refund", amount: FOUR_VIEW_CREDIT_COST, balance: refundBal,
+                description: `角色「${character.name}」四視圖生成失敗退款`,
+              });
+            }
             await storage.updateCharacter(character.id, {
               fourViewStatus: "failed",
               fourViewError: "全部視圖生成失敗",

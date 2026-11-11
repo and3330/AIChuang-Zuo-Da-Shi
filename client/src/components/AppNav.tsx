@@ -71,7 +71,6 @@ const GOLD_PAGES = [
 const SUBPAGES: Destination[] = [
   { href: "/create/image", label: "圖片生成", icon: "fa-image", group: "main" },
   { href: "/create/video", label: "影片生成", icon: "fa-clapperboard", group: "main" },
-  { href: "/character-library/sheet", label: "角色九宮格", icon: "fa-table-cells", group: "assets" },
   ...GOLD_PAGES.map(g => ({ href: g.href, label: `黃金・${g.label}`, icon: g.icon, group: "admin" as Group })),
 ];
 

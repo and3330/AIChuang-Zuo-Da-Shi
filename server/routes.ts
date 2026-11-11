@@ -520,6 +520,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       isMember: user.isMember || false,
       isGold: user.isGold || false,
       trialUsedAt: user.trialUsedAt ?? null,
+      freeFourViewUsedAt: user.freeFourViewUsedAt ?? null,
       birthDate: user.birthDate ?? null,
       nsfwEnabled: hasAdultConsent(user),
       onboardedAt: user.onboardedAt ?? null,
@@ -798,6 +799,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           const existingTx = await storage.getCreditTransactionByDescription(stripeDesc);
           if (!existingTx) {
             await storage.atomicAddCredits(userId, credits, stripeDesc);
+            await storage.setTransactionPayment(stripeDesc, session.amount_total ?? 0, session.currency ?? "").catch(() => {});
             await applyPurchasedTier(userId, session.metadata?.kind);
             console.log(`Stripe webhook: credited ${credits} to user ${userId}`);
           } else {
@@ -850,6 +852,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
 
       await storage.atomicAddCredits(userId, credits, stripeDesc);
+      await storage.setTransactionPayment(stripeDesc, session.amount_total ?? 0, session.currency ?? "").catch(() => {});
       await applyPurchasedTier(userId, session.metadata?.kind);
 
       const updatedUser = await storage.getUser(userId);

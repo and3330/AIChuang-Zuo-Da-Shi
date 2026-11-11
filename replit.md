@@ -118,3 +118,13 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - **作品牆（2026-11-11）**：`server/showcase.ts`＋`/wall`（熱門／最新／追蹤中）、`/wall/:id`（作品頁：讚、留言、檢舉、做同款）、`/u/:username`（創作者主頁：自我介紹、作品／獲讚／粉絲／追蹤中、追蹤）。未登入也能看，寫入都要登入。作品從作品庫按「公開到作品牆」投稿，狀態 pending → 後台「作品牆」分頁通過才上牆；被檢舉 3 次自動回到 pending。黃金專區的作品（`sensitive`）、提示詞命中 `containsNsfw()`／`containsMinorTerms()` 的作品不能公開；只收已轉存 CDN 的永久 https 網址。提示詞由作者決定是否公開，公開才有「做同款」（提示詞經 sessionStorage `remixPrompt` 帶進 `/create/image`）。嵌入模式（客戶小鎮工作區）不能使用作品牆。新表：`showcase_posts`、`showcase_likes`、`showcase_comments`、`showcase_reports`、`user_follows`，`users.bio`；上線要 Publish。
 - **首頁改版（2026-11-11）**：`client/src/pages/landing.tsx` 重寫（設計系統由 ui-ux-pro-max skill 產出）：深色電影感、極光漸層、超大標題；主視覺 → 數字 → 功能方格 → 三步驟 → 作品牆熱門作品（有 6 張以上才顯示，主視覺拼貼也會改用真實作品）→ 定價（小試身手／正式會員／儲值包，數字讀 `shared/pricing.ts`，不出現黃金會員）→ 行動呼籲；手機底部固定開始按鈕。樣式在 `index.css` 的 `.lp-*`，減少動態效果時全部關閉。
 - 首頁改為主打「社群寫真」：主標「一鍵生成，人人都是網美」，順序是主視覺 → 三步驟（人物／服裝／姿勢）→ 為什麼（經營社群、不用出門）→ 數字 → 成果 → 其他功能 → 作品牆 → 定價。主視覺與成果區用站內實際生成的 5 張寫真（`client/public/landing/*.webp`）。三步驟卡片會顯示圖庫的真實素材縮圖，來源是新的公開端點 `GET /api/library/samples`（每庫隨機 8 張、非成人、已完成，快取 10 分鐘）。
+- 角色九宮格已停用：三張照片建立角色後直接留在角色庫（`CharacterWizard` 不再導到九宮格），角色卡片的九宮格按鈕、導覽項目都拿掉，`/character-library/sheet` 轉回角色庫。`photoset.tsx` 的 `variant="sheet"` 程式碼還在但沒有入口。
+- 四視圖首次免費：每個帳號第一次生成角色四視圖不扣積分（`users.free_four_view_used_at`，以 compare-and-set 佔用；四張全失敗會把免費資格還回去）。嵌入模式的工作區沒有這個優惠。之後每次仍是 4 × `IMAGE_COST`。
+- 三張照片建立角色：按「下一步」建立角色後回到角色庫；免費資格還在時會自動開始生成四視圖，用過之後只建立角色、不自動扣積分。
+- 角色卡片的四視圖可以點圖放大（左右切換、Esc 關閉、下載）。
+- 寫真工作室改為逐步顯示：一開始只有第一步，按「下一步」才出現下一步，全部走完才出現「規劃鏡頭」（`reached` 狀態；從素材圖庫帶配方進來時全部顯示）。人物參考圖上方新增提示「再上傳幾張你的照片，會更像你自己」。角色卡片的「拍寫真」會帶 `?mode=kit&character=<id>` 自動選好角色。
+- 建立角色改為最多 10 張照片（`CharacterWizard`，`WIZARD_MAX_PHOTOS`；第一張是臉部正面，可調整順序）。寫真帶入角色時改為「本人照片優先，四視圖補滿」，最多 6 張（`characterImages()`，`REF_BUDGET.character`），不再只用四視圖。
+- 角色外貌描述由 AI 自動寫：建立角色時若沒填描述，背景用 Claude 看前 4 張照片寫 80–150 字外貌特徵存進 `description`（`describeCharacterFromPhotos`，不覆蓋使用者自己寫的），寫真規劃與四視圖會帶入。
+- 寫真工作室：預設分頁改為「素材套圖」；沒有角色的人進來會自動跳出建立角色視窗（建好自動選上），角色選單旁多一顆「新角色」。原「情境寫真」改名「照片同款」：第一步是放一張要模仿的照片（沒有照片才用文字描述），人物照片改到第二步「角色」上傳。
+- 後台「訂單」分頁新增訂單統計（`OrderStatsPanel`）：日／週／月／季，付款筆數、售出積分、實收 NT$／US$、手動加值積分。實收金額記在 `credit_transactions.paid_amount`／`paid_currency`（Stripe 的 `amount_total`，未扣手續費），這次改版後的訂單才有。
+- 角色四視圖改成串接：先出正面，其餘三張把正面圖放在參考圖第 1 張（再接本人照片），四張服裝才會一致。模型維持 Seedream 5.5（2026-11-11 實測：Nano Banana 2.1 服裝一致性較好，但使用者認為 Seedream 臉比較像；FLUX 3 會擋清涼的參考照）。

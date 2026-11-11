@@ -21,6 +21,8 @@ export const users = pgTable("users", {
   goldSince: timestamp("gold_since"),
   /** When the one-time 小試身手 pack (TRIAL in shared/pricing.ts) was bought. */
   trialUsedAt: timestamp("trial_used_at"),
+  /** When the one free 四視圖 generation (first character) was used. */
+  freeFourViewUsedAt: timestamp("free_four_view_used_at"),
   /** Shown on the creator's public page (作品牆). */
   bio: text("bio"),
   /** "YYYY-MM-DD". Set once in 安全與隱私; needed before the gold tier can be bought. */
@@ -41,6 +43,10 @@ export const creditTransactions = pgTable("credit_transactions", {
   amount: integer("amount").notNull(),
   balance: integer("balance").notNull(),
   description: text("description"),
+  /** What Stripe collected for this row, in the currency's smallest unit (cents). Only on paid orders. */
+  paidAmount: integer("paid_amount"),
+  /** "twd" | "usd" */
+  paidCurrency: text("paid_currency"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
