@@ -29,8 +29,12 @@ export const users = pgTable("users", {
   birthDate: text("birth_date"),
   /** The user confirmed being 18+ and accepted the gold-zone terms. */
   nsfwEnabled: boolean("nsfw_enabled").default(false),
-  /** When the user accepted the adult-content terms. */
+  /** When the user accepted GOLD_TERMS_OF_USE. */
   nsfwConsentAt: timestamp("nsfw_consent_at"),
+  /** Given when applying for the gold tier. Never shown publicly. */
+  realName: text("real_name"),
+  /** When the account e-mail was confirmed with a code for the gold tier. */
+  emailVerifiedAt: timestamp("email_verified_at"),
   /** When the first-login tour was finished or skipped. */
   onboardedAt: timestamp("onboarded_at"),
   createdAt: timestamp("created_at").defaultNow(),

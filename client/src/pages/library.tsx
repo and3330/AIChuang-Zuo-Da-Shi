@@ -150,7 +150,7 @@ export default function LibraryPage() {
             <button onClick={() => { setCategory(""); setPage(1); }} className={chip(category === "")}>全部</button>
             {(data?.categories ?? []).map(c => (
               <button key={c.category} onClick={() => { setCategory(c.category); setPage(1); }} className={chip(category === c.category)}>
-                {c.category} <span className="opacity-70">{c.n}</span>{c.adult && <span className="ml-1 opacity-70">成人向</span>}
+                {c.category} <span className="opacity-70">{c.n}</span>{c.adult && <span className="ml-1 opacity-70">黃金</span>}
               </button>
             ))}
           </div>
@@ -220,7 +220,7 @@ export default function LibraryPage() {
                       <div className="p-2.5 flex-1 flex flex-col gap-2">
                         <div>
                           <div className="text-xs font-semibold text-[#0f172a] truncate" title={g.title}>{g.title}</div>
-                          <div className="text-[10px] text-[#94a3b8]">{g.category}{g.adult ? "・成人向" : ""}</div>
+                          <div className="text-[10px] text-[#94a3b8]">{g.category}{g.adult ? "・黃金" : ""}</div>
                         </div>
                         {g.variants.length > 1 && (
                           <div className="flex gap-1 overflow-x-auto pb-1">
@@ -266,7 +266,7 @@ export default function LibraryPage() {
                       </div>
                       <div className="p-2">
                         <div className="text-xs font-medium text-[#0f172a] truncate" title={a.name}>{a.name}</div>
-                        <div className="text-[10px] text-[#94a3b8]">{a.category}{a.adult ? "・成人向" : ""}</div>
+                        <div className="text-[10px] text-[#94a3b8]">{a.category}{a.adult ? "・黃金" : ""}</div>
                       </div>
                     </div>
                   );
@@ -334,7 +334,7 @@ export default function LibraryPage() {
             <div className="p-5 space-y-3">
               <div>
                 <h2 className="text-lg font-bold text-[#0f172a]">{preview.name}</h2>
-                <p className="text-xs text-[#94a3b8]">{LIBRARIES.find(l => l.id === preview.library)?.label}・{preview.category}{preview.adult ? "・成人向" : ""}</p>
+                <p className="text-xs text-[#94a3b8]">{LIBRARIES.find(l => l.id === preview.library)?.label}・{preview.category}{preview.adult ? "・黃金" : ""}</p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-[#475569] mb-1">描述</p>

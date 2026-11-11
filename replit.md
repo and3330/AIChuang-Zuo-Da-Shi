@@ -129,3 +129,4 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 後台「訂單」分頁新增訂單統計（`OrderStatsPanel`）：日／週／月／季，付款筆數、售出積分、實收 NT$／US$、手動加值積分。實收金額記在 `credit_transactions.paid_amount`／`paid_currency`（Stripe 的 `amount_total`，未扣手續費），這次改版後的訂單才有。
 - 角色四視圖改成串接：先出正面，其餘三張把正面圖放在參考圖第 1 張（再接本人照片），四張服裝才會一致。模型維持 Seedream 5.5（2026-11-11 實測：Nano Banana 2.1 服裝一致性較好，但使用者認為 Seedream 臉比較像；FLUX 3 會擋清涼的參考照）。
 - 新手導覽改成單一主線（`Onboarding.tsx`）：一頁說明四步（建立角色 → 選服裝 → 選姿勢 → 生成），按開始就進寫真工作室素材套圖；想先做別的可切換選單。寫真工作室預設張數會依餘額調整（新帳號 10 積分＝2 張）。一組寫真完成後跳出會員商城邀請（非會員一定跳；會員在餘額不夠再做同樣一組時才跳；黃金專區不跳）。
+- 黃金會員入口改到帳戶設定：存了滿 18 歲的生日後，生日上方出現「內容審查限制」，點開是「是否開啟 NSFW 模式」開關，打開跳出申請視窗（`GoldApplyDialog`）：認證 Email（`/api/account/email-code`、`/api/account/verify-email`）→ 真實姓名（`users.real_name`）→ 同意 AI 生成內容使用條款（`GOLD_TERMS_OF_USE`）→ 問是否加入 US$22。申請完成（`goldApplicationDone`）後會員商城才出現黃金會員；付款成功跳出導覽（從「我的」選單進入黃金專區）。除了那個開關，前台不出現 NSFW／成人字眼。
