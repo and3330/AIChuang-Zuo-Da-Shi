@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -253,6 +253,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const { data: characters = [], isSuccess: charactersLoaded } = useQuery<CharacterLibraryItem[]>({ queryKey: ["/api/character-library"] });
   // Someone with no character yet starts by making one: the wizard opens by itself once.
   const [showWizard, setShowWizard] = useState(false);
+  const [, navigate] = useLocation();
   const wizardOffered = useRef(false);
   useEffect(() => {
     if (isSheet || wizardOffered.current || !charactersLoaded) return;
@@ -1038,7 +1039,12 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
           </div>
         </div>
       )}
-      {showWizard && <CharacterWizard onClose={() => setShowWizard(false)} onCreated={(id) => { setPortrait(undefined); setCharacterId(id); }} />}
+      {showWizard && <CharacterWizard onClose={() => setShowWizard(false)} onCreated={(id) => {
+        // New visitor (no character yet): go to the 角色庫 to watch the free 四視圖 being made;
+        // the character card there leads back here with the character already chosen.
+        if (characters.length === 0) { navigate("/character-library"); return; }
+        setPortrait(undefined); setCharacterId(id);
+      }} />}
       {vaultTarget && <VaultPicker onPick={onVaultPicked} onClose={() => setVaultTarget(null)} />}
       {showCollage && <ReferenceCollage tiles={collageTiles} onClose={() => setShowCollage(false)} />}
       {lightbox && (
