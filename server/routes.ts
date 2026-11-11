@@ -12,7 +12,7 @@ import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt, plainImagePrompt } from "./promptEnhancer";
 import { GOLD_MEMBERSHIP, IMAGE_COST, MEMBERSHIP, MIN_TOPUP, TRIAL, topupCredits, SIGNUP_CREDITS, VIDEO_COST_PER_SECOND, imageCost } from "@shared/pricing";
-import { ADULT_AGE, GOLD_ZONE_HEADER, GOLD_ZONE_VALUE, ageFromBirthDate, canUseNsfw, containsMinorTerms, containsNsfw, hasAdultConsent } from "@shared/safety";
+import { ADULT_AGE, GOLD_ZONE_HEADER, GOLD_ZONE_VALUE, ageFromBirthDate, canUseNsfw, containsMinorTerms, containsNsfw, goldApplicationDone, hasAdultConsent } from "@shared/safety";
 import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
 import { registerPhotosetRoutes, createPhotosetPlanner } from "./photoset";
@@ -513,6 +513,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       freeFourViewUsedAt: user.freeFourViewUsedAt ?? null,
       birthDate: user.birthDate ?? null,
       nsfwEnabled: hasAdultConsent(user),
+      realName: user.realName ?? null,
+      emailVerifiedAt: user.emailVerifiedAt ?? null,
       onboardedAt: user.onboardedAt ?? null,
       embed: req.session.embed ? { returnOrigin: req.session.embed.returnOrigin } : null,
     });
@@ -520,14 +522,15 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
   // ===== ACCOUNT: SAFETY & PRIVACY =====
 
-  // Birthday (set once) and the 18+ confirmation. Confirming needs an 18+
-  // birthday and acceptance of the terms shown in the UI; it is required
+  // Birthday (set once), real name, and the application for the gold tier
+  // (nsfwEnabled: true). The application needs an 18+ birthday, a confirmed
+  // e-mail, a real name and acceptance of GOLD_TERMS_OF_USE; it is required
   // before the gold tier can be bought.
   app.patch("/api/account/safety", requireAuth, async (req, res) => {
     try {
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(404).json({ error: "用戶不存在" });
-      const { birthDate, nsfwEnabled, acceptTerms } = req.body ?? {};
+      const { birthDate, nsfwEnabled, acceptTerms, realName } = req.body ?? {};
       const patch: Parameters<typeof storage.updateUserProfile>[1] = {};
 
       if (birthDate !== undefined && birthDate !== user.birthDate) {
@@ -539,10 +542,18 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
       const effectiveBirthDate = patch.birthDate ?? user.birthDate;
 
+      if (realName !== undefined) {
+        const name = typeof realName === "string" ? realName.trim() : "";
+        if (name.length < 2 || name.length > 40) return res.status(400).json({ error: "請填寫真實姓名（2 到 40 個字）。" });
+        patch.realName = name;
+      }
+
       if (nsfwEnabled === true) {
         const age = ageFromBirthDate(effectiveBirthDate);
         if (age === null) return res.status(400).json({ error: "請先設定生日。" });
-        if (age < ADULT_AGE) return res.status(403).json({ error: `未滿 ${ADULT_AGE} 歲無法升級。` });
+        if (age < ADULT_AGE) return res.status(403).json({ error: `未滿 ${ADULT_AGE} 歲無法加入。` });
+        if (!user.emailVerifiedAt) return res.status(400).json({ error: "請先完成 Email 認證。" });
+        if (!(patch.realName ?? user.realName)) return res.status(400).json({ error: "請先填寫真實姓名。" });
         if (acceptTerms !== true) return res.status(400).json({ error: "請先閱讀並同意使用條款。" });
         patch.nsfwEnabled = true;
         patch.nsfwConsentAt = new Date();
@@ -555,6 +566,62 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
     } catch (error) {
       console.error("Error updating safety settings:", error);
       res.status(500).json({ error: "設定儲存失敗，請稍後再試。" });
+    }
+  });
+
+  // E-mail confirmation for the gold tier: a 6-digit code sent to the account's own address.
+  app.post("/api/account/email-code", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ error: "用戶不存在" });
+      if (user.emailVerifiedAt) return res.json({ success: true, alreadyVerified: true });
+
+      const recentCode = await storage.getRecentVerificationCode(user.email);
+      if (recentCode) {
+        const elapsed = Date.now() - new Date(recentCode.createdAt!).getTime();
+        if (elapsed < 60000) return res.status(429).json({ error: `請等待 ${Math.ceil((60000 - elapsed) / 1000)} 秒後再重新寄送` });
+      }
+      storage.deleteExpiredVerificationCodes().catch(() => {});
+
+      const code = generateVerificationCode();
+      await storage.createVerificationCode(user.email, code, new Date(Date.now() + 10 * 60 * 1000));
+      await gmailTransporter.sendMail({
+        from: `AI 創意工坊 <${process.env.GMAIL_USER || ""}>`,
+        to: user.email,
+        subject: "AI 創意工坊 - Email 驗證碼",
+        html: `
+          <div style="font-family: 'Microsoft JhengHei', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f5f3ff; border-radius: 16px;">
+            <div style="background: white; border-radius: 12px; padding: 24px; text-align: center;">
+              <p style="color: #374151; font-size: 16px; margin-bottom: 8px;">您的 Email 驗證碼為：</p>
+              <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #7c3aed; padding: 16px; background: #f5f3ff; border-radius: 8px; margin: 16px 0;">${code}</div>
+              <p style="color: #6b7280; font-size: 14px; margin-top: 16px;">驗證碼有效期為 10 分鐘。</p>
+              <p style="color: #9ca3af; font-size: 12px; margin-top: 8px;">如果這不是您本人的操作，請忽略此郵件。</p>
+            </div>
+          </div>
+        `,
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error sending account email code:", error);
+      res.status(500).json({ error: "驗證碼發送失敗，請稍後再試" });
+    }
+  });
+
+  app.post("/api/account/verify-email", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(404).json({ error: "用戶不存在" });
+      if (user.emailVerifiedAt) return res.json({ success: true });
+      const code = typeof req.body?.code === "string" ? req.body.code.trim() : "";
+      if (!/^\d{6}$/.test(code)) return res.status(400).json({ error: "請輸入 6 位數驗證碼。" });
+      const valid = await storage.getValidVerificationCode(user.email, code);
+      if (!valid) return res.status(400).json({ error: "驗證碼不正確或已過期，請重新寄送。" });
+      await storage.markVerificationCodeUsed(valid.id);
+      await storage.updateUserProfile(user.id, { emailVerifiedAt: new Date() });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error verifying account email:", error);
+      res.status(500).json({ error: "驗證失敗，請稍後再試。" });
     }
   });
 
@@ -678,8 +745,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         if (!user.isMember && !user.isAdmin) {
           return res.status(403).json({ error: "請先開通會員，才能升級黃金會員。", code: "membership_required" });
         }
-        if (!hasAdultConsent(user)) {
-          return res.status(403).json({ error: `升級黃金會員須年滿 ${ADULT_AGE} 歲並同意條款。`, code: "age_confirmation_required" });
+        if (!goldApplicationDone(user)) {
+          return res.status(403).json({ error: "請先到帳戶設定完成 Email 認證、真實姓名與條款確認。", code: "gold_application_required" });
         }
       } else if (isMembership) {
         if (user.isMember) return res.status(400).json({ error: "你已經是會員了，直接加購積分即可。" });

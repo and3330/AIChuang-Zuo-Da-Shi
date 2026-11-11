@@ -4,7 +4,9 @@
 //   1. 會員分兩階：正式會員（MEMBERSHIP）與黃金會員（GOLD_MEMBERSHIP）。
 //   2. 一般頁面一律不接受成人內容的提示詞，任何階級都一樣（不扣積分）。
 //   3. 成人內容只在黃金專區（網址以 GOLD_ZONE_PATH 開頭）開放，而且帳號必須是
-//      黃金會員、年滿 ADULT_AGE、同意 NSFW_TERMS_OF_USE。
+//      黃金會員、年滿 ADULT_AGE、同意 GOLD_TERMS_OF_USE。
+//      加入黃金會員前要先完成申請：認證 Email、填真實姓名、同意條款（goldApplicationDone）。
+//      入口是帳戶設定「內容審查限制」裡的開關；除了那個開關，畫面上不出現內容分級的字眼。
 //   4. 黃金專區的成品一律標記為 sensitive，畫面上先模糊，點了才顯示。
 //   5. 黃金專區不接受任何與未成年人、學生相關的提示詞。
 
@@ -36,6 +38,11 @@ type SafetyUser = { birthDate?: string | null; nsfwEnabled?: boolean | null; isG
 /** 18+ by birth date and has accepted the terms. Needed before the gold tier can be bought. */
 export function hasAdultConsent(user: SafetyUser): boolean {
   return !!user?.nsfwEnabled && isAdult(user.birthDate);
+}
+
+/** Application for the gold tier is complete: 18+, terms accepted, e-mail confirmed, real name given. */
+export function goldApplicationDone(user: (SafetyUser & { realName?: string | null; emailVerifiedAt?: unknown }) | null | undefined): boolean {
+  return hasAdultConsent(user) && !!user?.realName && !!user?.emailVerifiedAt;
 }
 
 /** True when this account may use the gold zone: gold tier, 18+, terms accepted. */
@@ -82,11 +89,14 @@ export function containsMinorTerms(text: string | null | undefined): boolean {
   return false;
 }
 
-/** Shown, and must be accepted, before the gold tier is bought. */
-export const NSFW_TERMS_OF_USE: string[] = [
-  "我已年滿 18 歲，且我所在地區的法律允許我瀏覽與製作成人內容。",
-  "我不會生成任何涉及未成年人、或外觀看起來像未成年人的性相關內容。",
-  "我不會用真實人物的肖像生成成人內容，除非是我本人，或已取得當事人明確同意；也不會用於騷擾、報復、詐騙或未經同意的散布。",
-  "生成內容的使用、保存與散布，以及因此產生的一切法律責任，由我自行承擔。",
-  "違反以上任何一項，帳號會被停用且不退還積分，平台並得依法配合調查。",
+/** AI 生成內容的法律風險說明。加入黃金會員前要逐條顯示並同意。 */
+export const GOLD_TERMS_OF_USE: string[] = [
+  "我已年滿 18 歲，具有完全行為能力，且我所在地區的法律允許我瀏覽與製作黃金專區提供的內容。",
+  "我了解所有內容都是 AI 生成的，可能不正確，也可能與真實人物或既有作品相似；平台不保證內容的正確性、合法性或可供商業使用，使用前由我自行判斷。",
+  "我不會生成任何涉及未成年人、或外觀看起來像未成年人的內容。",
+  "我只會上傳我本人、或已取得當事人明確同意的照片；不會製作冒用他人身分、足以讓人誤認為真實的影像，也不會用於騷擾、報復、詐騙、誹謗或未經同意的散布。",
+  "我不會生成侵害他人著作權、商標權、肖像權或隱私權的內容，也不會生成我所在地法律禁止的內容。",
+  "黃金專區的作品不能公開到作品牆。我在其他平台發布時，會遵守該平台的規範，並依當地法規標示為 AI 生成內容。",
+  "生成內容的使用、保存與散布，以及因此產生的一切法律責任，由我自行承擔，與平台無關。",
+  "我提供的真實姓名與 Email 只用於確認會員資格，平台會在法律要求時配合提供。違反以上任何一項，帳號會被停用，且不退還費用與積分。",
 ];

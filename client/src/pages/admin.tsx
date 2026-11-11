@@ -1100,7 +1100,7 @@ export default function AdminPage() {
                       </div>
                       <p className="text-xs text-gray-500 mt-2">
                         生日：{userDetail.user.birthDate ?? "未設定"}・年滿 18 歲並同意條款：{userDetail.user.adultConfirmed ? "已確認" : "尚未確認"}。
-                        黃金會員要本人確認年滿 18 歲並同意條款後，黃金專區才會開啟；手動設定不會收費，也不會增減積分。
+                        黃金會員要本人在帳戶設定打開「內容審查限制」的開關（Email 認證、真實姓名、同意條款）後，黃金專區才會開啟；手動設定不會收費，也不會增減積分。
                       </p>
                     </div>
                     <div className="border-t pt-4">

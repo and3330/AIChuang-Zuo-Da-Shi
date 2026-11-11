@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Link, useLocation } from "wouter";
+import { Link } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useUser } from "@/hooks/use-user";
 import { useToast } from "@/hooks/use-toast";
@@ -12,11 +12,13 @@ import { ADULT_AGE, ageFromBirthDate } from "@shared/safety";
 export { NavigationHeader } from "@/components/AppNav";
 import { NavigationHeader } from "@/components/AppNav";
 import { hasGoldAccess } from "@/lib/zone";
+import { GoldApplyDialog } from "@/components/GoldApplyDialog";
 
 // 帳戶設定：餘額摘要、安全與隱私（生日）、計價。
 // 所有付費（小試身手、開通會員、儲值包、黃金會員）都在會員商城 /store。
-// 生日只能設定一次。正式會員存了年滿 ADULT_AGE 的生日之後，會被帶到會員商城並跳出黃金會員的升級視窗；
-// 在那之前，任何地方都不會出現黃金會員。
+// 生日只能設定一次。存了年滿 ADULT_AGE 的生日之後，生日上方才會多出「內容審查限制」這一列；
+// 點開是一個開關，打開就跳出黃金會員的申請視窗（GoldApplyDialog）。申請完成後，會員商城才會出現黃金會員。
+// 除了那個開關的名稱，這一頁不出現內容分級的字眼。
 
 function errorText(e: unknown): string {
   const msg = e instanceof Error ? e.message : String(e);
@@ -43,9 +45,10 @@ export default function AccountPage() {
   const { user } = useUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [, navigate] = useLocation();
   const [birthDraft, setBirthDraft] = useState("");
   const [saving, setSaving] = useState(false);
+  const [showModeration, setShowModeration] = useState(false);
+  const [showApply, setShowApply] = useState(false);
 
   useSeo({
     title: "帳戶設定 - 積分與安全設定 | AI 創意工坊",
@@ -60,15 +63,31 @@ export default function AccountPage() {
   const draftAge = ageFromBirthDate(birthDraft);
   const joined = user.createdAt ? new Date(user.createdAt).toLocaleDateString("zh-TW", { year: "numeric", month: "long", day: "numeric" }) : "";
 
+  const isAdultAge = age !== null && age >= ADULT_AGE;
+  const modeOn = hasGoldAccess(user);
+
   const saveBirthDate = async () => {
-    const adult = draftAge !== null && draftAge >= ADULT_AGE;
     setSaving(true);
     try {
       await apiRequest("PATCH", "/api/account/safety", { birthDate: birthDraft });
       await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "生日已儲存" });
-      // The gold offer first appears here: a member who has just registered an 18+ birthday.
-      if (adult && isMember && !user.isGold) navigate("/store?gold=1");
+    } catch (e) {
+      toast({ title: "設定沒有儲存", description: errorText(e), variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // The switch: off → the gold application dialog; on → turn it off (the gold zone is hidden again).
+  const toggleMode = async () => {
+    if (!modeOn) { setShowApply(true); return; }
+    if (user.isAdmin) { toast({ title: "管理員帳號不受這項限制" }); return; }
+    setSaving(true);
+    try {
+      await apiRequest("PATCH", "/api/account/safety", { nsfwEnabled: false });
+      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({ title: "已關閉", description: "隨時可以再打開。" });
     } catch (e) {
       toast({ title: "設定沒有儲存", description: errorText(e), variant: "destructive" });
     } finally {
@@ -128,6 +147,24 @@ export default function AccountPage() {
 
         {/* 安全與隱私 */}
         <Card title="安全與隱私" icon="fa-shield-halved" id="safety">
+          {(isAdultAge || modeOn) && (
+            <div className="mb-4 pb-4 border-b border-slate-100" data-testid="row-moderation">
+              <button onClick={() => setShowModeration(v => !v)} aria-expanded={showModeration}
+                className="w-full min-h-11 flex items-center justify-between gap-3 text-left" data-testid="button-moderation">
+                <span className="text-sm font-semibold text-slate-800">內容審查限制</span>
+                <i className={`fas fa-chevron-${showModeration ? "up" : "right"} text-xs text-slate-400`} />
+              </button>
+              {showModeration && (
+                <div className="mt-2 flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
+                  <span id="mode-label" className="text-sm text-slate-700">是否開啟 NSFW 模式</span>
+                  <button role="switch" aria-checked={modeOn} aria-labelledby="mode-label" onClick={toggleMode} disabled={saving}
+                    className={`relative shrink-0 w-12 h-7 rounded-full transition-colors disabled:opacity-50 ${modeOn ? "bg-amber-400" : "bg-slate-300"}`} data-testid="switch-mode">
+                    <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${modeOn ? "translate-x-5" : ""}`} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           <p className="text-sm font-semibold text-slate-800">生日</p>
           {user.birthDate ? (
             <p className="text-sm text-slate-600 mt-1" data-testid="text-birthdate">{user.birthDate}（{age} 歲）<span className="text-xs text-slate-400 ml-2">設定後無法自行修改</span></p>
@@ -137,7 +174,7 @@ export default function AccountPage() {
                 <input type="date" value={birthDraft} max={new Date().toISOString().slice(0, 10)} onChange={e => setBirthDraft(e.target.value)}
                   className="flex-1 min-w-0 h-11 px-3 border border-slate-200 rounded-xl text-sm" data-testid="input-birthdate" />
                 <button onClick={saveBirthDate} disabled={saving || draftAge === null}
-                  className="h-11 px-5 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-save-birthdate">儲存</button>
+                  className="h-11 px-5 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-save-birthdate">確定</button>
               </div>
               <p className="text-[11px] text-slate-400 mt-1.5">用來確認年齡，不會公開。生日只能設定一次，請填寫正確。</p>
             </>
@@ -158,6 +195,7 @@ export default function AccountPage() {
           <p className="text-[11px] text-slate-400 mt-2">生成失敗會自動退還該次扣的積分。</p>
         </Card>
       </div>
+      {showApply && <GoldApplyDialog onClose={() => setShowApply(false)} />}
     </div>
   );
 }
