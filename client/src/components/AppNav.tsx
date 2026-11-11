@@ -40,6 +40,7 @@ export const DESTINATIONS: Destination[] = [
   { href: "/photoset", label: "寫真工作室", short: "寫真", icon: "fa-camera-retro", group: "main" },
   { href: "/drama", label: "漫劇工作室", short: "漫劇", icon: "fa-film", group: "main" },
   { href: "/library", label: "素材圖庫", short: "圖庫", icon: "fa-images", group: "main" },
+  { href: "/wall", label: "作品牆", icon: "fa-globe", group: "main" },
   { href: "/vault", label: "作品庫", icon: "fa-photo-film", group: "me" },
   { href: "/edit", label: "編輯器", icon: "fa-pen-ruler", group: "me" },
   { href: "/store", label: "會員商城", icon: "fa-store", group: "me" },
@@ -53,6 +54,8 @@ export const DESTINATIONS: Destination[] = [
 
 /** The main modules: desktop bar and the first four mobile tabs. */
 const PRIMARY = ["/", "/photoset", "/drama", "/library"];
+/** Desktop bar only: the phone tab bar has room for four, so 作品牆 is in the 「我的」 sheet there. */
+const DESKTOP_PRIMARY = [...PRIMARY, "/wall"];
 /** Shortcuts shown as tiles at the top of the mobile 「我的」 sheet. */
 const QUICK = ["/vault", "/edit", "/character-library", "/scene-library"];
 
@@ -176,7 +179,7 @@ export function NavigationHeader() {
           </span>
         </Link>
         <nav className="flex items-center gap-0.5 lg:gap-1 flex-1 min-w-0">
-          {PRIMARY.map(find).map(d => {
+          {DESKTOP_PRIMARY.map(find).map(d => {
             const active = isActive(location, d.href);
             return (
               <Link key={d.href} href={d.href}>

@@ -63,7 +63,16 @@ export default function Home({ section = "image" }: { section?: "image" | "video
   const [vaultPickerOpen, setVaultPickerOpen] = useState(false);
   const [uploadedImagePath, setUploadedImagePath] = useState<string>("");
   const [prompt, setPrompt] = useState("把泡泡變成愛心形狀");
-  const [textPrompt, setTextPrompt] = useState("一幅美麗的日落山水風景畫，有山脈和湖泊");
+  // 「做同款」from the 作品牆 leaves its prompt in sessionStorage (REMIX_KEY in components/Showcase.tsx).
+  const [textPrompt, setTextPrompt] = useState(() => {
+    const fallback = "一幅美麗的日落山水風景畫，有山脈和湖泊";
+    if (section !== "image") return fallback;
+    try {
+      const remix = window.sessionStorage.getItem("remixPrompt");
+      if (remix) { window.sessionStorage.removeItem("remixPrompt"); return remix; }
+    } catch { /* storage blocked */ }
+    return fallback;
+  });
   const [guidanceScale, setGuidanceScale] = useState(5.5);
   const [seed, setSeed] = useState(21);
   const [watermark, setWatermark] = useState(true);
