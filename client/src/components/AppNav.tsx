@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useEmbed } from "@/components/EmbedBar";
 import { Link, useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -90,6 +91,16 @@ function Logo({ size = "w-8 h-8 text-sm" }: { size?: string }) {
 }
 
 function CreditsPill({ credits }: { credits: number }) {
+  const embed = useEmbed();
+  // 從客戶小鎮進來的工作區：點數在小鎮，這裡不能儲值，點了回小鎮看點數。
+  if (embed) return (
+    <a href={`${embed.returnOrigin}/insights`} target="_blank" rel="noreferrer"
+      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold hover:border-amber-300" data-testid="pill-credits-embed" title="這是你在客戶小鎮的點數，點擊回小鎮儲值">
+      <i className="fas fa-coins text-amber-500 text-xs" />
+      {credits.toLocaleString()}
+      <span className="text-[11px] font-medium text-amber-600">回小鎮儲值</span>
+    </a>
+  );
   return (
     <Link href="/account">
       <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold cursor-pointer hover:border-amber-300" data-testid="pill-credits" title="積分餘額，點擊前往儲值">

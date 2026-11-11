@@ -17,7 +17,7 @@ import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
 import { registerPhotosetRoutes, createPhotosetPlanner } from "./photoset";
 import { registerPartnerRoutes, partnerEmbedGuard } from "./partnerApi";
-import { partnerWalletConfigured, setWalletAccountLookup, forgetWalletAccount, walletAccountFor, walletBalance } from "./partnerWallet";
+import { partnerWalletConfigured, setWalletAccountLookup, forgetWalletAccount, refreshBalanceSoon } from "./partnerWallet";
 import { registerAssetLibraryRoutes } from "./assetLibrary";
 import { registerVaultRoutes } from "./vault";
 import { registerCostRoutes, recordProviderUsage } from "./costs";
@@ -466,13 +466,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
     if (!user) {
       return res.status(401).json({ error: "用户不存在" });
     }
-    if (req.session.embed) {
-      // Show the partner's live balance; fall back to the last known one if it cannot be reached.
-      try {
-        const wallet = await walletAccountFor(user.id);
-        if (wallet) { user.credits = await walletBalance(wallet.ownerRef); await storage.setCreditsMirror(user.id, user.credits); }
-      } catch { /* keep the mirror */ }
-    }
+    // Answer with the last known balance right away; the partner's live balance is fetched in the background.
+    if (req.session.embed) refreshBalanceSoon(user.id, (balance) => storage.setCreditsMirror(user.id, balance));
 
     res.json({
       id: user.id,

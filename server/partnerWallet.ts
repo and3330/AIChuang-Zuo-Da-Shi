@@ -31,7 +31,7 @@ export const partnerWalletConfigured = () => config() !== null;
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /** One wallet call. The same `ref` is sent on every retry so the partner can apply it once. */
-async function call(action: "charge" | "refund" | "balance", ownerRef: string, amount: number, description: string, attempts: number): Promise<number> {
+async function call(action: "charge" | "refund" | "balance", ownerRef: string, amount: number, description: string, attempts: number, timeoutMs = 10_000): Promise<number> {
   const cfg = config();
   if (!cfg) throw new PartnerWalletError("unavailable", "尚未設定對方的錢包端點。");
   const body = JSON.stringify({ action, owner_ref: ownerRef, amount, ref: randomUUID(), description: description.slice(0, 200) });
@@ -40,7 +40,7 @@ async function call(action: "charge" | "refund" | "balance", ownerRef: string, a
     try {
       const res = await fetch(cfg.url, {
         method: "POST", headers: { Authorization: `Bearer ${cfg.secret}`, "Content-Type": "application/json" }, body,
-        signal: AbortSignal.timeout(10_000), redirect: "error",
+        signal: AbortSignal.timeout(timeoutMs), redirect: "error",
       });
       status = res.status;
       try { data = await res.json(); } catch { data = null; }
@@ -56,7 +56,25 @@ async function call(action: "charge" | "refund" | "balance", ownerRef: string, a
 export const walletCharge = (ownerRef: string, amount: number, description: string) => call("charge", ownerRef, amount, description, 2);
 /** Refunds try harder: a lost refund is the customer's money. */
 export const walletRefund = (ownerRef: string, amount: number, description: string) => call("refund", ownerRef, amount, description, 4);
-export const walletBalance = (ownerRef: string) => call("balance", ownerRef, 0, "", 2);
+/** Display only, so it gives up quickly instead of holding a page up. */
+export const walletBalance = (ownerRef: string) => call("balance", ownerRef, 0, "", 1, 3_000);
+
+const lastBalanceCheck = new Map<string, number>();
+/**
+ * Refreshes a sub-account's displayed balance in the background, at most once every 20 seconds.
+ * Never awaited by a request: pages must not wait on the partner's server just to show a number.
+ */
+export function refreshBalanceSoon(userId: string, apply: (balance: number) => Promise<void>): void {
+  const now = Date.now();
+  if (now - (lastBalanceCheck.get(userId) ?? 0) < 20_000) return;
+  lastBalanceCheck.set(userId, now);
+  void (async () => {
+    try {
+      const wallet = await walletAccountFor(userId);
+      if (wallet) await apply(await walletBalance(wallet.ownerRef));
+    } catch { /* keep showing the last known balance */ }
+  })();
+}
 
 /* ── which local accounts use the partner wallet ── */
 
