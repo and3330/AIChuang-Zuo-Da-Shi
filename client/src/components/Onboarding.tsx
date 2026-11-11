@@ -99,7 +99,7 @@ export function Onboarding() {
               </div>
               <div className="rounded-2xl border border-slate-200 p-4">
                 <p className="text-sm font-bold text-slate-900"><i className="fas fa-shield-halved text-indigo-500 mr-2" />安全與隱私</p>
-                <p className="text-xs text-slate-600 mt-1">生日只用來確認年齡，不會公開。作品只有你自己看得到，可以隨時在作品庫刪除。</p>
+                <p className="text-xs text-slate-600 mt-1">請到帳戶頁設定生日並確認相關條款。生日只用來確認年齡，不會公開。作品只有你自己看得到，可以隨時在作品庫刪除。</p>
               </div>
             </div>
           )}
