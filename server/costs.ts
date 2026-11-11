@@ -16,6 +16,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { and, gte, sql } from "drizzle-orm";
 import { db } from "./db";
 import { providerCosts, creditTransactions } from "@shared/schema";
+import { ATLAS_LIBRARY_PRICE_USD } from "./atlasProvider";
 import { IMAGE_COST, WATERMARK_REMOVAL_COST, VIDEO_COST_PER_SECOND, MEMBERSHIP, SIGNUP_CREDITS } from "@shared/pricing";
 
 const num = (name: string, fallback: number): number => {
@@ -31,7 +32,8 @@ export function costSettings() {
     /** Seedream 5.5 edit, each reference image sent along. */
     seedreamInputImageUsd: num("COST_SEEDREAM_INPUT_IMAGE_USD", 0.0075),
     wanSecondUsd: { "720p": num("COST_WAN_720P_SECOND_USD", 0.05), "1080p": num("COST_WAN_1080P_SECOND_USD", 0.05) } as Record<string, number>,
-    libraryImageUsd: num("COST_LIBRARY_IMAGE_USD", 0.004),
+    /** Asset-library image: Seedream text-to-image by default, GPT Image 2.5 Flare if switched back. */
+    libraryImageUsd: num("COST_LIBRARY_IMAGE_USD", ATLAS_LIBRARY_PRICE_USD),
     /** What one credit sells for when topped up. */
     creditPriceTwd: num("CREDIT_PRICE_TWD", 1),
     usdTwd: num("USD_TWD_RATE", 32),
