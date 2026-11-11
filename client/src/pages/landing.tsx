@@ -7,37 +7,49 @@ import { IMAGE_COST, MEMBERSHIP, SIGNUP_CREDITS, TOPUP_PACKS, TRIAL, VIDEO_COST_
 import { LIBRARY_TARGETS } from "@shared/libraryCatalog";
 import type { PostList } from "@/components/Showcase";
 
-// 首頁（未登入看到的行銷頁）。
+// 首頁（未登入看到的行銷頁）。主打一件事：用自己的照片，一次生成整組能上社群的寫真。
 //
 // 設計方向（ui-ux-pro-max 產出的設計系統：AI 紫 #7C3AED＋生成粉 #EC4899、粗體大字、大區塊、寬鬆留白、
 // 進場用 stagger）：深色電影感畫布、極光漸層、超大標題，內容由上到下是
-//   主視覺 → 數字 → 功能（不對稱方格）→ 三步驟 → 作品牆的真實作品 → 定價 → 最後一次行動呼籲。
-// 作品牆有通過審核的作品時，主視覺與作品區會直接用那些作品；沒有時用漸層色塊，不放假圖。
+//   主視覺（真實生成的寫真）→ 數字 → 三步驟（人物、服裝、姿勢）→ 成果 → 其他功能 → 作品牆 → 定價 → 行動呼籲。
+// 主視覺與成果區的照片是站內實際生成的作品（client/public/landing/*.webp），保留原本的 AI 浮水印。
 // 這一頁不出現黃金會員。動效在「減少動態效果」設定下全部關閉（見 index.css 的 .lp-*）。
 
 const LIBRARY_TOTAL = LIBRARY_TARGETS.pose + LIBRARY_TARGETS.costume + LIBRARY_TARGETS.portrait;
 const TOP_PACK = TOPUP_PACKS[TOPUP_PACKS.length - 1];
 const TOP_BONUS = Math.round((TOP_PACK.credits / TOP_PACK.twd - 1) * 100);
 
-const FEATURES: Array<{ icon: string; title: string; desc: string; span: string; tone: string }> = [
-  { icon: "fa-image", title: "圖片生成", desc: "一句話出圖，或上傳照片請 AI 修改。最多帶 10 張參考圖，人物長相不跑掉。", span: "md:col-span-4 md:row-span-2", tone: "from-violet-600/40 via-fuchsia-600/20 to-transparent" },
-  { icon: "fa-clapperboard", title: "影片生成", desc: "文字或一張圖，生成 4 到 12 秒的短影片。", span: "md:col-span-2", tone: "from-sky-500/30 to-transparent" },
-  { icon: "fa-camera-retro", title: "寫真工作室", desc: "選人像、服裝、姿勢，一次生成整組寫真。", span: "md:col-span-2", tone: "from-pink-500/30 to-transparent" },
-  { icon: "fa-film", title: "漫劇工作室", desc: "從一句劇情到分鏡、出圖、動畫。", span: "md:col-span-2", tone: "from-amber-500/25 to-transparent" },
-  { icon: "fa-images", title: "素材圖庫", desc: `${LIBRARY_TOTAL.toLocaleString()} 個人像、服裝、姿勢，選好就生成，不用寫提示詞。`, span: "md:col-span-2", tone: "from-emerald-500/25 to-transparent" },
-  { icon: "fa-globe", title: "作品牆", desc: "看別人的作品與提示詞，一鍵做同款。", span: "md:col-span-2", tone: "from-indigo-500/30 to-transparent" },
+/** Real results made on the site. `alt` describes the picture for screen readers. */
+const SHOTS: Array<{ src: string; alt: string; label: string }> = [
+  { src: "/landing/street-walk.webp", alt: "AI 生成的寫真：粉色帽T與灰色短裙的女生走在紅磚街道上回頭微笑", label: "街拍・回眸" },
+  { src: "/landing/street-laugh.webp", alt: "AI 生成的寫真：粉色帽T的女生在紅磚牆邊撥頭髮大笑", label: "街拍・半身" },
+  { src: "/landing/autumn-selfie.webp", alt: "AI 生成的寫真：橘色大衣與米色圍巾的短髮女生在街上自拍", label: "秋冬穿搭・自拍" },
+  { src: "/landing/cafe-stand.webp", alt: "AI 生成的寫真：綠色針織外套與白色百褶裙的女生在咖啡廳拿著咖啡", label: "咖啡廳・全身" },
+  { src: "/landing/cafe-selfie.webp", alt: "AI 生成的寫真：綠色針織外套的女生俯拍大頭自拍", label: "咖啡廳・俯拍" },
+];
+/** Hero collage: three columns, each scrolling on its own. */
+const HERO_COLUMNS = [[0, 3, 2], [1, 4, 0], [2, 3, 1]];
+
+const STEPS: Array<{ n: string; icon: string; title: string; desc: string; library: "portrait" | "costume" | "pose" }> = [
+  { n: "01", icon: "fa-user", title: "選人物", desc: "上傳你的照片，或從圖庫挑一張人像。之後每一張都是同一張臉。", library: "portrait" },
+  { n: "02", icon: "fa-shirt", title: "選服裝", desc: `春夏秋冬 ${LIBRARY_TARGETS.costume.toLocaleString()} 套穿搭，點一下就換上。`, library: "costume" },
+  { n: "03", icon: "fa-person-walking", title: "選姿勢", desc: `${LIBRARY_TARGETS.pose.toLocaleString()} 個姿勢。場景、鏡頭、表情都能設定，AI 免費幫你規劃鏡頭。`, library: "pose" },
 ];
 
-const STEPS: Array<{ n: string; title: string; desc: string }> = [
-  { n: "01", title: "說出你想要的畫面", desc: "打一句話，或從素材圖庫挑人像、服裝、姿勢。" },
-  { n: "02", title: "AI 幫你生成", desc: "圖片幾十秒完成，影片幾分鐘。失敗自動退回積分。" },
-  { n: "03", title: "下載、修改、分享", desc: "直接下載，送進編輯器再改，或公開到作品牆。" },
+/** Why it matters to someone running a social account. */
+const REASONS: Array<{ icon: string; title: string; desc: string }> = [
+  { icon: "fa-house", title: "沒時間出門也沒關係", desc: "在家就能做。不用約攝影師、不用找場地、不用等天氣。" },
+  { icon: "fa-calendar-check", title: "天天有新照片可以發", desc: "換一套服裝、換一個場景再生成一組，一次備好一整週的貼文。" },
+  { icon: "fa-face-smile", title: "每一張都是你", desc: "用你的照片當參考，同一張臉，不同穿搭、不同場景。" },
 ];
 
-/** Fallback tiles for the hero when the wall has no works yet: colour only, no fake pictures. */
-const TILE_TONES = [
-  "from-violet-500 to-fuchsia-500", "from-sky-500 to-indigo-600", "from-pink-500 to-rose-500", "from-amber-400 to-orange-500",
-  "from-emerald-400 to-teal-600", "from-indigo-500 to-violet-700", "from-fuchsia-500 to-purple-700", "from-cyan-400 to-blue-600",
+type Samples = Partial<Record<"portrait" | "costume" | "pose", Array<{ id: string; name: string; url: string }>>>;
+
+const MORE: Array<{ icon: string; title: string; desc: string }> = [
+  { icon: "fa-image", title: "圖片生成", desc: "一句話出圖，或上傳照片請 AI 修改。" },
+  { icon: "fa-clapperboard", title: "影片生成", desc: "讓寫真動起來：一張圖生成 4 到 12 秒短影片。" },
+  { icon: "fa-film", title: "漫劇工作室", desc: "從一句劇情到分鏡、出圖、動畫。" },
+  { icon: "fa-globe", title: "作品牆", desc: "看別人的作品與提示詞，一鍵做同款。" },
 ];
 
 /** Adds .lp-in to every .lp-reveal inside the page as it scrolls into view. */
@@ -67,23 +79,23 @@ function Cta({ children, big = false, testid }: { children: React.ReactNode; big
 
 export default function LandingPage() {
   useSeo({
-    title: "AI 創意工坊 - AI 圖片與影片生成平台 | 文字生圖、圖片編輯、AI 影片製作",
-    description: `AI 創意工坊：一句話生成圖片與影片。文字生圖、圖片編輯、整組寫真、漫劇分鏡、${LIBRARY_TOTAL.toLocaleString()} 個素材圖庫。註冊送 ${SIGNUP_CREDITS} 積分，圖片 ${IMAGE_COST} 積分一張。`,
-    keywords: "AI圖片生成,AI影片生成,文字生圖,圖片編輯,AI寫真,AI創作,AI繪圖,AI創意工坊",
+    title: "AI 創意工坊 - AI 寫真生成｜上傳照片，一次生成整組社群寫真",
+    description: `用自己的照片，一鍵生成整組能上社群的 AI 寫真。${LIBRARY_TARGETS.costume.toLocaleString()} 套服裝、${LIBRARY_TARGETS.pose.toLocaleString()} 個姿勢任你搭。註冊送 ${SIGNUP_CREDITS} 積分，每張 ${IMAGE_COST} 積分。`,
+    keywords: "AI寫真,AI網美照,AI換裝,AI形象照,社群寫真,AI圖片生成,AI創意工坊",
   });
 
   const root = useReveal();
   const { data: wall } = useQuery<PostList>({ queryKey: ["/api/showcase/posts?sort=hot&page=1"], queryFn: getQueryFn({ on401: "throw" }), retry: false });
   const works = (wall?.items ?? []).filter(p => p.kind === "image");
   const hasWorks = works.length >= 6;
-  // Three hero columns, each scrolling on its own.
-  const columns = [0, 1, 2].map(c => (hasWorks ? works.filter((_, i) => i % 3 === c).slice(0, 5) : []));
+  // Real thumbnails from the asset library, shown inside the three steps when available.
+  const { data: samples } = useQuery<Samples>({ queryKey: ["/api/library/samples"], queryFn: getQueryFn({ on401: "throw" }), retry: false });
 
   const stats: Array<[string, string]> = [
-    [LIBRARY_TOTAL.toLocaleString(), "素材圖庫"],
-    [`${IMAGE_COST} 積分`, "一張圖片"],
-    ["4–12 秒", "AI 短影片"],
-    ["10 張", "參考圖上限"],
+    [LIBRARY_TARGETS.costume.toLocaleString(), "套服裝"],
+    [LIBRARY_TARGETS.pose.toLocaleString(), "個姿勢"],
+    [`${IMAGE_COST} 積分`, "一張寫真"],
+    [`${SIGNUP_CREDITS} 積分`, "註冊就送"],
   ];
 
   return (
@@ -98,7 +110,8 @@ export default function LandingPage() {
             </span>
           </Link>
           <div className="hidden md:flex items-center gap-6 text-sm text-slate-300">
-            <a href="#features" className="hover:text-white transition-colors">功能</a>
+            <a href="#how" className="hover:text-white transition-colors">怎麼做</a>
+            <a href="#results" className="hover:text-white transition-colors">成果</a>
             <Link href="/wall"><span className="hover:text-white transition-colors cursor-pointer">作品牆</span></Link>
             <a href="#pricing" className="hover:text-white transition-colors">定價</a>
           </div>
@@ -122,17 +135,17 @@ export default function LandingPage() {
           <div>
             <p className="lp-rise inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-white/15 bg-white/5 text-xs sm:text-sm text-slate-200">
               <span className="w-2 h-2 rounded-full bg-emerald-400 lp-pulse" aria-hidden="true" />
-              Seedream 5.5 圖片・WAN 3.0 影片
+              AI 寫真工作室
             </p>
             <h1 className="lp-rise lp-delay-1 mt-6 font-black tracking-tight leading-[1.02] text-[clamp(2.9rem,9vw,6.5rem)]">
-              一句話，<br />
-              <span className="lp-gradient-text">變成作品。</span>
+              一鍵生成，<br />
+              <span className="lp-gradient-text">人人都是網美。</span>
             </h1>
             <p className="lp-rise lp-delay-2 mt-6 max-w-xl text-base sm:text-xl text-slate-300 leading-relaxed">
-              圖片、影片、整組寫真、漫劇分鏡，都在同一個地方完成。不會寫提示詞也沒關係，從 {LIBRARY_TOTAL.toLocaleString()} 個素材裡挑，選好就生成。
+              沒時間出門拍照也沒關係。上傳一張照片，選服裝、選姿勢，一次生成整組寫真，直接貼到 IG、Threads、小紅書經營你的社群。
             </p>
             <div className="lp-rise lp-delay-3 mt-9 flex flex-wrap items-center gap-4">
-              <Cta big testid="landing-hero-cta">免費開始創作</Cta>
+              <Cta big testid="landing-hero-cta">免費做第一組寫真</Cta>
               <Link href="/wall">
                 <span className="inline-flex items-center gap-2 h-14 px-7 rounded-full border border-white/20 text-base font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer" data-testid="landing-hero-wall">
                   <i className="fas fa-globe text-sm" aria-hidden="true" />看看大家的作品
@@ -140,23 +153,19 @@ export default function LandingPage() {
               </Link>
             </div>
             <ul className="lp-rise lp-delay-4 mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-400">
-              <li><i className="fas fa-gift text-fuchsia-400 mr-2" aria-hidden="true" />註冊送 {SIGNUP_CREDITS} 積分</li>
+              <li><i className="fas fa-gift text-fuchsia-400 mr-2" aria-hidden="true" />註冊送 {SIGNUP_CREDITS} 積分，剛好做 {Math.floor(SIGNUP_CREDITS / IMAGE_COST)} 張</li>
               <li><i className="fas fa-credit-card text-fuchsia-400 mr-2" aria-hidden="true" />不用綁卡</li>
               <li><i className="fas fa-rotate-left text-fuchsia-400 mr-2" aria-hidden="true" />生成失敗自動退積分</li>
             </ul>
           </div>
 
-          {/* 作品拼貼：有作品牆的作品就用真的，沒有就用色塊 */}
-          <div className="relative h-[420px] sm:h-[520px] lg:h-[640px] lp-mosaic" aria-hidden="true">
+          {/* 寫真拼貼：站內實際生成的作品 */}
+          <div className="relative h-[440px] sm:h-[520px] lg:h-[640px] lp-mosaic" aria-hidden="true">
             <div className="absolute inset-0 grid grid-cols-3 gap-3 sm:gap-4 lp-tilt">
-              {columns.map((col, c) => (
+              {HERO_COLUMNS.map((col, c) => (
                 <div key={c} className={`flex flex-col gap-3 sm:gap-4 ${c === 1 ? "lp-col-down" : "lp-col-up"}`}>
-                  {(hasWorks ? [...col, ...col] : Array.from({ length: 8 }, (_, i) => i)).map((item, i) => (
-                    typeof item === "number" ? (
-                      <div key={i} className={`rounded-2xl bg-gradient-to-br ${TILE_TONES[(item + c * 3) % TILE_TONES.length]} opacity-80`} style={{ aspectRatio: (item + c) % 3 === 0 ? "3 / 4" : (item + c) % 3 === 1 ? "1 / 1" : "4 / 5" }} />
-                    ) : (
-                      <img key={`${item.id}-${i}`} src={item.mediaUrl} alt="" loading={i < 3 ? "eager" : "lazy"} className="w-full rounded-2xl object-cover bg-white/5" />
-                    )
+                  {[...col, ...col].map((n, i) => (
+                    <img key={i} src={SHOTS[n].src} alt="" loading={i < 2 ? "eager" : "lazy"} className="w-full rounded-2xl object-cover bg-white/5" />
                   ))}
                 </div>
               ))}
@@ -164,6 +173,52 @@ export default function LandingPage() {
           </div>
         </div>
       </header>
+
+      {/* ── 三步驟 ── */}
+      <section id="how" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 scroll-mt-16" aria-labelledby="lp-steps">
+        <div className="max-w-7xl mx-auto">
+          <div className="lp-reveal max-w-3xl">
+            <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-400">怎麼做</p>
+            <h2 id="lp-steps" className="mt-3 text-4xl sm:text-6xl font-black tracking-tight leading-tight">選三樣，<br className="sm:hidden" />就有一整組。</h2>
+            <p className="mt-5 text-lg text-slate-400">全部用點的。{LIBRARY_TOTAL.toLocaleString()} 個人像、服裝、姿勢素材，怎麼搭都有。</p>
+          </div>
+          <ol className="mt-12 sm:mt-16 grid md:grid-cols-3 gap-5">
+            {STEPS.map((s, i) => (
+              <li key={s.n} className="lp-reveal lp-card relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] p-8" style={{ transitionDelay: `${i * 90}ms` }}>
+                <i className={`fas ${s.icon} absolute top-7 right-8 text-5xl text-white/10`} aria-hidden="true" />
+                <span className="block text-7xl font-black tracking-tighter lp-outline-text" aria-hidden="true">{s.n}</span>
+                <h3 className="mt-5 text-3xl font-black tracking-tight">{s.title}</h3>
+                <p className="mt-3 text-slate-300 leading-relaxed">{s.desc}</p>
+                {(samples?.[s.library]?.length ?? 0) >= 4 && (
+                  <div className="mt-5 grid grid-cols-4 gap-2" aria-hidden="true">
+                    {samples![s.library]!.slice(0, 4).map(a => (
+                      <img key={a.id} src={a.url} alt="" loading="lazy" className="w-full aspect-[3/4] object-cover rounded-xl bg-white/10" />
+                    ))}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* ── 為什麼：經營社群的人要的是什麼 ── */}
+      <section className="relative px-4 sm:px-6 lg:px-8 pb-24 sm:pb-32" aria-labelledby="lp-why">
+        <div className="max-w-7xl mx-auto">
+          <h2 id="lp-why" className="lp-reveal text-3xl sm:text-5xl font-black tracking-tight">經營社群，不用再煩惱沒照片。</h2>
+          <div className="mt-10 grid md:grid-cols-3 gap-8">
+            {REASONS.map((r, i) => (
+              <div key={r.title} className="lp-reveal flex gap-4" style={{ transitionDelay: `${i * 80}ms` }}>
+                <span className="shrink-0 w-12 h-12 rounded-2xl lp-cta flex items-center justify-center"><i className={`fas ${r.icon}`} aria-hidden="true" /></span>
+                <div>
+                  <h3 className="text-xl font-bold">{r.title}</h3>
+                  <p className="mt-1.5 text-slate-400 leading-relaxed">{r.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
       {/* ── 數字 ── */}
       <section className="relative border-y border-white/10 bg-white/[0.03]" aria-label="平台數字">
@@ -177,42 +232,39 @@ export default function LandingPage() {
         </dl>
       </section>
 
-      {/* ── 功能：不對稱方格 ── */}
-      <section id="features" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 scroll-mt-16">
+      {/* ── 成果：站內實際生成的寫真 ── */}
+      <section id="results" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-white/10 scroll-mt-16" aria-labelledby="lp-results">
         <div className="max-w-7xl mx-auto">
           <div className="lp-reveal max-w-3xl">
-            <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-400">功能</p>
-            <h2 className="mt-3 text-4xl sm:text-6xl font-black tracking-tight leading-tight">一個地方，<br className="sm:hidden" />做完所有創作。</h2>
-            <p className="mt-5 text-lg text-slate-400">從一張圖到一整集短劇，工具都接在一起：做好的角色可以直接拿去拍寫真、排分鏡、做影片。</p>
+            <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-400">成果</p>
+            <h2 id="lp-results" className="mt-3 text-4xl sm:text-6xl font-black tracking-tight leading-tight">一出來，<br className="sm:hidden" />就是能發的照片。</h2>
+            <p className="mt-5 text-lg text-slate-400">下面每一張都是在這裡生成的，沒有另外修圖。街拍、咖啡廳、自拍視角，下載就能貼上社群。</p>
           </div>
-          <div className="mt-12 sm:mt-16 grid grid-cols-1 md:grid-cols-6 md:auto-rows-[200px] gap-4">
-            {FEATURES.map((f, i) => (
-              <article key={f.title} className={`lp-reveal lp-card group relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] p-7 flex flex-col justify-end min-h-[180px] ${f.span}`} style={{ transitionDelay: `${i * 60}ms` }}>
-                <div className={`absolute inset-0 bg-gradient-to-br ${f.tone} opacity-70 group-hover:opacity-100 transition-opacity duration-300`} aria-hidden="true" />
-                <i className={`fas ${f.icon} absolute top-6 right-7 text-white/15 group-hover:text-white/30 transition-colors duration-300 ${i === 0 ? "text-8xl" : "text-5xl"}`} aria-hidden="true" />
-                <div className="relative">
-                  <h3 className={`font-black tracking-tight ${i === 0 ? "text-3xl sm:text-5xl" : "text-2xl"}`}>{f.title}</h3>
-                  <p className={`mt-2 text-slate-300 leading-relaxed ${i === 0 ? "text-base sm:text-lg max-w-md" : "text-sm"}`}>{f.desc}</p>
-                </div>
-              </article>
+          <div className="mt-12 sm:mt-16 grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
+            {SHOTS.map((shot, i) => (
+              <figure key={shot.src} className={`lp-reveal group relative overflow-hidden rounded-2xl bg-white/5 aspect-[3/4] ${i === 0 ? "col-span-2 md:col-span-1" : ""}`} style={{ transitionDelay: `${i * 70}ms` }}>
+                <img src={shot.src} alt={shot.alt} loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
+                <figcaption className="absolute inset-x-0 bottom-0 p-3 pt-8 bg-gradient-to-t from-black/75 to-transparent text-xs font-medium text-white">{shot.label}</figcaption>
+              </figure>
             ))}
           </div>
+          <div className="lp-reveal mt-10 flex justify-center"><Cta big testid="landing-results-cta">換你做一組</Cta></div>
         </div>
       </section>
 
-      {/* ── 三步驟 ── */}
-      <section className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-white/10" aria-labelledby="lp-steps">
+      {/* ── 其他功能 ── */}
+      <section className="relative py-24 sm:py-28 px-4 sm:px-6 lg:px-8 border-t border-white/10" aria-labelledby="lp-more">
         <div className="max-w-7xl mx-auto">
-          <h2 id="lp-steps" className="lp-reveal text-4xl sm:text-6xl font-black tracking-tight">三步驟，沒有學習門檻。</h2>
-          <ol className="mt-12 sm:mt-16 grid md:grid-cols-3 gap-10 md:gap-8">
-            {STEPS.map((s, i) => (
-              <li key={s.n} className="lp-reveal relative" style={{ transitionDelay: `${i * 90}ms` }}>
-                <span className="block text-7xl sm:text-8xl font-black tracking-tighter lp-outline-text" aria-hidden="true">{s.n}</span>
-                <h3 className="mt-4 text-2xl font-bold">{s.title}</h3>
-                <p className="mt-2 text-slate-400 leading-relaxed">{s.desc}</p>
-              </li>
+          <h2 id="lp-more" className="lp-reveal text-3xl sm:text-5xl font-black tracking-tight">寫真之外，還能做這些。</h2>
+          <div className="mt-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {MORE.map((f, i) => (
+              <article key={f.title} className="lp-reveal lp-card rounded-3xl border border-white/10 bg-white/[0.04] p-7" style={{ transitionDelay: `${i * 60}ms` }}>
+                <i className={`fas ${f.icon} text-2xl text-fuchsia-400`} aria-hidden="true" />
+                <h3 className="mt-4 text-xl font-bold">{f.title}</h3>
+                <p className="mt-2 text-sm text-slate-400 leading-relaxed">{f.desc}</p>
+              </article>
             ))}
-          </ol>
+          </div>
         </div>
       </section>
 
@@ -258,7 +310,7 @@ export default function LandingPage() {
               <p className="text-sm font-semibold text-slate-400">小試身手</p>
               <p className="mt-3 text-5xl font-black tracking-tight">US${TRIAL.priceUsd}</p>
               <ul className="mt-6 space-y-3 text-slate-300 flex-1">
-                <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />{TRIAL.credits} 積分，約 {Math.floor(TRIAL.credits / IMAGE_COST)} 張圖</li>
+                <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />{TRIAL.credits} 積分，約 {Math.floor(TRIAL.credits / IMAGE_COST)} 張寫真</li>
                 <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />只付一次</li>
                 <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />每個帳號限購一次</li>
               </ul>
@@ -270,7 +322,7 @@ export default function LandingPage() {
                 <p className="text-sm font-semibold text-fuchsia-300">正式會員</p>
                 <p className="mt-3 text-6xl font-black tracking-tight">US${MEMBERSHIP.priceUsd}</p>
                 <ul className="mt-6 space-y-3 text-slate-200 flex-1">
-                  <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />{MEMBERSHIP.credits} 積分，約 {Math.floor(MEMBERSHIP.credits / IMAGE_COST)} 張圖</li>
+                  <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />{MEMBERSHIP.credits} 積分，約 {Math.floor(MEMBERSHIP.credits / IMAGE_COST)} 張寫真</li>
                   <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />開通後可以加購儲值包</li>
                   <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />只付一次，沒有月費</li>
                 </ul>
@@ -291,7 +343,7 @@ export default function LandingPage() {
 
           <dl className="lp-reveal mt-6 grid sm:grid-cols-3 rounded-3xl border border-white/10 bg-white/[0.03] divide-y sm:divide-y-0 sm:divide-x divide-white/10">
             {[
-              ["圖片", `${IMAGE_COST} 積分／張`, `去浮水印 +${WATERMARK_REMOVAL_COST} 積分`],
+              ["寫真與圖片", `${IMAGE_COST} 積分／張`, `去浮水印 +${WATERMARK_REMOVAL_COST} 積分`],
               ["影片 720p", `${VIDEO_COST_PER_SECOND["720p"]} 積分／秒`, "4 到 12 秒"],
               ["影片 1080p", `${VIDEO_COST_PER_SECOND["1080p"]} 積分／秒`, "4 到 12 秒"],
             ].map(([label, price, note]) => (
@@ -311,9 +363,9 @@ export default function LandingPage() {
           <div className="lp-aurora lp-aurora-d" />
         </div>
         <div className="lp-reveal relative max-w-4xl mx-auto text-center">
-          <h2 className="font-black tracking-tight leading-[1.05] text-[clamp(2.4rem,7vw,5rem)]">你的第一張作品，<br /><span className="lp-gradient-text">現在就可以開始。</span></h2>
-          <p className="mt-6 text-lg text-slate-300">註冊送 {SIGNUP_CREDITS} 積分，不用綁卡。</p>
-          <div className="mt-10"><Cta big testid="landing-final-cta">免費開始創作</Cta></div>
+          <h2 className="font-black tracking-tight leading-[1.05] text-[clamp(2.4rem,7vw,5rem)]">你的第一組寫真，<br /><span className="lp-gradient-text">現在就可以開始。</span></h2>
+          <p className="mt-6 text-lg text-slate-300">註冊送 {SIGNUP_CREDITS} 積分，剛好做 {Math.floor(SIGNUP_CREDITS / IMAGE_COST)} 張，不用綁卡。</p>
+          <div className="mt-10"><Cta big testid="landing-final-cta">免費做第一組寫真</Cta></div>
         </div>
       </section>
 
@@ -347,7 +399,7 @@ export default function LandingPage() {
       <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 p-3 pb-[calc(12px+env(safe-area-inset-bottom))] bg-[#07060d]/90 backdrop-blur-md border-t border-white/10">
         <Link href="/login">
           <span className="lp-cta flex items-center justify-center gap-2 h-12 rounded-full text-base font-bold cursor-pointer" data-testid="landing-sticky-cta">
-            免費開始・送 {SIGNUP_CREDITS} 積分<i className="fas fa-arrow-right text-xs" aria-hidden="true" />
+            免費做寫真・送 {SIGNUP_CREDITS} 積分<i className="fas fa-arrow-right text-xs" aria-hidden="true" />
           </span>
         </Link>
       </div>
