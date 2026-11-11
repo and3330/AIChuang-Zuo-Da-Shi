@@ -1,13 +1,13 @@
 import { fallbackMotionPrompt } from "@shared/dramaMotion";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
-import { randomBytes } from "crypto";
+import { randomBytes, randomInt } from "crypto";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
 import Anthropic from "@anthropic-ai/sdk";
 import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene, type DramaScene } from "@shared/schema";
-import nodemailer from "nodemailer";
+import { sendVerificationEmail } from "./verificationEmail";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt, plainImagePrompt } from "./promptEnhancer";
@@ -80,16 +80,8 @@ function fixBunnyCdnUrls(urls: string[] | null | undefined): string[] | null | u
   return urls.map(u => fixBunnyCdnUrl(u) as string);
 }
 
-const gmailTransporter = nodemailer.createTransport({
-  service: "gmail",
-  auth: {
-    user: process.env.GMAIL_USER || "",
-    pass: process.env.GMAIL_APP_PASSWORD || "",
-  },
-});
-
 function generateVerificationCode(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return randomInt(100000, 1000000).toString();
 }
 
 declare module "express-session" {
@@ -228,11 +220,9 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       await storage.createVerificationCode(email, code, expiresAt);
 
-      const gmailUser = process.env.GMAIL_USER || "";
-      await gmailTransporter.sendMail({
-        from: `AI 創意工坊 <${gmailUser}>`,
+      await sendVerificationEmail({
         to: email,
-        subject: "AI 創意工坊 - 註冊驗證碼",
+        code,
         html: `
           <div style="font-family: 'Microsoft JhengHei', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: linear-gradient(135deg, #f5f3ff, #ede9fe); border-radius: 16px;">
             <div style="text-align: center; margin-bottom: 24px;">
@@ -251,7 +241,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         `,
       });
 
-      console.log(`Verification code sent to ${email}`);
+      console.log("Verification email accepted by Resend");
       res.json({ success: true, message: "驗證碼已發送至您的電子郵件" });
     } catch (error: any) {
       console.error("Error sending verification code:", error);
