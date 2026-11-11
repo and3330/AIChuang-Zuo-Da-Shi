@@ -33,7 +33,7 @@ import {
 //   照片同款（mode "scene"）：有一張喜歡的照片，用同樣的場景與風格，換成自己的角色、也可以換服裝，生成一系列。
 //             ① 要模仿的照片（沒有照片才改用文字描述場景）
 //             ② 角色（選填，從角色庫帶入四視圖）③ 姿勢與服裝（各選一個，選填）④ 張數與輸出
-//   素材套圖  ① 人物 ② 服裝 ③ 姿勢 ④ 張數與輸出 —— 人像／服裝／姿勢都可以隨機
+//   寫真套圖  ① 人物 ② 服裝 ③ 姿勢 ④ 張數與輸出 —— 人像／服裝／姿勢都可以隨機
 //   角色九宮格（variant="sheet"） ① 角色 ② 張數，固定規格
 //
 // 姿勢與服裝都只選一個。選的姿勢用在第一張，其餘由 AI 依情境安排；
@@ -780,7 +780,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const lastStep = steps.length - 1;
 
   const MODES: Array<{ id: Mode; icon: string; title: string; desc: string }> = [
-    { id: "kit", icon: "fa-layer-group", title: "素材套圖", desc: "選人物，配素材圖庫的服裝與姿勢。" },
+    { id: "kit", icon: "fa-layer-group", title: "寫真套圖", desc: "選人物，配素材圖庫的服裝與姿勢。" },
     { id: "scene", icon: "fa-panorama", title: "照片同款", desc: "放一張喜歡的照片，換成你的角色和服裝，生成同風格的一系列。" },
   ];
 

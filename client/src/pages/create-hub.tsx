@@ -1,48 +1,38 @@
-import { IMAGE_COST } from "@shared/pricing";
+import { IMAGE_COST, VIDEO_COST_PER_SECOND } from "@shared/pricing";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "@/components/AppNav";
 import { Onboarding } from "@/components/Onboarding";
 
-// 創作中心：登入後的首頁。一眼看到三個主要模組與素材圖庫，一次點擊就進到要用的功能。
+// 創作中心：登入後的首頁。由上到下：
 //
-//   主要模組   創作（圖片／影片）、寫真工作室（素材套圖／照片同款）、商品帶貨圖、漫劇工作室
+//   範本牆     給不知道要做什麼的人：看圖選一個想要的成果，點了就進到已經選好設定的流程
+//              （寫真工作室、UGC 實拍短片、圖生影片、漫劇）。TEMPLATES 的 href 帶著該流程的參數。
+//   自由創作   圖片生成、影片生成：給已經知道要打什麼提示詞的人，頁面本身不變。
 //   素材圖庫   賣點：選好人像、服裝、姿勢就能直接生成
-//   個人專區   作品庫、編輯器、帳戶
-//   次要素材   角色庫（含上傳照片建立角色）、場景庫
+//   我的       一排小格：作品庫、角色庫、場景庫、編輯器、作品牆、會員商城
+//
+// 範本牆在手機與平板是一排可以左右滑的卡片（固定寬度），寬螢幕才排成一列五格；
+// 卡片的標題疊在圖片下緣，卡片本身不佔太多高度，往下還看得到自由創作。
+//
+// 範本卡有實拍圖的用圖（client/public/landing），沒有的先用漸層加圖示。
 
 type Stats = { totalGenerations: number; totalCreditsUsed: number; credits: number };
 type Action = { href: string; label: string; icon: string };
-type Module = { href: string; icon: string; title: string; desc: string; meta: string; tile: string; actions: Action[] };
+type Template = { href: string; title: string; desc: string; tag: string; icon: string; image?: string; tile: string };
 
-const MODULES: Module[] = [
-  {
-    href: "/create/image", icon: "fa-wand-magic-sparkles", title: "創作", meta: `圖片 ${IMAGE_COST} 積分・影片 8 積分／秒起`,
-    desc: "用文字或一張圖，生成圖片與短影片。", tile: "from-violet-500 to-indigo-600",
-    actions: [
-      { href: "/create/image", label: "圖片生成", icon: "fa-image" },
-      { href: "/create/video", label: "影片生成", icon: "fa-clapperboard" },
-    ],
-  },
-  {
-    href: "/photoset", icon: "fa-camera-retro", title: "寫真工作室", meta: `${IMAGE_COST} 積分／張`,
-    desc: "一次生成整組可貼社群的寫真。", tile: "from-indigo-500 to-blue-600",
-    actions: [
-      { href: "/photoset?mode=kit", label: "素材套圖", icon: "fa-layer-group" },
-      { href: "/photoset?mode=scene", label: "照片同款", icon: "fa-panorama" },
-    ],
-  },
-  {
-    href: "/product", icon: "fa-bag-shopping", title: "商品帶貨圖", meta: `${IMAGE_COST} 積分／張`,
-    desc: "給一件商品，用你的角色生成帶貨照與貼文文案。", tile: "from-fuchsia-500 to-indigo-600",
-    actions: [{ href: "/product", label: "開始製作", icon: "fa-arrow-right" }],
-  },
-  {
-    href: "/drama", icon: "fa-film", title: "漫劇工作室", meta: "依幕數計費",
-    desc: "從一句劇情，到分鏡、出圖、動畫與整集短劇。", tile: "from-blue-500 to-sky-500",
-    actions: [{ href: "/drama", label: "進入工作室", icon: "fa-arrow-right" }],
-  },
+const TEMPLATES: Template[] = [
+  { href: "/photoset?mode=kit", title: "寫真套圖", desc: "選服裝和姿勢，一次生成整組可以貼的寫真。", tag: "寫真", icon: "fa-camera-retro", image: "/landing/cafe-selfie.webp", tile: "from-indigo-500 to-blue-600" },
+  { href: "/photoset?mode=scene", title: "照片同款", desc: "放一張喜歡的照片，換成你的角色和服裝。", tag: "寫真", icon: "fa-panorama", image: "/landing/street-walk.webp", tile: "from-indigo-500 to-sky-500" },
+  { href: "/ugc", title: "UGC 實拍", desc: "給一件商品，AI 寫腳本，用你的角色拍成帶貨短片。", tag: "影片", icon: "fa-mobile-screen", image: "/landing/tpl-ugc.webp", tile: "from-fuchsia-500 to-indigo-600" },
+  { href: "/create/video", title: "讓照片動起來", desc: "上傳一張圖，變成 4 到 12 秒的短影片。", tag: "影片", icon: "fa-clapperboard", image: "/landing/autumn-selfie.webp", tile: "from-violet-500 to-indigo-600" },
+  { href: "/drama", title: "一句話做短劇", desc: "從一句劇情，到分鏡、出圖、動畫與整集短劇。", tag: "漫劇", icon: "fa-film", image: "/landing/tpl-drama.webp", tile: "from-blue-500 to-sky-500" },
+];
+
+const FREE: Array<Action & { desc: string; meta: string }> = [
+  { href: "/create/image", label: "圖片生成", icon: "fa-image", desc: "用一句話畫一張圖，或請 AI 修改你的照片。", meta: `${IMAGE_COST} 積分／張` },
+  { href: "/create/video", label: "影片生成", icon: "fa-clapperboard", desc: "用文字或一張圖生成短影片，可選 WAN 3.0 或 Kling 4.0。", meta: `${VIDEO_COST_PER_SECOND["720p"]} 積分／秒起` },
 ];
 
 const LIBRARY_TABS = [
@@ -53,39 +43,29 @@ const LIBRARY_TABS = [
 
 const ME: Action[] = [
   { href: "/vault", label: "作品庫", icon: "fa-photo-film" },
+  { href: "/character-library", label: "角色庫", icon: "fa-user-group" },
+  { href: "/scene-library", label: "場景庫", icon: "fa-mountain-sun" },
   { href: "/edit", label: "編輯器", icon: "fa-pen-ruler" },
+  { href: "/wall", label: "作品牆", icon: "fa-globe" },
   { href: "/store", label: "會員商城", icon: "fa-store" },
 ];
-const SECONDARY: Array<Action & { desc: string }> = [
-  { href: "/character-library", label: "角色庫", icon: "fa-user-group", desc: "上傳照片建立角色，寫真與漫劇直接套用" },
-  { href: "/scene-library", label: "場景庫", icon: "fa-mountain-sun", desc: "保存常用場景，寫真與漫劇直接套用" },
-];
 
-function ModuleCard({ m }: { m: Module }) {
+function TemplateCard({ t }: { t: Template }) {
   return (
-    <div className="group relative bg-white border border-indigo-100 rounded-3xl p-4 sm:p-5 flex flex-col gap-3 transition-all hover:border-indigo-300 hover:shadow-glow" data-testid={`hub-module-${m.href}`}>
-      <Link href={m.href}>
-        <span className="flex items-start gap-3 cursor-pointer">
-          <span className={`shrink-0 w-12 h-12 rounded-2xl bg-gradient-to-br ${m.tile} text-white text-lg flex items-center justify-center shadow-glow`}>
-            <i className={`fas ${m.icon}`} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-base font-bold text-slate-900">{m.title}</span>
-            <span className="block text-sm text-slate-500 leading-snug mt-0.5">{m.desc}</span>
+    <Link href={t.href}>
+      <span className="group block w-36 sm:w-44 lg:w-auto shrink-0 snap-start cursor-pointer" data-testid={`hub-template-${t.href}`}>
+        <span className="relative block rounded-2xl overflow-hidden border border-indigo-100 transition-all group-hover:border-indigo-300 group-hover:shadow-glow" style={{ aspectRatio: "3 / 4" }}>
+          {t.image
+            ? <img src={t.image} alt="" loading="lazy" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
+            : <span className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${t.tile} text-white text-4xl`}><i className={`fas ${t.icon}`} aria-hidden="true" /></span>}
+          <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/55 text-white text-[10px] font-semibold">{t.tag}</span>
+          <span className="absolute inset-x-0 bottom-0 pt-10 pb-2.5 px-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
+            <span className="block text-sm font-bold text-white leading-tight">{t.title}</span>
           </span>
         </span>
-      </Link>
-      <div className={`grid gap-2 mt-auto ${m.actions.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
-        {m.actions.map(a => (
-          <Link key={a.href} href={a.href}>
-            <span className="flex items-center justify-center gap-2 h-11 rounded-xl bg-indigo-50 text-indigo-700 text-sm font-semibold cursor-pointer transition-colors hover:bg-indigo-100 active:scale-[0.98]" data-testid={`hub-${a.href}`}>
-              <i className={`fas ${a.icon} text-xs`} />{a.label}
-            </span>
-          </Link>
-        ))}
-      </div>
-      <span className="text-[11px] text-slate-400">{m.meta}</span>
-    </div>
+        <span className="block text-[11px] text-slate-500 leading-snug mt-1.5 line-clamp-2">{t.desc}</span>
+      </span>
+    </Link>
   );
 }
 
@@ -130,10 +110,35 @@ export default function CreateHub() {
           </p>
         )}
 
-        <section>
-          <h2 className="text-sm font-semibold text-slate-900 mb-3">主要模組</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-            {MODULES.map(m => <ModuleCard key={m.title} m={m} />)}
+        <section data-testid="hub-templates">
+          <div className="flex items-baseline justify-between gap-3 mb-3">
+            <h2 className="text-lg font-bold text-slate-900">熱門範本</h2>
+            <span className="text-xs text-slate-500">選一個想要的成果，直接開始</span>
+          </div>
+          <div className="flex gap-3 overflow-x-auto snap-x scroll-pl-4 sm:scroll-pl-6 pb-2 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 lg:grid lg:grid-cols-5 lg:overflow-visible">
+            {TEMPLATES.map(t => <TemplateCard key={t.href + t.title} t={t} />)}
+          </div>
+        </section>
+
+        <section data-testid="hub-free">
+          <div className="flex items-baseline justify-between gap-3 mb-3">
+            <h2 className="text-lg font-bold text-slate-900">自由創作</h2>
+            <span className="text-xs text-slate-500">自己寫提示詞</span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {FREE.map(a => (
+              <Link key={a.href} href={a.href}>
+                <span className="group flex items-center gap-4 p-4 sm:p-5 bg-white border border-indigo-100 rounded-3xl cursor-pointer transition-all hover:border-indigo-300 hover:shadow-glow active:scale-[0.99]" data-testid={`hub-${a.href}`}>
+                  <span className="shrink-0 w-12 h-12 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-lg flex items-center justify-center"><i className={`fas ${a.icon}`} /></span>
+                  <span className="flex-1 min-w-0">
+                    <span className="block text-base font-bold text-slate-900">{a.label}</span>
+                    <span className="block text-sm text-slate-500 leading-snug">{a.desc}</span>
+                    <span className="block text-[11px] text-slate-400 mt-1">{a.meta}</span>
+                  </span>
+                  <i className="fas fa-chevron-right text-xs text-slate-300 group-hover:text-indigo-400" />
+                </span>
+              </Link>
+            ))}
           </div>
         </section>
 
@@ -168,51 +173,21 @@ export default function CreateHub() {
           </div>
         </section>
 
-        {/* 作品牆：看別人做了什麼，一鍵做同款 */}
-        <Link href="/wall">
-          <span className="group flex items-center gap-4 p-4 sm:p-5 bg-white border border-indigo-100 rounded-3xl cursor-pointer transition-all hover:border-indigo-300 hover:shadow-glow" data-testid="hub-/wall">
-            <span className="shrink-0 w-12 h-12 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white text-lg flex items-center justify-center"><i className="fas fa-globe" /></span>
-            <span className="flex-1 min-w-0">
-              <span className="block text-base font-bold text-slate-900">作品牆</span>
-              <span className="block text-sm text-slate-500">看看大家做了什麼，喜歡的可以看提示詞、一鍵做同款；也可以公開自己的作品。</span>
-            </span>
-            <i className="fas fa-chevron-right text-xs text-slate-300 group-hover:text-indigo-400" />
-          </span>
-        </Link>
-
-        <section>
-          <h2 className="text-sm font-semibold text-slate-900 mb-3">個人專區</h2>
-          <div className="grid grid-cols-3 gap-3">
+        <section data-testid="hub-me">
+          <h2 className="text-lg font-bold text-slate-900 mb-3">我的</h2>
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {ME.map(a => (
               <Link key={a.href} href={a.href}>
-                <span className="flex flex-col sm:flex-row items-center gap-2 sm:gap-3 p-3 sm:p-4 bg-white border border-slate-200 rounded-2xl cursor-pointer transition-colors hover:border-indigo-300" data-testid={`hub-${a.href}`}>
-                  <span className="w-10 h-10 rounded-xl bg-slate-100 text-slate-700 flex items-center justify-center"><i className={`fas ${a.icon}`} /></span>
-                  <span className="text-sm font-semibold text-slate-900 text-center">{a.label}</span>
+                <span className="flex flex-col items-center gap-2 p-3 bg-white border border-slate-200 rounded-2xl cursor-pointer transition-colors hover:border-indigo-300" data-testid={`hub-${a.href}`}>
+                  <span className="w-10 h-10 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center"><i className={`fas ${a.icon}`} /></span>
+                  <span className="text-xs font-semibold text-slate-900 text-center">{a.label}</span>
                 </span>
               </Link>
             ))}
           </div>
         </section>
 
-        <section>
-          <h2 className="text-sm font-semibold text-slate-900 mb-3">角色與場景</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {SECONDARY.map(a => (
-              <Link key={a.href} href={a.href}>
-                <span className="group flex items-center gap-3 p-4 bg-white border border-slate-200 rounded-2xl cursor-pointer transition-colors hover:border-indigo-300" data-testid={`hub-${a.href}`}>
-                  <span className="w-10 h-10 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center"><i className={`fas ${a.icon}`} /></span>
-                  <span className="flex-1 min-w-0">
-                    <span className="block text-sm font-semibold text-slate-900">{a.label}</span>
-                    <span className="block text-xs text-slate-500 truncate">{a.desc}</span>
-                  </span>
-                  <i className="fas fa-chevron-right text-xs text-slate-300 group-hover:text-indigo-400" />
-                </span>
-              </Link>
-            ))}
-          </div>
-        </section>
-
-        <p className="text-xs text-slate-400 text-center pt-2">圖片使用 Seedream 5.5，影片使用 WAN 3.0。生成失敗會自動退還積分。</p>
+        <p className="text-xs text-slate-400 text-center pt-2">圖片使用 Seedream 5.5，影片使用 WAN 3.0 或 Kling 4.0。生成失敗會自動退還積分。</p>
       </main>
     </div>
   );

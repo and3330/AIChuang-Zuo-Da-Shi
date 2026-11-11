@@ -104,7 +104,11 @@ export default function ProductPage() {
   const [sellingPoints, setSellingPoints] = useState("");
   const [characterId, setCharacterId] = useState("");
   const [showWizard, setShowWizard] = useState(false);
-  const [templateId, setTemplateId] = useState(TEMPLATES[0].id);
+  // A 範本 card on the 創作中心 arrives with ?template=<id>.
+  const [templateId, setTemplateId] = useState(() => {
+    const wanted = new URLSearchParams(window.location.search).get("template");
+    return TEMPLATES.some(t => t.id === wanted) ? (wanted as string) : TEMPLATES[0].id;
+  });
   const [extra, setExtra] = useState("");
   const [ratioId, setRatioId] = useState<ImageRatioId>("3:4");
   const [watermark, setWatermark] = useState(true);

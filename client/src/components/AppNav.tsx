@@ -38,7 +38,7 @@ type Destination = {
 export const DESTINATIONS: Destination[] = [
   { href: "/", label: "創作", icon: "fa-wand-magic-sparkles", group: "main" },
   { href: "/photoset", label: "寫真工作室", short: "寫真", icon: "fa-camera-retro", group: "main" },
-  { href: "/product", label: "商品帶貨", icon: "fa-bag-shopping", group: "main" },
+  { href: "/product", label: "商品帶貨", short: "商品", icon: "fa-bag-shopping", group: "main" },
   { href: "/drama", label: "漫劇工作室", short: "漫劇", icon: "fa-film", group: "main" },
   { href: "/library", label: "素材圖庫", short: "圖庫", icon: "fa-images", group: "main" },
   { href: "/wall", label: "作品牆", icon: "fa-globe", group: "main" },
@@ -70,6 +70,7 @@ const GOLD_PAGES = [
 
 /** Pages reached from another page. They show a back button on phones. */
 const SUBPAGES: Destination[] = [
+  { href: "/ugc", label: "UGC 實拍短片", icon: "fa-mobile-screen", group: "main" },
   { href: "/create/image", label: "圖片生成", icon: "fa-image", group: "main" },
   { href: "/create/video", label: "影片生成", icon: "fa-clapperboard", group: "main" },
   ...GOLD_PAGES.map(g => ({ href: g.href, label: `黃金・${g.label}`, icon: g.icon, group: "admin" as Group })),
@@ -185,7 +186,9 @@ export function NavigationHeader() {
               <Link key={d.href} href={d.href}>
                 <span className={navCls(active)} aria-current={active ? "page" : undefined} data-testid={`nav-${d.href}`}>
                   <i className={`fas ${d.icon} text-xs hidden lg:inline-block ${active ? "text-indigo-600" : "text-slate-400"}`} />
-                  {d.label}
+                  {/* Six entries only fit with the full names on wide screens. */}
+                  <span className="xl:hidden">{d.short ?? d.label}</span>
+                  <span className="hidden xl:inline">{d.label}</span>
                   {active && <span className="absolute -bottom-[11px] inset-x-3 h-0.5 rounded-full bg-brand" />}
                 </span>
               </Link>

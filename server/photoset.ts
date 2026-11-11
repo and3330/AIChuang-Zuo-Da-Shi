@@ -18,6 +18,14 @@
  *                shots of that person with the product, plus a ready-to-post
  *                caption and hashtags. Image order sent to the image model is
  *                [...reference images, ...product images].
+ *   ugc        — UGC 實拍短片 (/ugc). Same inputs as product, but the plan is a short
+ *                video script: each shot has a first-frame image prompt (`prompt`),
+ *                an English image-to-video motion prompt (`motion`), an on-screen
+ *                subtitle (`subtitle`) and a length (`seconds`). The rules come from the
+ *                owner's own prompt skills (short-video, video-continuity,
+ *                image-to-video, hook library): 4–5 shots, a hook first, the same
+ *                subject description repeated in every shot, motion written as
+ *                "anchor + subject motion + camera + light", and no invented speech.
  *
  * POST /api/photosets/plan returns the shot list. planner "ai" asks Claude to
  * look at the images; planner "preset" (character mode only) returns the
@@ -52,7 +60,7 @@ const PLANNER_REFERENCE_LOOKS = 3;
 export const PHOTOSET_MAX_PRODUCT_IMAGES = 3;
 
 const planRequestSchema = z.object({
-  mode: z.enum(["scene", "character", "product"]).default("scene"),
+  mode: z.enum(["scene", "character", "product", "ugc"]).default("scene"),
   planner: z.enum(["ai", "preset"]).default("ai"),
   /** 情境圖 — required in scene mode. */
   situationImageUrl: z.string().optional(),
@@ -90,7 +98,11 @@ const planRequestSchema = z.object({
 });
 
 type PlanRequest = z.infer<typeof planRequestSchema>;
-export type PhotosetShot = { title: string; prompt: string };
+export type PhotosetShot = {
+  title: string; prompt: string;
+  /** ugc mode: image-to-video motion prompt (English), on-screen subtitle, clip length. */
+  motion?: string; subtitle?: string; seconds?: number;
+};
 export type PhotosetPlan = {
   analysis: string; shots: PhotosetShot[];
   /** Product mode only: a post to go with the pictures. */
@@ -263,6 +275,58 @@ ${SHOT_RULES}
 shots 陣列必須剛好 ${req.count} 個元素。`;
 }
 
+function buildUgcPrompt(req: PlanRequest, refLooks: number, productLooks: number): string {
+  const info: string[] = [];
+  if (req.productName?.trim()) info.push(`商品名稱：${req.productName.trim()}`);
+  if (req.sellingPoints?.trim()) info.push(`賣家提供的賣點（字幕與文案只能根據這些與圖片上看得到的內容）：${req.sellingPoints.trim()}`);
+  return `你是一位短影音導演兼 UGC 帶貨內容企劃。你會看到 ${refLooks + productLooks} 張圖：前 ${refLooks} 張是同一位「人物」的參考圖，只用來確認這個人的臉部五官、髮型髮色與身形；後 ${productLooks} 張是同一件「商品」的照片。
+
+請寫一支 ${req.count} 個鏡頭的直式（9:16）UGC 實拍短片腳本：這位人物用手機自拍或請朋友手持拍攝，分享自己實際使用這件商品，適合 Reels、TikTok、Shorts。每個鏡頭會先生成一張「首幀圖」，再用圖生影片把它變成 4–6 秒的影片，所以每個鏡頭要同時給首幀圖的描述與動態的描述。
+${info.length ? `\n【商品資訊】\n${info.join("\n")}\n` : ""}
+【先分析】
+用 2–3 句繁體中文描述：這件商品是什麼（品類、外觀、顏色、材質），以及你選定的「一個」拍攝地點、時段與光線（要是這類商品實際會被使用的日常場景）。
+
+【整支片的結構】（${req.count} 個鏡頭依序對應，鏡頭較少時合併中間段）
+1. 鉤子：前 2–3 秒就要讓人停下來。人物看向鏡頭、商品已經在畫面裡，像是影片從事情中途切入。
+2. 展示：開箱或拿起商品，對著鏡頭展示外觀。
+3. 使用：實際使用商品的過程，手部與商品的近景。
+4. 感受：使用後的反應或細節特寫，靠表情與小動作表現，不靠台詞。
+5. 收尾：人物拿著商品看向鏡頭，停在一個可以定格的畫面。
+
+【每個鏡頭的 prompt（首幀圖）】
+${SHOT_RULES}
+- 首幀是影片的第一格：畫面是動作「開始前」的靜止瞬間，不要寫動作的過程。
+- 風格是手機實拍：手持或自拍視角、現場自然光、構圖隨性、背景是真實的居家或日常環境。
+- 每個鏡頭都要用同一句話重複寫出：人物的服裝、商品的外觀（品類、形狀、顏色、材質）、拍攝地點，讓每個鏡頭看起來是同一次拍攝。
+- 商品必須清楚可辨識，不要變形，不要出現第二種商品。
+
+【每個鏡頭的 motion（圖生影片的動態，用英文寫）】
+- 一段連貫的英文段落，40–70 個英文單字，不要條列。
+- 首幀圖模型已經看得到，所以只用半句話點出主體，其餘都寫「接下來幾秒發生的變化」。
+- 依序寫三件事：主體動作（一個鏡頭只做一個清楚、物理上合理的動作）、鏡頭運動（handheld、slight push-in、POV、static 擇一，幅度要小）、光線或氛圍的細微變化。
+- 動作要小而真實：拿起、轉動、打開、塗抹、喝一口、對鏡頭微笑、點頭。不要快速剪接、不要特效、不要畫面文字。
+- 聲音只寫非語言的現場音（例如 soft room tone, cap click, fabric rustle）。不要寫任何人物說話的台詞。
+- 結尾加上：The product keeps its exact shape, color and label. Natural phone-video look, no text overlay.
+
+【每個鏡頭的 subtitle（上字幕用的一句話）】
+- 繁體中文，每句 8–18 字，第一人稱口語。這是後製要疊在畫面上的字幕，不是人物說的話。
+- 第一個鏡頭的字幕是鉤子，從這四種寫法挑一種：反直覺的結論、具體數字加時間、點名某一種人、從事情中途切入。
+- 不要用暖場句（大家好、今天要分享）、自我介紹、弱疑問句（有沒有人跟我一樣）、形容詞堆疊（超好用又實用）。
+- 只能寫圖片上看得到的特徵與賣家提供的賣點，不要編造成分、價格、折扣或數據；不要寫療效、醫療功效、「保證有效」「第一」「最」這類宣稱。
+- 最後一個鏡頭的字幕是自然的行動呼籲。
+
+【每個鏡頭的 seconds】整數，4 到 6，整支片合計 15–25 秒。${userExtras(req)}
+
+【貼文文案】
+- caption：繁體中文，60–120 字，第一人稱，搭配這支影片發布用；規則同字幕。
+- hashtags：5–8 個，不含 # 符號。
+
+【輸出格式】
+只輸出一個 JSON 物件，不要有任何其他文字或 Markdown：
+{"analysis":"……","shots":[{"title":"4–10 字的鏡頭名稱","prompt":"首幀圖提示詞","motion":"English motion paragraph","subtitle":"字幕","seconds":5}],"caption":"……","hashtags":["……"]}
+shots 陣列必須剛好 ${req.count} 個元素。`;
+}
+
 /** Pull the first JSON object out of the model's text and validate it. */
 function parsePlan(text: string, count: number): PhotosetPlan {
   const match = text.match(/\{[\s\S]*\}/);
@@ -277,6 +341,9 @@ function parsePlan(text: string, count: number): PhotosetPlan {
     .map((s: any, i: number) => ({
       title: typeof s?.title === "string" && s.title.trim() ? s.title.trim().slice(0, 30) : `鏡頭 ${i + 1}`,
       prompt: typeof s?.prompt === "string" ? s.prompt.trim() : "",
+      ...(typeof s?.motion === "string" && s.motion.trim() ? { motion: s.motion.trim().slice(0, 1200) } : {}),
+      ...(typeof s?.subtitle === "string" && s.subtitle.trim() ? { subtitle: s.subtitle.trim().slice(0, 60) } : {}),
+      ...(Number.isFinite(Number(s?.seconds)) ? { seconds: Math.max(4, Math.min(6, Math.round(Number(s.seconds)))) } : {}),
     }))
     .filter((s: PhotosetShot) => s.prompt.length > 0)
     .slice(0, count);
@@ -363,7 +430,7 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
     if (body.mode === "character" && body.referenceImageUrls.length === 0) {
       throw new PhotosetPlanError(400, "請先選擇角色或上傳至少一張角色參考圖。");
     }
-    if (body.mode === "product") {
+    if (body.mode === "product" || body.mode === "ugc") {
       if (body.productImageUrls.length === 0) throw new PhotosetPlanError(400, "請先上傳商品照片。");
       if (body.referenceImageUrls.length === 0) throw new PhotosetPlanError(400, "請先選擇角色。");
     }
@@ -380,16 +447,19 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
       throw new PhotosetPlanError(500, "規劃用的 AI 服務尚未設定。");
     }
 
-    const refsToLook = body.referenceImageUrls.slice(0, body.mode === "product" ? 2 : PLANNER_REFERENCE_LOOKS);
+    const withProduct = body.mode === "product" || body.mode === "ugc";
+    const refsToLook = body.referenceImageUrls.slice(0, withProduct ? 2 : PLANNER_REFERENCE_LOOKS);
     const imageUrls = body.mode === "scene"
       ? [body.situationImageUrl!, ...refsToLook]
-      : body.mode === "product"
+      : withProduct
         ? [...refsToLook, ...body.productImageUrls]
         : refsToLook;
     const imageBlocks = await Promise.all(imageUrls.map(loadForVision));
 
     const promptText = body.mode === "scene"
       ? buildScenePrompt(body, refsToLook.length, poses)
+      : body.mode === "ugc"
+        ? buildUgcPrompt(body, refsToLook.length, body.productImageUrls.length)
       : body.mode === "product"
         ? buildProductPrompt(body, refsToLook.length, body.productImageUrls.length)
       : body.characterGoal === "shoot"
@@ -403,7 +473,7 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
 
     const message = await anthropic.messages.create({
       model: PLANNER_MODEL,
-      max_tokens: 4000,
+      max_tokens: body.mode === "ugc" ? 6000 : 4000,
       messages: [
         { role: "user", content: [...imageBlocks, { type: "text", text: promptText }] },
       ],
