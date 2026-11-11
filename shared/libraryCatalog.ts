@@ -7,9 +7,9 @@
  *
  * 清單全部是我們自己寫的描述，用屬性組合產生：
  *   pose     姿勢 2,034 筆：288 組組合姿勢 ＋ 119 組手寫姿勢，各 5 個視角，中性的白色素體人偶
- *   costume  服裝 3,224 筆：52 套穿搭 × 8 組配色 × 8 種布料細節，沒有人、透明背景
+ *   costume  服裝 3,392 筆：52 套穿搭 × 8 組配色 × 8 種布料細節（3,224）＋ 21 套成人向 × 8 色（168），沒有人、透明背景
  *   portrait 人像 1,499 筆：25 種髮型 × 5 種髮色 × 4 種表情 × 3 種臉型
- *   合計 6,757 筆
+ *   合計 6,925 筆
  *
  * 規則：
  *   - 代號（id）由屬性的 key 組成，是穩定的。同步時只新增缺少的列，不會動到
@@ -46,7 +46,7 @@ export const LIBRARIES: Array<{ id: LibraryId; label: string; hint: string }> = 
 ];
 
 /** Target sizes of each library. */
-export const LIBRARY_TARGETS: Record<LibraryId, number> = { pose: 2034, costume: 3224, portrait: 1499 };
+export const LIBRARY_TARGETS: Record<LibraryId, number> = { pose: 2034, costume: 3392, portrait: 1499 };
 
 type Opt = { key: string; name: string; desc: string };
 
@@ -526,9 +526,68 @@ const COSTUME_GROUPS: CostumeGroup[] = [
   },
 ];
 
+/**
+ * Adult-only outfits added after the library was first built (管理員才看得到).
+ * Clothing only, no person; one plain version per colour. Kept apart from
+ * COSTUME_GROUPS so the ids of the first 3,224 costumes never change.
+ */
+const BOUDOIR_PALETTE: Opt[] = [
+  { key: "black", name: "黑", desc: "黑色" },
+  { key: "wine", name: "酒紅", desc: "酒紅色" },
+  { key: "ivory", name: "象牙白", desc: "象牙白色" },
+  { key: "blush", name: "裸粉", desc: "裸粉色" },
+  { key: "red", name: "正紅", desc: "正紅色" },
+  { key: "navy", name: "午夜藍", desc: "午夜藍色" },
+  { key: "champagne", name: "香檳金", desc: "香檳金色" },
+  { key: "lilac", name: "丁香紫", desc: "丁香紫色" },
+];
+
+const ADULT_COSTUME_GROUPS: CostumeGroup[] = [
+  {
+    key: "lingerie", label: "內衣", adult: true, palettes: BOUDOIR_PALETTE, outfits: [
+      { key: "lace-set", name: "蕾絲內衣套裝", desc: "蕾絲胸罩與同款三角內褲的兩件式內衣套裝" },
+      { key: "satin-set", name: "緞面內衣套裝", desc: "緞面無鋼圈胸罩與高腰內褲的兩件式內衣套裝" },
+      { key: "sport-set", name: "運動內衣套裝", desc: "運動內衣與同色低腰平口內褲" },
+      { key: "garter-set", name: "吊帶襪套裝", desc: "蕾絲胸罩、內褲、吊襪帶與大腿襪的四件式套裝" },
+      { key: "corset", name: "馬甲", desc: "魚骨束腰馬甲、同色內褲與大腿襪" },
+      { key: "bodysuit", name: "連身內衣", desc: "高衩連身蕾絲內衣" },
+      { key: "dudou", name: "肚兜", desc: "緞面刺繡肚兜與同色綁帶短褲" },
+    ],
+  },
+  {
+    key: "nightwear", label: "性感睡衣", adult: true, palettes: BOUDOIR_PALETTE, outfits: [
+      { key: "slip", name: "細肩帶睡裙", desc: "絲質細肩帶短版睡裙，領口與裙襬有蕾絲滾邊" },
+      { key: "babydoll", name: "娃娃裝睡衣", desc: "透膚薄紗娃娃裝睡衣與同色內褲" },
+      { key: "robe-set", name: "絲質睡袍組", desc: "絲質短版睡袍、腰帶與同色細肩帶睡裙" },
+      { key: "shirt", name: "男友襯衫", desc: "寬大的牛津襯衫當睡衣穿，下襬蓋到大腿" },
+    ],
+  },
+  {
+    key: "swim-adult", label: "性感泳裝", adult: true, palettes: BOUDOIR_PALETTE, outfits: [
+      { key: "triangle", name: "三角比基尼", desc: "綁帶三角比基尼上衣與側綁帶泳褲" },
+      { key: "high-cut", name: "高衩連身泳裝", desc: "高衩露背連身泳裝" },
+      { key: "bandeau", name: "平口比基尼", desc: "平口比基尼上衣與高腰泳褲" },
+      { key: "cutout", name: "鏤空連身泳裝", desc: "腰側鏤空的連身泳裝" },
+    ],
+  },
+  {
+    key: "party-adult", label: "派對扮裝", adult: true, palettes: BOUDOIR_PALETTE, outfits: [
+      { key: "bunny", name: "兔女郎裝", desc: "緞面無肩帶連身衣、兔耳髮箍、領結、袖扣與網襪、高跟鞋" },
+      { key: "maid", name: "女僕裝", desc: "短版女僕洋裝、白色荷葉邊圍裙、頭飾與過膝襪" },
+      { key: "qipao", name: "高衩旗袍", desc: "緞面合身旗袍，側邊高衩，搭配高跟鞋" },
+      { key: "leather", name: "緊身皮衣套裝", desc: "皮革緊身連身衣、腰帶與長靴" },
+      { key: "club", name: "夜店小禮服", desc: "貼身細肩帶短洋裝、細跟高跟鞋與手拿包" },
+      { key: "sheer", name: "透膚罩衫造型", desc: "透膚薄紗長罩衫內搭同色系內衣套裝" },
+    ],
+  },
+];
+
 const COSTUME_STYLE =
   "電商服裝去背圖：隱形模特兒（ghost mannequin）呈現的一整套穿搭，從頭到腳完整搭配，正面視角，置中。" +
   "畫面中沒有任何人物、沒有臉、沒有皮膚、沒有人台支架。衣物有自然的立體感與布料質感，柔和均勻的棚燈。背景完全透明。不要任何文字或標籤。";
+
+/** The combined costumes were cut to this many when the library was first built; kept so their ids never change. */
+const COMBINED_COSTUME_COUNT = 3224;
 
 function costumeEntries(): CatalogEntry[] {
   const out: CatalogEntry[] = [];
@@ -556,7 +615,27 @@ function costumeEntries(): CatalogEntry[] {
       }
     }
   }
-  return out.slice(0, LIBRARY_TARGETS.costume);
+  const combined = out.slice(0, COMBINED_COSTUME_COUNT);
+  for (const group of ADULT_COSTUME_GROUPS) {
+    for (const outfit of group.outfits) {
+      for (const pal of group.palettes) {
+        combined.push({
+          id: `costume:${group.key}:${outfit.key}:${pal.key}:plain`,
+          library: "costume",
+          category: group.label,
+          name: `${pal.name}${outfit.name}`,
+          prompt: `${COSTUME_STYLE}這套穿搭：${outfit.desc}。整體配色為${pal.desc}，素面布料。`,
+          adult: true,
+          size: "1024x1536",
+          transparent: true,
+          usage: `${outfit.desc}，整體配色為${pal.desc}`,
+          tags: [group.label, outfit.name, pal.name],
+          sortOrder: order++,
+        });
+      }
+    }
+  }
+  return combined;
 }
 
 /* ───────────────────────── portraits: 25 hair × 5 colors × 4 expressions × 3 faces ───────────────────────── */

@@ -15,7 +15,7 @@ const STARTS = [
   { href: "/photoset?mode=kit", icon: "fa-layer-group", title: "素材套圖", desc: "選人物、服裝、姿勢，一次出整組寫真。最快看到成果。", tag: "推薦" },
   { href: "/photoset?mode=scene", icon: "fa-panorama", title: "情境寫真", desc: "寫下場景，或放一張想模仿的照片。", tag: "" },
   { href: "/create/image", icon: "fa-image", title: "圖片生成", desc: "用一句話畫一張圖，或請 AI 修改你的照片。", tag: "" },
-  { href: "/library", icon: "fa-images", title: "先逛素材圖庫", desc: "6,757 個人像、服裝、姿勢，免費瀏覽。", tag: "" },
+  { href: "/library", icon: "fa-images", title: "先逛素材圖庫", desc: "6,925 個人像、服裝、姿勢，免費瀏覽。", tag: "" },
 ];
 
 export function Onboarding() {

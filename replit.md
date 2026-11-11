@@ -108,3 +108,4 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 成本紀錄（`server/costs.ts`、後台「成本」分頁 `CostPanel.tsx`）：每次 AtlasCloud 生成成功記一筆到 `provider_costs`（估算，單價可用 `COST_*` 環境變數修正，另有 `USD_TWD_RATE`、`PAYMENT_FEE_RATE`，預設 32 與 0.08）；同頁直接呼叫 AtlasCloud 帳務 API（`/public/v1/balance`、`/public/v1/model-costs`）顯示真實餘額與花費。需要 `npm run db:push`。
 - Bunny 上傳遇到網路錯誤、429、5xx 會重試最多 3 次，避免已付費生成的圖因為存不進去而重畫。
 - 素材圖庫預覽圖預設改用 Seedream 5.5 文字生圖（`bytedance/seedream-v5.5/text-to-image`，不帶參考圖；去背素材送 `background: transparent` + PNG）。要換回 GPT Image 2.5 Flare：設定 `LIBRARY_IMAGE_MODEL=openai/gpt-image-2.5-flare/text-to-image`。
+- 服裝圖庫新增成人向 21 套 × 8 色 = 168 筆（`ADULT_COSTUME_GROUPS`：內衣、性感睡衣、性感泳裝、派對扮裝），`adult: true`、只有管理員看得到；圖庫總數 6,925（姿勢 2,034／服裝 3,392／人像 1,499）。

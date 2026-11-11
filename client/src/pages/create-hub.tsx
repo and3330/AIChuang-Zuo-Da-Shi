@@ -42,7 +42,7 @@ const MODULES: Module[] = [
 
 const LIBRARY_TABS = [
   { tab: "portrait", label: "人像", n: "1,499", icon: "fa-face-smile" },
-  { tab: "costume", label: "服裝", n: "3,224", icon: "fa-shirt" },
+  { tab: "costume", label: "服裝", n: "3,392", icon: "fa-shirt" },
   { tab: "pose", label: "姿勢", n: "2,034", icon: "fa-person-walking" },
 ];
 
@@ -138,7 +138,7 @@ export default function CreateHub() {
               <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/80 border border-fuchsia-200 text-[11px] font-semibold text-fuchsia-600">
                 <i className="fas fa-bolt" />選好就生成
               </p>
-              <h2 className="mt-2 text-xl font-bold text-slate-900">素材圖庫 <span className="text-brand">6,757</span> 個素材</h2>
+              <h2 className="mt-2 text-xl font-bold text-slate-900">素材圖庫 <span className="text-brand">6,925</span> 個素材</h2>
               <p className="text-sm text-slate-600 mt-1">挑一張人像、一套服裝、幾個姿勢，直接帶進寫真工作室生成整組寫真，不用寫提示詞。</p>
             </div>
             <Link href="/library">
