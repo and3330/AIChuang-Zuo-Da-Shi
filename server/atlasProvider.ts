@@ -297,6 +297,11 @@ export const ATLAS_I2V_MODEL = "alibaba/wan-3.0/image-to-video";
 export const ATLAS_T2V_MODEL = "alibaba/wan-3.0/text-to-video";
 /** Friendly name for logs / UI. */
 export const ATLAS_VIDEO_MODEL_LABEL = "WAN 3.0";
+/** Kling 4.0 (the website's optional model). Differences from WAN: 3–30 s, `aspect_ratio`
+ *  instead of `ratio` (16:9 | 9:16 | 1:1 | 21:9), and no `audio` switch. */
+export const ATLAS_KLING_I2V_MODEL = "kwaivgi/kling-v4.0/image-to-video";
+export const ATLAS_KLING_T2V_MODEL = "kwaivgi/kling-v4.0/text-to-video";
+export type AtlasVideoEngine = "wan" | "kling";
 
 export type AtlasVideoResult = { videoUrl: string; predictionId: string; processingTime: number };
 
@@ -308,11 +313,15 @@ function wanDuration(d: number | null | undefined): number {
   return Math.max(2, Math.min(30, Math.round(d || 5)));
 }
 
+function klingDuration(d: number | null | undefined): number {
+  return Math.max(3, Math.min(30, Math.round(d || 5)));
+}
+
 /** Submit a WAN job, poll until done, return the video URL. */
 async function runWanVideo(payload: Record<string, any>): Promise<AtlasVideoResult> {
   const started = Date.now();
   const predictionId = await atlasSubmitJob(payload, "generateVideo");
-  console.log(`[Atlas] submitted ${payload.model} prediction ${predictionId} (${payload.resolution}, ${payload.duration}s, ratio=${payload.ratio ?? "first-frame"}, last_image=${!!payload.last_image}, audio=${payload.audio})`);
+  console.log(`[Atlas] submitted ${payload.model} prediction ${predictionId} (${payload.resolution}, ${payload.duration}s, ratio=${payload.ratio ?? payload.aspect_ratio ?? "first-frame"}, last_image=${!!payload.last_image}, audio=${payload.audio})`);
   // Videos take minutes; allow 20 min with a 5 s poll interval.
   const done = await atlasPollUntilDone(predictionId, { timeoutMs: 20 * 60 * 1000, intervalMs: 5000 });
   const url = extractFirstImageUrl(done);
@@ -344,7 +353,18 @@ export async function atlasGenerateTextVideo(args: {
   /** "16:9" | "9:16" | "1:1" | "4:3" | "3:4"; anything else → "adaptive". */
   aspectRatio?: string | null;
   audio?: boolean;
+  /** Defaults to WAN. */
+  engine?: AtlasVideoEngine;
 }): Promise<AtlasVideoResult> {
+  if (args.engine === "kling") {
+    return runWanVideo({
+      model: ATLAS_KLING_T2V_MODEL,
+      prompt: args.prompt,
+      resolution: wanResolution(args.resolution === "480p" ? "720p" : args.resolution),
+      duration: klingDuration(args.duration),
+      aspect_ratio: ["16:9", "9:16", "1:1", "21:9"].includes(args.aspectRatio || "") ? args.aspectRatio : "16:9",
+    });
+  }
   const ratio = ["16:9", "9:16", "1:1", "4:3", "3:4"].includes(args.aspectRatio || "")
     ? args.aspectRatio
     : "adaptive";
@@ -379,8 +399,21 @@ export async function atlasGenerateVideo(args: {
   duration?: number | null;
   /** Native audio track. Same price either way; defaults to true. */
   audio?: boolean;
+  /** Defaults to WAN. */
+  engine?: AtlasVideoEngine;
 }): Promise<AtlasVideoResult> {
-  if (!args.image) throw new Error("WAN 圖生影片需要首幀圖片");
+  if (!args.image) throw new Error("圖生影片需要首幀圖片");
+  if (args.engine === "kling") {
+    const klingPayload: Record<string, any> = {
+      model: ATLAS_KLING_I2V_MODEL,
+      prompt: args.prompt,
+      image: args.image,
+      resolution: wanResolution(args.resolution === "480p" ? "720p" : args.resolution),
+      duration: klingDuration(args.duration),
+    };
+    if (args.lastImage) klingPayload.last_image = args.lastImage;
+    return runWanVideo(klingPayload);
+  }
   const payload: Record<string, any> = {
     model: ATLAS_I2V_MODEL,
     prompt: args.prompt,

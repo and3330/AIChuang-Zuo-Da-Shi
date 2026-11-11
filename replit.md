@@ -132,3 +132,4 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 黃金會員入口改到帳戶設定：存了滿 18 歲的生日後，生日上方出現「內容審查限制」，點開是「是否開啟 NSFW 模式」開關，打開跳出申請視窗（`GoldApplyDialog`）：認證 Email（`/api/account/email-code`、`/api/account/verify-email`）→ 真實姓名（`users.real_name`）→ 同意 AI 生成內容使用條款（`GOLD_TERMS_OF_USE`）→ 問是否加入 US$22。申請完成（`goldApplicationDone`）後會員商城才出現黃金會員；付款成功跳出導覽（從「我的」選單進入黃金專區）。除了那個開關，前台不出現 NSFW／成人字眼。
 - 帳號的第一個角色至少要 6 張照片（`FIRST_CHARACTER_MIN_PHOTOS`，只在 `CharacterWizard` 前端檢查；之後的角色 1 張即可）。精靈會提醒成品取決於照片品質，短邊小於 640 像素的照片標「解析度低」。
 - 四視圖改為 30 積分（`FOUR_VIEW_COST`，夥伴 API 價格不變）。第二個角色開始，精靈建立角色時一律生成四視圖並收 30 積分，積分不夠不能建立；第一個角色仍免費。帳戶 Email 驗證信改用 `sendVerificationEmail`（Resend）。
+- 影片頁可選模型（`VIDEO_MODELS`，`shared/pricing.ts`）：WAN 3.0（8／15 積分每秒）與 Kling 4.0（12／20）。請求帶 `videoModel`，伺服器依模型計價並驗證文字生影片的畫面比例（WAN 多 4:3、3:4；Kling 多 21:9）。Kling 走 `kwaivgi/kling-v4.0/*`，參數是 `aspect_ratio`、沒有 `audio`。夥伴 API 與故事動畫仍只用 WAN。

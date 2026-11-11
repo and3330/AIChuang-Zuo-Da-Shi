@@ -11,7 +11,7 @@ import { sendVerificationEmail } from "./verificationEmail";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt, plainImagePrompt } from "./promptEnhancer";
-import { GOLD_MEMBERSHIP, IMAGE_COST, MEMBERSHIP, MIN_TOPUP, TRIAL, topupCredits, SIGNUP_CREDITS, VIDEO_COST_PER_SECOND, imageCost } from "@shared/pricing";
+import { GOLD_MEMBERSHIP, IMAGE_COST, MEMBERSHIP, MIN_TOPUP, TRIAL, topupCredits, SIGNUP_CREDITS, VIDEO_COST_PER_SECOND, VIDEO_MODELS, imageCost, videoCostPerSecond, videoModelKey } from "@shared/pricing";
 import { ADULT_AGE, GOLD_ZONE_HEADER, GOLD_ZONE_VALUE, ageFromBirthDate, canUseNsfw, containsMinorTerms, containsNsfw, goldApplicationDone, hasAdultConsent } from "@shared/safety";
 import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
@@ -26,7 +26,7 @@ import { setAtlasUsageListener } from "./atlasProvider";
 import { partnerStore, embedWalletAccount, createPartnerImageIngestor, createPartnerUploadStore } from "./partnerStore";
 import { atlasSizeDimensions } from "./atlasProvider";
 import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
-import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIsConfigured, ATLAS_EDIT_MODEL, ATLAS_T2I_MODEL, ATLAS_I2V_MODEL, ATLAS_T2V_MODEL, ATLAS_MAX_REFERENCE_IMAGES } from "./atlasProvider";
+import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIsConfigured, ATLAS_EDIT_MODEL, ATLAS_T2I_MODEL, ATLAS_I2V_MODEL, ATLAS_T2V_MODEL, ATLAS_KLING_I2V_MODEL, ATLAS_KLING_T2V_MODEL, ATLAS_MAX_REFERENCE_IMAGES } from "./atlasProvider";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -132,6 +132,12 @@ function promptRefusal(promptText: string, goldZone: boolean, isAdmin: boolean =
   return containsNsfw(promptText) && !isAdmin
     ? { status: 403, body: { error: "這段提示詞包含目前無法生成的內容，請修改後再試。", code: "content_not_allowed" } }
     : null;
+}
+
+/** Rough provider cost per second in NT$, recorded on each video row for the admin statistics. */
+function apiVideoCostTwd(model: string | null | undefined, resolution: string | null | undefined): number {
+  const hd = (resolution || "1080p") !== "720p";
+  return videoModelKey(model) === "kling" ? (hd ? 6.9 : 4.6) : (hd ? 11 : 5.5);
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -1427,13 +1433,20 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         ? insertTextToVideoSchema.parse(req.body)
         : insertImageToVideoSchema.parse(req.body);
 
-      // All video generation runs on AtlasCloud WAN 3.0. Any legacy
-      // `provider` / `model` fields sent by an old client are ignored.
+      // All video generation runs on AtlasCloud: WAN 3.0 by default, Kling 4.0 when the
+      // user picks it (`videoModel`). Legacy `provider` / `model` fields are ignored.
       const provider = "atlas";
-      const modelId = videoType === "image-to-video" ? ATLAS_I2V_MODEL : ATLAS_T2V_MODEL;
+      const engine = validatedData.videoModel === "kling" ? "kling" : "wan";
+      const modelId = engine === "kling"
+        ? (videoType === "image-to-video" ? ATLAS_KLING_I2V_MODEL : ATLAS_KLING_T2V_MODEL)
+        : (videoType === "image-to-video" ? ATLAS_I2V_MODEL : ATLAS_T2V_MODEL);
+      // Text-to-video: the ratio must be one this model can produce (image-to-video follows the first frame).
+      if (videoType === "text-to-video" && !(VIDEO_MODELS[engine].ratios as readonly string[]).includes(validatedData.aspectRatio)) {
+        return res.status(400).json({ error: `${VIDEO_MODELS[engine].label} 不支援 ${validatedData.aspectRatio} 的畫面比例。` });
+      }
       const duration = Math.max(4, Math.min(12, req.body.duration || 5));
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
-      const VIDEO_CREDITS_PER_SECOND = VIDEO_COST_PER_SECOND[resolution];
+      const VIDEO_CREDITS_PER_SECOND = videoCostPerSecond(engine, resolution);
       const videoRefusal = promptRefusal(String(req.body.prompt ?? ""), inGoldZone(req, user), !!user.isAdmin);
       if (videoRefusal) return res.status(videoRefusal.status).json(videoRefusal.body);
       const creditsNeeded = Math.round(duration * VIDEO_CREDITS_PER_SECOND);
@@ -1563,6 +1576,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           image: firstFrameUrl,
           resolution: generation.resolution || "1080p",
           duration: generation.duration || 5,
+          engine: videoModelKey(generation.model),
         });
         await storage.updateVideoGeneration(generationId, { taskId: predictionId });
         console.log(`✅ WAN video generation completed: ${videoUrl}`);
@@ -1579,7 +1593,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           }
         }
 
-        const costPerSec = (generation.resolution || "1080p") === "720p" ? 5.5 : 11;
+        const costPerSec = apiVideoCostTwd(generation.model, generation.resolution);
         await storage.updateVideoGeneration(generationId, {
           status: "completed",
           generatedVideoUrl: videoUrl,
@@ -1603,6 +1617,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         resolution: generation.resolution || "1080p",
         duration: generation.duration || 5,
         aspectRatio: generation.aspectRatio || "16:9",
+        engine: videoModelKey(generation.model),
       });
       await storage.updateVideoGeneration(generationId, { taskId: t2v.predictionId });
       console.log(`✅ WAN text-to-video completed: ${t2v.videoUrl}`);
@@ -1618,7 +1633,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         }
       }
 
-      const t2vCostPerSec = (generation.resolution || "1080p") === "720p" ? 5.5 : 11;
+      const t2vCostPerSec = apiVideoCostTwd(generation.model, generation.resolution);
       await storage.updateVideoGeneration(generationId, {
         status: "completed",
         generatedVideoUrl: t2v.videoUrl,

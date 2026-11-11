@@ -1,5 +1,5 @@
 import { VaultPicker } from "@/components/VaultPicker";
-import { IMAGE_COST, WATERMARK_REMOVAL_COST, imageCost } from "@shared/pricing";
+import { IMAGE_COST, VIDEO_MODELS, VIDEO_MODEL_KEYS, WATERMARK_REMOVAL_COST, imageCost, type VideoModelKey } from "@shared/pricing";
 import { inGoldZone } from "@/lib/zone";
 /** Price of one image on the page being shown (the gold zone costs more). */
 const priceHere = (watermark: boolean) => imageCost(watermark, inGoldZone());
@@ -97,7 +97,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
   const [videoPrompt, setVideoPrompt] = useState("高速穿越障礙物或美麗的自然風景，帶來沉浸式的飛行體驗");
   const [videoDuration, setVideoDuration] = useState(5);
   const [cameraFixed, setCameraFixed] = useState(false);
-  const [videoAspectRatio, setVideoAspectRatio] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [videoAspectRatio, setVideoAspectRatio] = useState<string>("16:9");
   // Reference materials for image-to-video (omni mode): up to 3 extra images
   // (角色/風格/構圖) and an optional reference audio (driver track / 配音 / BGM
   // sample). NOTE: WAN 3.0 ignores these; they were used by the old SeedDance
@@ -116,14 +116,25 @@ export default function Home({ section = "image" }: { section?: "image" | "video
   const [myVideosOpen, setMyVideosOpen] = useState(false);
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
-  // Image-to-video model. Every image-to-video job runs on AtlasCloud
-  // WAN 3.0 (the server ignores any provider/model sent by the client).
-  // WAN takes one first frame only — no extra reference images / audio.
-  const I2V_MODELS = [
-    { id: "wan-3.0", label: "WAN 3.0 (AtlasCloud)", desc: "阿里 WAN 3.0 圖生影片，原生音訊，畫面比例跟隨上傳圖片", per720: 8, per1080: 15, supportsOmni: false as boolean },
-  ];
-  const [selectedI2VModel, setSelectedI2VModel] = useState<string>("wan-3.0");
+  // Video model, shared by 文字生影片 and 圖生影片 (VIDEO_MODELS in shared/pricing.ts): WAN 3.0 or
+  // Kling 4.0. Prices and the options shown follow the chosen model. Both take one first frame only —
+  // no extra reference images / audio — and image-to-video follows the uploaded image's ratio.
+  const I2V_MODELS = VIDEO_MODEL_KEYS.map(k => ({
+    id: k as string, label: VIDEO_MODELS[k].label as string, desc: VIDEO_MODELS[k].desc as string,
+    per720: VIDEO_MODELS[k].perSecond["720p"] as number, per1080: VIDEO_MODELS[k].perSecond["1080p"] as number,
+    ratios: VIDEO_MODELS[k].ratios as readonly string[], audio: VIDEO_MODELS[k].audio as boolean, supportsOmni: false as boolean,
+  }));
+  const [selectedI2VModel, setSelectedI2VModelRaw] = useState<string>("wan");
   const selectedI2VMeta = I2V_MODELS.find(m => m.id === selectedI2VModel) ?? I2V_MODELS[0];
+  const videoPerSec = videoResolution === "720p" ? selectedI2VMeta.per720 : selectedI2VMeta.per1080;
+  /** Switching model drops a ratio the new model cannot produce. */
+  const setSelectedI2VModel = (id: string) => {
+    setSelectedI2VModelRaw(id);
+    const next = I2V_MODELS.find(m => m.id === id);
+    if (next && !next.ratios.includes(videoAspectRatio)) setVideoAspectRatio("16:9");
+  };
+  const EXTRA_RATIO_LABEL: Record<string, string> = { "4:3": "橫向（傳統）", "3:4": "直向（傳統）", "21:9": "超寬螢幕" };
+  const extraRatios = selectedI2VMeta.ratios.filter(r => !["16:9", "9:16", "1:1"].includes(r));
 
   const getNarrativeInfo = (idx: number, total: number): { label: string; short: string; color: string; bg: string; border: string; icon: string } => {
     const ratio = total <= 1 ? 0 : idx / (total - 1);
@@ -800,6 +811,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
         cameraFixed,
         aspectRatio: videoAspectRatio,
         resolution: videoResolution,
+        videoModel: selectedI2VModel as VideoModelKey,
       };
       if (textToVideoRefAudio) {
         t2vData.referenceAudioUrl = textToVideoRefAudio.path;
@@ -822,6 +834,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
         cameraFixed,
         aspectRatio: videoAspectRatio,
         resolution: videoResolution,
+        videoModel: selectedI2VModel as VideoModelKey,
       };
       // Extra reference images / audio are only sent for models that
       // support them (WAN 3.0 does not).
@@ -983,7 +996,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
       const per = videoResolution === "720p" ? selectedI2VMeta.per720 : selectedI2VMeta.per1080;
       return Math.round(videoDuration * per);
     }
-    if (mode === "text-to-video") return Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15));
+    if (mode === "text-to-video") return Math.round(videoDuration * videoPerSec);
     const perImageCost = priceHere(watermark);
     if (mode === "text-to-image") return isSequentialMode ? perImageCost * sequentialCount : perImageCost;
     if (isBatchMode) return perImageCost * batchPrompts.filter(p => p.trim()).length;
@@ -1603,6 +1616,24 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                   <p className="text-xs text-gray-400 mt-1">詳細描述您想要的影片畫面和動態效果 ・先①AI優化讓描述更豐富，再②Claude優化轉為英文專業格式</p>
                 </div>
 
+                <div className="border border-purple-200 bg-purple-50/40 rounded-xl p-4 space-y-2" data-testid="t2v-model-picker">
+                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                    <i className="fas fa-robot text-purple-500"></i>
+                    AI 影片模型
+                  </Label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {I2V_MODELS.map(m => (
+                      <button key={m.id} onClick={() => setSelectedI2VModel(m.id)} aria-pressed={selectedI2VModel === m.id}
+                        className={`p-3 rounded-lg border-2 text-left transition-all ${selectedI2VModel === m.id ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 bg-white text-gray-600 hover:border-purple-200"}`}
+                        data-testid={`t2v-model-${m.id}`}>
+                        <div className="font-semibold text-sm">{m.label}</div>
+                        <div className="text-xs mt-0.5">720P {m.per720}・1080P {m.per1080} 積分/秒</div>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500">{selectedI2VMeta.desc}{selectedI2VMeta.audio ? "" : "（沒有音訊開關，以實際輸出為準）"}</p>
+                </div>
+
                 <div className="grid grid-cols-2 gap-4">
                   <div>
                     <Label className="text-sm font-medium text-gray-700">影片長度</Label>
@@ -1622,7 +1653,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                         <span className="text-sm text-gray-500">12秒</span>
                       </div>
                       <div className="text-center text-sm font-medium text-purple-600 bg-purple-50 rounded-lg py-1.5">
-                        {Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15))} 積分（{videoDuration}秒 × {videoResolution === "720p" ? "8" : "15"}積分/秒）
+                        {Math.round(videoDuration * videoPerSec)} 積分（{videoDuration}秒 × {videoPerSec}積分/秒）
                       </div>
                     </div>
                   </div>
@@ -1667,7 +1698,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                       }`}
                     >
                       <div className="font-semibold text-sm">720P</div>
-                      <div className="text-xs mt-0.5 text-green-600 font-medium">8 積分/秒</div>
+                      <div className="text-xs mt-0.5 text-green-600 font-medium">{selectedI2VMeta.per720} 積分/秒</div>
                     </button>
                     <button
                       onClick={() => setVideoResolution("1080p")}
@@ -1678,7 +1709,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                       }`}
                     >
                       <div className="font-semibold text-sm">1080P</div>
-                      <div className="text-xs mt-0.5 text-orange-600 font-medium">15 積分/秒</div>
+                      <div className="text-xs mt-0.5 text-orange-600 font-medium">{selectedI2VMeta.per1080} 積分/秒</div>
                     </button>
                   </div>
                 </div>
@@ -1725,9 +1756,21 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                   </div>
                 </div>
 
+                {extraRatios.length > 0 && (
+                  <div className="grid grid-cols-3 gap-2 -mt-2" data-testid="t2v-extra-ratios">
+                    {extraRatios.map(r => (
+                      <button key={r} onClick={() => setVideoAspectRatio(r)}
+                        className={`p-2.5 rounded-lg border-2 text-center transition-all ${videoAspectRatio === r ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 text-gray-600 hover:border-purple-200"}`}>
+                        <div className="font-semibold text-sm">{r}</div>
+                        <div className="text-xs mt-0.5">{EXTRA_RATIO_LABEL[r] ?? ""}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="p-3 bg-purple-50 border border-purple-100 rounded-lg text-sm text-purple-700 flex items-center gap-2">
                   <i className="fas fa-info-circle"></i>
-                  影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15))} 積分
+                  影片生成需要 1-3 分鐘，費用：{Math.round(videoDuration * videoPerSec)} 積分
                 </div>
 
                 <div className="p-4 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
@@ -1738,12 +1781,12 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                   <div className="grid grid-cols-2 gap-3 text-xs">
                     <div className="bg-white rounded-lg p-2.5 border border-gray-100">
                       <div className="font-semibold text-gray-700">720P 標準畫質</div>
-                      <div className="text-green-600 font-bold text-base mt-1">8 積分/秒</div>
+                      <div className="text-green-600 font-bold text-base mt-1">{selectedI2VMeta.per720} 積分/秒</div>
                       <div className="text-gray-400 mt-0.5">適合一般用途、社群分享</div>
                     </div>
                     <div className="bg-white rounded-lg p-2.5 border border-gray-100">
                       <div className="font-semibold text-gray-700">1080P 高畫質</div>
-                      <div className="text-orange-600 font-bold text-base mt-1">15 積分/秒</div>
+                      <div className="text-orange-600 font-bold text-base mt-1">{selectedI2VMeta.per1080} 積分/秒</div>
                       <div className="text-gray-400 mt-0.5">適合專業製作、高品質需求</div>
                     </div>
                   </div>
@@ -1815,7 +1858,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                       {!selectedI2VMeta.supportsOmni && (
                         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5 flex items-start gap-1.5">
                           <i className="fas fa-info-circle mt-0.5"></i>
-                          <span>WAN 3.0 以上傳圖片作為首幀生成影片，不支援額外的參考圖片與參考音訊；影片比例會跟隨上傳圖片。</span>
+                          <span>{selectedI2VMeta.label} 以上傳圖片作為首幀生成影片，不支援額外的參考圖片與參考音訊；影片比例會跟隨上傳圖片。{selectedI2VMeta.audio ? "影片自帶音訊。" : ""}</span>
                         </p>
                       )}
                     </div>
@@ -1878,7 +1921,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                             <span className="text-sm text-gray-500">12秒</span>
                           </div>
                           <div className="text-center text-sm font-medium text-purple-600 bg-purple-50 rounded-lg py-1.5">
-                            {Math.round(videoDuration * (videoResolution === "720p" ? 8 : 15))} 積分（{videoDuration}秒 × {videoResolution === "720p" ? "8" : "15"}積分/秒）
+                            {Math.round(videoDuration * videoPerSec)} 積分（{videoDuration}秒 × {videoPerSec}積分/秒）
                           </div>
                         </div>
                       </div>

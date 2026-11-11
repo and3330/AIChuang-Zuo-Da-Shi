@@ -245,12 +245,13 @@ export const insertImageToVideoSchema = z.object({
   additionalImageUrls: z.array(z.string()).max(3).optional(),
   referenceAudioUrl: z.string().optional(),
   prompt: z.string(),
-  duration: z.number().min(2).max(12).optional().default(5),
+  duration: z.number().min(4).max(12).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),
-  aspectRatio: z.enum(["16:9", "9:16", "1:1"]).optional().default("16:9"),
+  aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]).optional().default("16:9"),
   resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
-  /** Legacy fields from old clients — accepted but ignored. Every
-   *  image-to-video job runs on AtlasCloud WAN 3.0. */
+  /** Which model runs the job: see VIDEO_MODELS in shared/pricing.ts. */
+  videoModel: z.enum(["wan", "kling"]).optional().default("wan"),
+  /** Legacy fields from old clients — accepted but ignored (videoModel picks the model). */
   provider: z.enum(["byteplus", "gmi", "atlas"]).optional(),
   model: z.string().optional(),
 });
@@ -262,10 +263,12 @@ export const insertTextToVideoSchema = z.object({
    *  text-to-video USED to route through the old SeedDance omni endpoint with
    *  generate_audio=true so the supplied audio drives the soundtrack. */
   referenceAudioUrl: z.string().optional(),
-  duration: z.number().min(2).max(12).optional().default(5),
+  duration: z.number().min(4).max(12).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),
-  aspectRatio: z.enum(["16:9", "9:16", "1:1"]).optional().default("16:9"),
+  aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]).optional().default("16:9"),
   resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
+  /** Which model runs the job: see VIDEO_MODELS in shared/pricing.ts. */
+  videoModel: z.enum(["wan", "kling"]).optional().default("wan"),
 });
 
 export const insertStoryGenerationSchema = z.object({
@@ -309,8 +312,8 @@ export type InsertImageGeneration = z.infer<typeof insertImageGenerationSchema>;
 export type InsertTextToImage = z.infer<typeof insertTextToImageSchema>;
 export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
 export type InsertBatchImageToImage = z.infer<typeof insertBatchImageToImageSchema>;
-export type InsertImageToVideo = z.infer<typeof insertImageToVideoSchema>;
-export type InsertTextToVideo = z.infer<typeof insertTextToVideoSchema>;
+export type InsertImageToVideo = Omit<z.infer<typeof insertImageToVideoSchema>, "videoModel"> & { videoModel?: "wan" | "kling" };
+export type InsertTextToVideo = Omit<z.infer<typeof insertTextToVideoSchema>, "videoModel"> & { videoModel?: "wan" | "kling" };
 export type InsertStoryGeneration = z.infer<typeof insertStoryGenerationSchema>;
 export type ImageGeneration = typeof imageGenerations.$inferSelect;
 export type VideoGeneration = typeof videoGenerations.$inferSelect;
