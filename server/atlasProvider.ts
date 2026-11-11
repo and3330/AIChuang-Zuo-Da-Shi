@@ -236,16 +236,44 @@ export async function atlasGenerateImage(args: {
   return url.replace(/&amp;/g, "&");
 }
 
-/* ---------- asset-library previews (cheap text-to-image) ---------- */
+/* ---------- asset-library previews (text-to-image only) ---------- */
 
 /**
- * Model for bulk asset-library preview images. Deliberately NOT Seedream: at
- * thousands of images the per-image price matters more than edit ability.
+ * Model for bulk asset-library preview images. Default: Seedream 5.5
+ * text-to-image (no reference images, so no per-reference surcharge).
+ * Set LIBRARY_IMAGE_MODEL=openai/gpt-image-2.5-flare/text-to-image to go back
+ * to GPT Image 2.5 Flare.
  */
-export const ATLAS_LIBRARY_MODEL = process.env.LIBRARY_IMAGE_MODEL || "openai/gpt-image-2.5-flare/text-to-image";
+export const ATLAS_LIBRARY_MODEL = process.env.LIBRARY_IMAGE_MODEL || ATLAS_T2I_MODEL;
+const LIBRARY_IS_SEEDREAM = ATLAS_LIBRARY_MODEL.startsWith("bytedance/seedream");
 /** List price per image when this was written (2026-11); shown as an estimate only. */
-export const ATLAS_LIBRARY_PRICE_USD = 0.003;
+export const ATLAS_LIBRARY_PRICE_USD = LIBRARY_IS_SEEDREAM ? 0.016 : 0.003;
+/** Only used by the GPT Image models; Seedream has no quality setting. */
 const LIBRARY_IMAGE_QUALITY = process.env.LIBRARY_IMAGE_QUALITY || "medium";
+
+/** The request body for one library image; the two model families take different fields. */
+export function libraryImagePayload(args: { prompt: string; size: string; transparent?: boolean }, model = ATLAS_LIBRARY_MODEL): Record<string, any> {
+  if (model.startsWith("bytedance/seedream")) {
+    return {
+      model,
+      prompt: args.prompt,
+      // Seedream only accepts its own presets, written "W*H".
+      size: toAtlasSize(args.size),
+      // A transparent background is only returned as PNG.
+      output_format: args.transparent ? "png" : "jpeg",
+      background: args.transparent ? "transparent" : "opaque",
+    };
+  }
+  return {
+    model,
+    prompt: args.prompt,
+    quality: LIBRARY_IMAGE_QUALITY,
+    size: args.size,
+    background: args.transparent ? "transparent" : "opaque",
+    output_format: "png",
+    n: 1,
+  };
+}
 
 /** One preview image from a text prompt. Returns the provider URL. */
 export async function atlasGenerateLibraryImage(args: {
@@ -254,15 +282,7 @@ export async function atlasGenerateLibraryImage(args: {
   size: string;
   transparent?: boolean;
 }): Promise<string> {
-  const payload: Record<string, any> = {
-    model: ATLAS_LIBRARY_MODEL,
-    prompt: args.prompt,
-    quality: LIBRARY_IMAGE_QUALITY,
-    size: args.size,
-    background: args.transparent ? "transparent" : "opaque",
-    output_format: "png",
-    n: 1,
-  };
+  const payload = libraryImagePayload(args);
   const predictionId = await atlasSubmitJob(payload);
   const done = await atlasPollUntilDone(predictionId, { timeoutMs: 5 * 60 * 1000, intervalMs: 3000 });
   const url = extractFirstImageUrl(done);

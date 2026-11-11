@@ -6,10 +6,10 @@
  * CDN，資料庫的 library_assets 記錄網址與狀態。
  *
  * 清單全部是我們自己寫的描述，用屬性組合產生：
- *   pose     姿勢 1,439 筆：288 組姿勢 × 5 個視角，中性的白色素體人偶
+ *   pose     姿勢 2,034 筆：288 組組合姿勢 ＋ 119 組手寫姿勢，各 5 個視角，中性的白色素體人偶
  *   costume  服裝 3,224 筆：52 套穿搭 × 8 組配色 × 8 種布料細節，沒有人、透明背景
  *   portrait 人像 1,499 筆：25 種髮型 × 5 種髮色 × 4 種表情 × 3 種臉型
- *   合計 6,162 筆
+ *   合計 6,757 筆
  *
  * 規則：
  *   - 代號（id）由屬性的 key 組成，是穩定的。同步時只新增缺少的列，不會動到
@@ -46,7 +46,7 @@ export const LIBRARIES: Array<{ id: LibraryId; label: string; hint: string }> = 
 ];
 
 /** Target sizes of each library. */
-export const LIBRARY_TARGETS: Record<LibraryId, number> = { pose: 1439, costume: 3224, portrait: 1499 };
+export const LIBRARY_TARGETS: Record<LibraryId, number> = { pose: 2034, costume: 3224, portrait: 1499 };
 
 type Opt = { key: string; name: string; desc: string };
 
@@ -174,11 +174,11 @@ const HEADS: Opt[] = [
   { key: "turn", name: "轉頭", desc: "頭部轉向側面" },
 ];
 
-const POSE_STYLE =
+const POSE_STYLE_ONE =
   "一個中性、沒有五官細節、沒有頭髮與服裝的白色素體人偶（藝用人體模型），啞光白色材質，關節線條清楚，比例為成年人。" +
   "純淺灰色無縫背景，柔和均勻的棚燈，有淡淡的接觸陰影。置中，周圍留白。不要任何文字、標籤、箭頭或邊框。";
 
-type PoseGroup = { key: string; category: string; name: string; desc: string; framing: "全身" | "半身" };
+type PoseGroup = { key: string; category: string; name: string; desc: string; framing: "全身" | "半身"; people?: 2 };
 
 function cross(category: string, prefix: string, bases: Opt[], extras: Opt[], framing: "全身" | "半身" = "全身"): PoseGroup[] {
   const out: PoseGroup[] = [];
@@ -201,11 +201,148 @@ function poseGroups(): PoseGroup[] {
   ];                                                           // = 288
 }
 
+/**
+ * Hand-written poses added on top of the combined ones (119 groups × 5 views).
+ * Everyday, portrait, stretching and two-person poses only; our own wording.
+ * Keys are stable: add new ones at the end, never rename.
+ */
+const EXTRA_POSES: PoseGroup[] = [
+  { key: "x-s-curve", category: "站姿", name: "S 曲線站", desc: "站立，身體呈 S 形曲線，骨盆推向一側，一手扶腰", framing: "全身" },
+  { key: "x-hair-both", category: "站姿", name: "雙手攏髮", desc: "站立，背部微微後仰，雙手抬起把頭髮向後攏", framing: "全身" },
+  { key: "x-look-back", category: "站姿", name: "回眸", desc: "站立，身體背向鏡頭四分之三，轉頭越過肩膀回望", framing: "全身" },
+  { key: "x-nape", category: "站姿", name: "雙手扶後頸", desc: "站立，雙手抬起扶在後頸，手肘向兩側打開", framing: "全身" },
+  { key: "x-head-one", category: "站姿", name: "單手扶後腦", desc: "站立，一手抬起扶在後腦，另一手自然垂放，重心放在一隻腳", framing: "全身" },
+  { key: "x-neck-thigh", category: "站姿", name: "手放頸側與腿側", desc: "站立，一手輕放在頸側，另一手輕放在大腿外側", framing: "全身" },
+  { key: "x-arm-hip", category: "站姿", name: "單手高舉送胯", desc: "站立，一手高舉過頭，骨盆推向另一側", framing: "全身" },
+  { key: "x-wide-hips", category: "站姿", name: "開腿扶腰", desc: "雙腳大幅張開站立，雙手扶腰，挺胸", framing: "全身" },
+  { key: "x-tiptoe-v", category: "站姿", name: "踮腳雙臂 V 字", desc: "踮起腳尖站立，雙臂向斜上方張開成 V 字", framing: "全身" },
+  { key: "x-wind", category: "站姿", name: "迎風站", desc: "站立，身體微微前傾像迎著風，一手抬到頭側按住頭髮", framing: "全身" },
+  { key: "x-knee-in", category: "站姿", name: "內收膝扶腰", desc: "站立，雙手扶腰，一腳膝蓋向內收、腳尖點地，上身微微後仰", framing: "全身" },
+  { key: "x-knee-hug", category: "站姿", name: "站姿抱膝", desc: "單腳站立，另一腳屈膝抬到胸前，雙手抱住膝蓋", framing: "全身" },
+  { key: "x-foot-back", category: "站姿", name: "後勾腳回頭", desc: "站立，一腳小腿向後勾起，雙手在身後交握，轉頭看向一側", framing: "全身" },
+  { key: "x-lean-knee", category: "坐姿", name: "後仰單膝立", desc: "坐在地上，上身向後仰用雙手撐地，一膝立起、另一腿伸直", framing: "全身" },
+  { key: "x-one-hand-legs", category: "坐姿", name: "單手撐地伸腿", desc: "坐在地上，一手在身側撐地，雙腿併攏向前斜伸", framing: "全身" },
+  { key: "x-back-hands", category: "坐姿", name: "雙手後撐挺胸", desc: "坐在地上，雙手在身後撐地，挺胸、雙腿向前伸直交疊", framing: "全身" },
+  { key: "x-knees-tilt", category: "坐姿", name: "抱膝斜倒", desc: "坐在地上雙膝彎起，雙膝併攏倒向左側，雙手環抱小腿", framing: "全身" },
+  { key: "x-knee-hair", category: "坐姿", name: "單膝立撥髮", desc: "坐在地上，一膝立起，一手搭在膝上、另一手撥頭髮", framing: "全身" },
+  { key: "x-diag-hip", category: "坐姿", name: "斜伸腿扶腰", desc: "坐在地上，雙腿向斜前方伸直，一手扶腰、一手撐地", framing: "全身" },
+  { key: "x-elbows", category: "坐姿", name: "雙肘後撐", desc: "坐在地上向後斜躺，用雙手手肘撐起上身，雙腿伸直交疊", framing: "全身" },
+  { key: "x-knees-head", category: "坐姿", name: "屈膝雙手枕頭", desc: "坐在地上雙膝彎起，雙手交疊放在頭後，手肘打開", framing: "全身" },
+  { key: "x-lean-elbow", category: "坐姿", name: "側倚單肘", desc: "坐在地上，身體向右傾斜用單肘撐地，雙腿收向另一側", framing: "全身" },
+  { key: "x-ankle", category: "坐姿", name: "手扶腳踝", desc: "坐在地上，一膝立起，一手輕扶同側腳踝，另一手撐地", framing: "全身" },
+  { key: "x-knee-chin", category: "坐姿", name: "單膝立托腮", desc: "坐在地上，一膝立起，手肘靠在膝上托著臉頰", framing: "全身" },
+  { key: "x-float", category: "坐姿", name: "後仰抬腳", desc: "坐在地上向後仰用雙手撐地，雙腳併攏離地微微抬起", framing: "全身" },
+  { key: "x-knee-arch", category: "坐姿", name: "抱單膝挺背", desc: "坐在地上，雙手抱住一隻立起的膝蓋，背部挺直、另一腿伸直", framing: "全身" },
+  { key: "x-leg-up", category: "坐姿", name: "坐姿抬腿", desc: "坐在地上，一腿向上伸直抬高，同側手扶著小腿，另一腿彎曲平放", framing: "全身" },
+  { key: "x-w-lap", category: "坐姿", name: "鴨子坐・手放腿上", desc: "鴨子坐（雙膝併攏、小腿分向兩側坐在地上），雙手放在大腿上", framing: "全身" },
+  { key: "x-w-front", category: "坐姿", name: "鴨子坐・雙手前撐", desc: "鴨子坐，雙手在身前撐地，上身微微前傾", framing: "全身" },
+  { key: "x-w-back", category: "坐姿", name: "鴨子坐・雙手後撐", desc: "鴨子坐，雙手在身後撐地，上身微微後仰", framing: "全身" },
+  { key: "x-side-cheek", category: "坐姿", name: "側坐托腮", desc: "側坐在地上，雙腿收向右側，一手托著臉頰", framing: "全身" },
+  { key: "x-side-arm", category: "坐姿", name: "側坐單手上伸", desc: "側坐在地上，雙腿收向一側，一手向上伸展、另一手撐地", framing: "全身" },
+  { key: "x-side-curve", category: "坐姿", name: "側坐撐地", desc: "側坐在地上，一手在身側撐地，身體向撐地那側彎出弧線", framing: "全身" },
+  { key: "x-kneel-thigh", category: "蹲跪", name: "跪立手放腿", desc: "雙膝跪地、上身直立，雙手放在大腿前側", framing: "全身" },
+  { key: "x-kneel-head", category: "蹲跪", name: "跪立雙手枕頭", desc: "雙膝跪地、上身直立，雙手交疊放在頭後，手肘打開", framing: "全身" },
+  { key: "x-half-knee", category: "蹲跪", name: "單膝跪手放膝", desc: "單膝跪地，另一腳屈膝踩地，雙手疊放在立起的膝蓋上", framing: "全身" },
+  { key: "x-half-look", category: "蹲跪", name: "單膝跪仰望", desc: "單膝跪地，另一腳屈膝踩地，抬頭向上仰望，一手放在胸口", framing: "全身" },
+  { key: "x-kneel-up-arms", category: "蹲跪", name: "跪立雙手上伸", desc: "雙膝跪地、上身直立，雙手向上伸直", framing: "全身" },
+  { key: "x-kneel-hair-hip", category: "蹲跪", name: "跪立撥髮扶腰", desc: "雙膝跪地、上身直立，一手撥頭髮、一手扶腰", framing: "全身" },
+  { key: "x-kneel-side", category: "蹲跪", name: "跪姿側撐", desc: "雙膝跪地，身體向一側傾斜、一手撐地，另一手放在腿上", framing: "全身" },
+  { key: "x-kneel-twist", category: "蹲跪", name: "跪姿回頭", desc: "雙膝跪地、上身直立，上身扭轉回頭看向身後", framing: "全身" },
+  { key: "x-seiza-hair", category: "蹲跪", name: "跪坐撥髮", desc: "跪坐在腳跟上，背部挺直，一手抬起撥頭髮", framing: "全身" },
+  { key: "x-squat-knees", category: "蹲跪", name: "蹲姿手放膝", desc: "雙膝併攏蹲下，雙手放在膝蓋上", framing: "全身" },
+  { key: "x-squat-hand", category: "蹲跪", name: "蹲姿單手撐地", desc: "蹲下，一手在身側撐地，另一手搭在膝上", framing: "全身" },
+  { key: "x-squat-chin", category: "蹲跪", name: "蹲姿托腮", desc: "雙膝併攏蹲下，雙肘靠在膝上、雙手托著臉頰", framing: "全身" },
+  { key: "x-squat-hair", category: "蹲跪", name: "蹲姿撥髮", desc: "雙膝併攏蹲下，一手撥頭髮、一手環抱膝蓋", framing: "全身" },
+  { key: "x-squat-look", category: "蹲跪", name: "蹲姿回頭", desc: "背向鏡頭蹲下，轉頭越過肩膀回望", framing: "全身" },
+  { key: "x-side-knee", category: "躺臥", name: "側躺屈腿", desc: "側躺在地上，一手撐頭，上方的腿屈膝向前", framing: "全身" },
+  { key: "x-prone-chin", category: "躺臥", name: "趴姿托腮踢腳", desc: "趴在地上，雙肘撐地、雙手托腮，兩隻小腿向上彎起交錯", framing: "全身" },
+  { key: "x-prone-one", category: "躺臥", name: "趴姿托腮單腳", desc: "趴在地上，雙肘撐地、雙手托腮，一隻小腿向上彎起", framing: "全身" },
+  { key: "x-prone-arms", category: "躺臥", name: "趴姿枕臂", desc: "趴在地上，雙臂交疊、頭側枕在手臂上，雙腿伸直", framing: "全身" },
+  { key: "x-prone-elbows", category: "躺臥", name: "趴姿肘撐", desc: "趴在地上用雙肘撐起上身，雙腿伸直併攏", framing: "全身" },
+  { key: "x-back-knees-side", category: "躺臥", name: "仰躺雙膝側倒", desc: "仰躺在地上，雙膝併攏彎起倒向一側，雙臂向兩側打開", framing: "全身" },
+  { key: "x-back-one-knee", category: "躺臥", name: "仰躺單膝立", desc: "仰躺在地上，一膝立起、一腿伸直，一手放在頭側", framing: "全身" },
+  { key: "x-back-knee-arm", category: "躺臥", name: "仰躺屈膝單手上伸", desc: "仰躺在地上，雙膝立起，一手向頭頂方向伸展、一手放在腹部", framing: "全身" },
+  { key: "x-back-hug", category: "躺臥", name: "仰躺抱膝", desc: "仰躺在地上，雙膝收向胸前，雙手抱住小腿", framing: "全身" },
+  { key: "x-back-legs-up", category: "躺臥", name: "仰躺雙腿上舉", desc: "仰躺在地上，雙腿併攏向正上方伸直，雙手放在身側", framing: "全身" },
+  { key: "x-side-reach", category: "躺臥", name: "側躺伸展", desc: "側躺在地上，雙臂向頭頂方向伸直，身體拉長成弧線", framing: "全身" },
+  { key: "x-elbow-knee", category: "躺臥", name: "肘撐半躺單膝立", desc: "仰面用雙肘撐起上身半躺，一膝立起、一腿伸直", framing: "全身" },
+  { key: "x-bend-knees", category: "伸展", name: "前彎手扶膝", desc: "站立向前彎腰，雙手扶在膝蓋上，抬頭看向前方", framing: "全身" },
+  { key: "x-bend-shins", category: "伸展", name: "前彎手觸小腿", desc: "站立向前彎腰，雙手觸碰小腿，背部拉長", framing: "全身" },
+  { key: "x-fold", category: "伸展", name: "站姿前屈", desc: "站立雙腿伸直向前折疊，雙手掌貼地", framing: "全身" },
+  { key: "x-bend-arms", category: "伸展", name: "前彎垂臂", desc: "站立向前彎腰，雙臂放鬆自然下垂", framing: "全身" },
+  { key: "x-bend-leg", category: "伸展", name: "前彎後抬腿", desc: "站立向前彎腰，一腿向後抬起與地面平行，雙臂向兩側打開", framing: "全身" },
+  { key: "x-backbend", category: "伸展", name: "站姿後彎", desc: "站立，雙手扶在後腰，上身向後彎", framing: "全身" },
+  { key: "x-backbend-arms", category: "伸展", name: "舉臂後彎", desc: "站立，雙臂高舉過頭，上身向後彎成弧線", framing: "全身" },
+  { key: "x-twist-stand", category: "伸展", name: "站姿扭轉", desc: "站立，上身向一側扭轉，雙臂向兩側平舉打開", framing: "全身" },
+  { key: "x-twist-sit", category: "伸展", name: "坐姿扭轉", desc: "盤腿坐在地上，上身向一側扭轉，一手放在對側膝蓋、一手在身後撐地", framing: "全身" },
+  { key: "x-overhead-twist", category: "伸展", name: "舉臂扭腰", desc: "站立，雙臂高舉過頭交握，腰部向一側扭轉", framing: "全身" },
+  { key: "x-i-balance", category: "伸展", name: "I 字平衡", desc: "單腳站立，另一腿向上伸直抬到肩膀高度，同側手握住腳踝", framing: "全身" },
+  { key: "x-side-leg", category: "伸展", name: "側抬腿平衡", desc: "單腳站立，另一腿向側邊高高抬起，雙臂張開保持平衡", framing: "全身" },
+  { key: "x-standing-split", category: "伸展", name: "站立分腿", desc: "站立向前折疊、雙手撐地，一腿向後上方高高抬起", framing: "全身" },
+  { key: "x-cat-cow", category: "伸展", name: "四足跪姿", desc: "雙手雙膝著地的四足跪姿，背部微微下沉、抬頭看向前方", framing: "全身" },
+  { key: "x-donkey", category: "伸展", name: "四足跪後抬腿", desc: "雙手雙膝著地的四足跪姿，一腿向後伸直抬高", framing: "全身" },
+  { key: "x-puppy", category: "伸展", name: "伸展嬰兒式", desc: "雙膝跪地，雙臂向前伸直、胸口貼近地面，臀部在膝蓋正上方", framing: "全身" },
+  { key: "x-cobra", category: "伸展", name: "眼鏡蛇式", desc: "趴在地上，雙手撐地把上身推起向後彎，雙腿伸直貼地", framing: "全身" },
+  { key: "x-camel", category: "伸展", name: "駱駝式", desc: "雙膝跪地、大腿直立，上身向後彎，雙手握住腳跟", framing: "全身" },
+  { key: "x-camel-one", category: "伸展", name: "跪姿單手後彎", desc: "雙膝跪地、大腿直立，上身向後彎，一手伸向腳跟、一手向上伸展", framing: "全身" },
+  { key: "x-kneel-back", category: "伸展", name: "跪姿後撐", desc: "雙膝跪地，雙手在身後撐地，上身向後仰、挺胸", framing: "全身" },
+  { key: "x-bridge", category: "伸展", name: "橋式", desc: "仰躺，雙腳踩地把臀部抬高成橋式，雙手放在身側", framing: "全身" },
+  { key: "x-bridge-leg", category: "伸展", name: "單腳橋式", desc: "仰躺，雙腳踩地把臀部抬高成橋式，一腿向天花板伸直", framing: "全身" },
+  { key: "x-wheel", category: "伸展", name: "輪式", desc: "雙手雙腳撐地、身體向上拱起的輪式後彎", framing: "全身" },
+  { key: "x-table", category: "伸展", name: "反向桌式", desc: "面朝上，雙手雙腳撐地、軀幹抬平與地面平行的反向桌式", framing: "全身" },
+  { key: "x-plow", category: "伸展", name: "犁式", desc: "仰躺，雙腿併攏越過頭頂、腳尖觸地，雙手在背後伸直貼地", framing: "全身" },
+  { key: "x-shoulder-stand", category: "伸展", name: "肩立式", desc: "仰躺用肩膀支撐，雙手扶腰，雙腿併攏向正上方伸直", framing: "全身" },
+  { key: "x-front-split", category: "伸展", name: "前後劈腿", desc: "在地上前後劈腿坐下，上身直立、雙臂向上伸展", framing: "全身" },
+  { key: "x-side-split", category: "伸展", name: "左右劈腿", desc: "在地上左右劈腿坐下，上身直立、雙手在身前撐地", framing: "全身" },
+  { key: "x-heart-chest", category: "半身手勢", name: "胸前比愛心", desc: "雙手在胸前合成愛心形狀", framing: "半身" },
+  { key: "x-heart-head", category: "半身手勢", name: "頭頂大愛心", desc: "雙臂在頭頂上方圍成一個大愛心", framing: "半身" },
+  { key: "x-finger-heart", category: "半身手勢", name: "臉旁指愛心", desc: "一手在臉頰旁用拇指與食指比出小愛心", framing: "半身" },
+  { key: "x-peace-chin", category: "半身手勢", name: "下巴雙 V", desc: "雙手在下巴下方比出兩個 V 字手勢", framing: "半身" },
+  { key: "x-peace-back", category: "半身手勢", name: "反手 V", desc: "一手在臉旁比 V 字，手背朝向鏡頭", framing: "半身" },
+  { key: "x-fists-cheeks", category: "半身手勢", name: "握拳貼臉", desc: "雙手握拳貼在兩側臉頰，肩膀微微聳起", framing: "半身" },
+  { key: "x-bunny", category: "半身手勢", name: "兔耳手勢", desc: "雙手舉在頭頂兩側，手掌向前像兔耳朵", framing: "半身" },
+  { key: "x-cat-paw", category: "半身手勢", name: "招財貓手", desc: "一手舉到臉旁、手腕彎曲握成貓掌", framing: "半身" },
+  { key: "x-roar", category: "半身手勢", name: "張爪手勢", desc: "雙手舉到臉旁，手指彎曲像爪子", framing: "半身" },
+  { key: "x-shush", category: "半身手勢", name: "噓手勢", desc: "食指豎起放在嘴唇前", framing: "半身" },
+  { key: "x-cover-eye", category: "半身手勢", name: "歪頭遮單眼", desc: "頭歪向一側，一手手掌遮住一隻眼睛", framing: "半身" },
+  { key: "x-kiss", category: "半身手勢", name: "飛吻", desc: "一手手掌從嘴邊向前送出飛吻", framing: "半身" },
+  { key: "x-flower", category: "半身手勢", name: "雙掌托臉", desc: "雙手手腕併攏、手掌打開托住下巴，像一朵花", framing: "半身" },
+  { key: "x-poke", category: "半身手勢", name: "食指戳臉頰", desc: "一手食指輕戳自己的臉頰", framing: "半身" },
+  { key: "x-cover-mouth", category: "半身手勢", name: "雙手遮嘴", desc: "雙手交疊遮在嘴前，肩膀微微聳起", framing: "半身" },
+  { key: "x-please", category: "半身手勢", name: "拜託手勢", desc: "雙手在臉前合掌，頭微微低下", framing: "半身" },
+  { key: "x-frame", category: "半身手勢", name: "手指取景框", desc: "雙手拇指與食指在臉前框出一個長方形取景框", framing: "半身" },
+  { key: "x-salute", category: "半身手勢", name: "敬禮", desc: "一手舉到額側敬禮", framing: "半身" },
+  { key: "x-point", category: "半身手勢", name: "指向鏡頭", desc: "一手食指向前指向鏡頭", framing: "半身" },
+  { key: "x-yawn", category: "半身手勢", name: "打呵欠伸懶腰", desc: "一手握拳向上伸懶腰，另一手遮在嘴前", framing: "半身" },
+  { key: "x-peek", category: "半身手勢", name: "指縫偷看", desc: "雙手遮住臉，從張開的指縫間向外看", framing: "半身" },
+  { key: "x-chin-back", category: "半身手勢", name: "下巴靠手背", desc: "身體微微前傾，下巴靠在交疊的手背上", framing: "半身" },
+  { key: "x-elbow-chin", category: "半身手勢", name: "手肘靠膝托腮", desc: "坐姿，手肘靠在膝上、手托著臉頰，上身前傾", framing: "半身" },
+  { key: "x-collarbone", category: "半身手勢", name: "雙手放鎖骨", desc: "雙手輕放在鎖骨兩側，抬頭看向上方的鏡頭", framing: "半身" },
+  { key: "x-hug", category: "雙人", name: "相擁", desc: "兩人面對面站立擁抱，一人雙手環抱對方的背，另一人雙手環抱對方的肩", framing: "全身", people: 2 },
+  { key: "x-hug-tiptoe", category: "雙人", name: "踮腳擁抱", desc: "兩人面對面站立擁抱，較矮的一人踮起腳尖、一腳小腿向後勾起", framing: "全身", people: 2 },
+  { key: "x-whisper", category: "雙人", name: "耳語", desc: "兩人並肩站立，一人側身靠近對方耳邊說悄悄話、一手輕扶對方肩膀", framing: "全身", people: 2 },
+  { key: "x-hug-behind", category: "雙人", name: "背後環抱", desc: "兩人同向站立，後方的人從背後環抱前方的人的肩膀，頭靠在對方肩上", framing: "全身", people: 2 },
+  { key: "x-carry", category: "雙人", name: "公主抱", desc: "一人站立，雙手把另一人橫抱在胸前，被抱的人一手環著對方的脖子", framing: "全身", people: 2 },
+  { key: "x-back-to-back", category: "雙人", name: "背靠背", desc: "兩人背靠背站立，雙手抱胸，頭微微轉向鏡頭", framing: "全身", people: 2 },
+  { key: "x-hand-in-hand", category: "雙人", name: "牽手並肩", desc: "兩人並肩站立、牽著手，身體微微朝向對方", framing: "全身", people: 2 },
+  { key: "x-lap-side", category: "雙人", name: "並肩坐靠肩", desc: "兩人並肩坐在地上，一人把頭靠在另一人的肩膀上", framing: "全身", people: 2 },
+];
+
+const POSE_STYLE_TWO =
+  "兩個中性、沒有五官細節、沒有頭髮與服裝的白色素體人偶（藝用人體模型），啞光白色材質，關節線條清楚，比例為成年人，其中一個略高。" +
+  "純淺灰色無縫背景，柔和均勻的棚燈，有淡淡的接觸陰影。置中，周圍留白。不要任何文字、標籤、箭頭或邊框。";
+
+/** The combined poses were cut to this many when the library was first built; kept so their ids never change. */
+const COMBINED_POSE_COUNT = 1439;
+
 function poseEntries(): CatalogEntry[] {
   const out: CatalogEntry[] = [];
-  poseGroups().forEach((group, i) => {
+  const combined = poseGroups();
+  [...combined, ...EXTRA_POSES].forEach((group, i) => {
     POSE_VIEWS.forEach((view, v) => {
+      if (i < combined.length && i * POSE_VIEWS.length + v >= COMBINED_POSE_COUNT) return;
       const framing = group.framing === "半身" ? "腰部以上的半身入鏡" : "全身完整入鏡";
+      const POSE_STYLE = group.people === 2 ? POSE_STYLE_TWO : POSE_STYLE_ONE;
       out.push({
         id: `pose:${group.key}:${view.key}`,
         library: "pose",
@@ -221,7 +358,7 @@ function poseEntries(): CatalogEntry[] {
       });
     });
   });
-  return out.slice(0, LIBRARY_TARGETS.pose);
+  return out;
 }
 
 /* ───────────────────────── costumes: 52 outfits × 8 palettes × 8 details ───────────────────────── */

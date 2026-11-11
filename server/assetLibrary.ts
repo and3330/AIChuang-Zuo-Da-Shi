@@ -9,7 +9,7 @@
  *      ▼
  *   CDN：library/<圖庫>/<代號>.webp 與 _thumb.webp
  *
- * 預覽圖用便宜的文字生圖模型（GPT Image 2.5 Flare），不是網站使用者生圖用的
+ * 預覽圖用文字生圖模型（預設 Seedream 5.5 文字生圖，可用 LIBRARY_IMAGE_MODEL 換回 GPT Image 2.5 Flare），不是網站使用者生圖用的
  * Seedream。生成只會由管理員手動啟動，而且每次都要指定張數上限，避免一按就
  * 花掉預期以外的費用。
  *
