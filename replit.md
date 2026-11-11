@@ -65,7 +65,7 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 
 - 主要模組：創作（`/`、`/create/image`、`/create/video`）、寫真工作室（`/photoset`）、漫劇工作室（`/drama`）、素材圖庫（`/library`）。桌面導覽列與手機底部分頁只放這四個。
 - 個人專區：作品庫、編輯器、帳戶與儲值、交易記錄（桌面「我的」選單、手機「我的」底部選單）。次要素材：角色庫、場景庫。導覽全部定義在 `client/src/components/AppNav.tsx`。
-- 寫真工作室有兩區：情境寫真（`?mode=scene`）與素材套圖（`?mode=kit`，不需情境圖）。人像／服裝／姿勢都用 `client/src/components/LibraryPicker.tsx` 從素材圖庫挑；舊的內建姿勢清單只剩對外 API 使用。
+- 寫真工作室有兩區：情境寫真（`?mode=scene`）與寫真套圖（`?mode=kit`，不需情境圖）。人像／服裝／姿勢都用 `client/src/components/LibraryPicker.tsx` 從素材圖庫挑；舊的內建姿勢清單只剩對外 API 使用。
 - 角色九宮格搬到角色庫：`/character-library/sheet?character=<id>`（同一個頁面元件，`variant="sheet"`，固定規格，沒有比例與質感設定）。
 - 參考圖配額（Seedream 一次最多 10 張）：`REF_BUDGET` in `shared/photosetOptions.ts` —— 情境 1、人物最多 6、服裝 1、每個鏡頭的姿勢 1。送圖順序與提示詞說明由 `studioReferenceNote()` 決定，兩者必須一致。
 - 規劃端點 `/api/photosets/plan` 多了 `customPoses`（素材圖庫的姿勢，自由文字）。
@@ -82,7 +82,7 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 
 ## 寫真工作室步驟式流程（2026-11）
 
-- 一步一步展開（`Step` in `client/src/pages/photoset.tsx`）。情境寫真：情境（文字或要模仿的照片，下方放人物參考圖）→ 角色 → 姿勢與服裝 → 張數與輸出。素材套圖：人物 → 服裝 → 姿勢 → 張數與輸出。
+- 一步一步展開（`Step` in `client/src/pages/photoset.tsx`）。情境寫真：情境（文字或要模仿的照片，下方放人物參考圖）→ 角色 → 姿勢與服裝 → 張數與輸出。寫真套圖：人物 → 服裝 → 姿勢 → 張數與輸出。
 - 姿勢與服裝各只選一個。姿勢用在第一張，其餘由 AI 安排，規劃後每個鏡頭可再換；服裝在生成時才加進提示詞，所以隨時可換、不用重新規劃。
 - 選角色會帶入四視圖（最多 4 張）。張數可自訂 2–10。
 - 共用元件：`VaultPicker`（從作品選圖）、`ReferenceCollage`（參考圖拼合卡片，可下載）、`LibraryPicker`、`Onboarding`（首次登入引導，掛在創作中心）。
@@ -125,12 +125,14 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 寫真工作室改為逐步顯示：一開始只有第一步，按「下一步」才出現下一步，全部走完才出現「規劃鏡頭」（`reached` 狀態；從素材圖庫帶配方進來時全部顯示）。人物參考圖上方新增提示「再上傳幾張你的照片，會更像你自己」。角色卡片的「拍寫真」會帶 `?mode=kit&character=<id>` 自動選好角色。
 - 建立角色改為最多 10 張照片（`CharacterWizard`，`WIZARD_MAX_PHOTOS`；第一張是臉部正面，可調整順序）。寫真帶入角色時改為「本人照片優先，四視圖補滿」，最多 6 張（`characterImages()`，`REF_BUDGET.character`），不再只用四視圖。
 - 角色外貌描述由 AI 自動寫：建立角色時若沒填描述，背景用 Claude 看前 4 張照片寫 80–150 字外貌特徵存進 `description`（`describeCharacterFromPhotos`，不覆蓋使用者自己寫的），寫真規劃與四視圖會帶入。
-- 寫真工作室：預設分頁改為「素材套圖」；沒有角色的人進來會自動跳出建立角色視窗（建好自動選上），角色選單旁多一顆「新角色」。原「情境寫真」改名「照片同款」：第一步是放一張要模仿的照片（沒有照片才用文字描述），人物照片改到第二步「角色」上傳。
+- 寫真工作室：預設分頁改為「寫真套圖」；沒有角色的人進來會自動跳出建立角色視窗（建好自動選上），角色選單旁多一顆「新角色」。原「情境寫真」改名「照片同款」：第一步是放一張要模仿的照片（沒有照片才用文字描述），人物照片改到第二步「角色」上傳。
 - 後台「訂單」分頁新增訂單統計（`OrderStatsPanel`）：日／週／月／季，付款筆數、售出積分、實收 NT$／US$、手動加值積分。實收金額記在 `credit_transactions.paid_amount`／`paid_currency`（Stripe 的 `amount_total`，未扣手續費），這次改版後的訂單才有。
 - 角色四視圖改成串接：先出正面，其餘三張把正面圖放在參考圖第 1 張（再接本人照片），四張服裝才會一致。模型維持 Seedream 5.5（2026-11-11 實測：Nano Banana 2.1 服裝一致性較好，但使用者認為 Seedream 臉比較像；FLUX 3 會擋清涼的參考照）。
-- 新手導覽改成單一主線（`Onboarding.tsx`）：一頁說明四步（建立角色 → 選服裝 → 選姿勢 → 生成），按開始就進寫真工作室素材套圖；想先做別的可切換選單。寫真工作室預設張數會依餘額調整（新帳號 10 積分＝2 張）。一組寫真完成後跳出會員商城邀請（非會員一定跳；會員在餘額不夠再做同樣一組時才跳；黃金專區不跳）。
+- 新手導覽改成單一主線（`Onboarding.tsx`）：一頁說明四步（建立角色 → 選服裝 → 選姿勢 → 生成），按開始就進寫真工作室寫真套圖；想先做別的可切換選單。寫真工作室預設張數會依餘額調整（新帳號 10 積分＝2 張）。一組寫真完成後跳出會員商城邀請（非會員一定跳；會員在餘額不夠再做同樣一組時才跳；黃金專區不跳）。
 - 黃金會員入口改到帳戶設定：存了滿 18 歲的生日後，生日上方出現「內容審查限制」，點開是「是否開啟 NSFW 模式」開關，打開跳出申請視窗（`GoldApplyDialog`）：認證 Email（`/api/account/email-code`、`/api/account/verify-email`）→ 真實姓名（`users.real_name`）→ 同意 AI 生成內容使用條款（`GOLD_TERMS_OF_USE`）→ 問是否加入 US$22。申請完成（`goldApplicationDone`）後會員商城才出現黃金會員；付款成功跳出導覽（從「我的」選單進入黃金專區）。除了那個開關，前台不出現 NSFW／成人字眼。
 - 帳號的第一個角色至少要 6 張照片（`FIRST_CHARACTER_MIN_PHOTOS`，只在 `CharacterWizard` 前端檢查；之後的角色 1 張即可）。精靈會提醒成品取決於照片品質，短邊小於 640 像素的照片標「解析度低」。
 - 四視圖改為 30 積分（`FOUR_VIEW_COST`，夥伴 API 價格不變）。第二個角色開始，精靈建立角色時一律生成四視圖並收 30 積分，積分不夠不能建立；第一個角色仍免費。帳戶 Email 驗證信改用 `sendVerificationEmail`（Resend）。
 - 影片頁可選模型（`VIDEO_MODELS`，`shared/pricing.ts`）：WAN 3.0（8／15 積分每秒）與 Kling 4.0（12／20）。請求帶 `videoModel`，伺服器依模型計價並驗證文字生影片的畫面比例（WAN 多 4:3、3:4；Kling 多 21:9）。Kling 走 `kwaivgi/kling-v4.0/*`，參數是 `aspect_ratio`、沒有 `audio`。夥伴 API 與故事動畫仍只用 WAN。
 - 商品帶貨圖（`/product`，`client/src/pages/product.tsx`）：上傳商品照（最多 3 張）＋選角色＋選範本（UGC 實拍、生活情境、服飾商拍、Listing 套圖、圖片廣告、美食飲品）→ `POST /api/photosets/plan`（mode `product`）回傳鏡頭與貼文文案、標籤 → 走寫真同一個批次生成端點。圖片順序 `[...角色圖, ...商品圖]`。
+- 創作中心（`create-hub.tsx`）改成「熱門範本」牆＋「自由創作」（圖片生成、影片生成）。範本卡的 `href` 帶著流程參數（例如 `/product?template=ugc`、`/photoset?mode=scene`）；沒有示意圖的範本先用漸層加圖示。
+- UGC 實拍短片（`/ugc`，`client/src/pages/ugc.tsx`）：商品＋角色 → `POST /api/photosets/plan`（mode `ugc`）寫腳本（每個鏡頭有首幀描述 `prompt`、英文動態 `motion`、字幕 `subtitle`、秒數）→ 批次生成首幀（9:16、不含浮水印）→ 每個鏡頭各自 `POST /api/video-generations` 圖生影片。不開口說話、不自動合成；字幕稿與貼文文案可複製。腳本規則取自擁有者的提示詞 Skill（短影音、影片連續性、圖生影片、鉤子公式）。
