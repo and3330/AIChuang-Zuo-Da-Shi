@@ -1,19 +1,24 @@
 import { SensitiveGate } from "@/components/SensitiveGate";
 import { useState } from "react";
 import { Link } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { errorText } from "@/components/Showcase";
 import { useToast } from "@/hooks/use-toast";
 import { NavigationHeader } from "@/components/AppNav";
 import { useSendBack } from "@/components/EmbedBar";
 
 // 作品庫：所有完成的圖片與影片集中在這裡，不管是哪個功能做出來的。
-// 從這裡可以放大、下載、複製提示詞，或把圖片送到編輯器繼續修改。
+// 從這裡可以放大、下載、複製提示詞、把圖片送到編輯器繼續修改，或公開到作品牆。
+// 黃金專區做的作品（sensitive）不能公開；嵌入模式（客戶小鎮工作區）也沒有公開功能。
 
 type VaultItem = {
   id: string; kind: "image" | "video"; url: string; prompt: string;
   source: "image" | "edit" | "photoset" | "video"; generationId: string; createdAt: string | null; sensitive?: boolean;
 };
 type VaultResponse = { items: VaultItem[]; total: number; counts: { image: number; video: number }; page: number; pageSize: number };
+
+type MyPost = { id: string; mediaUrl: string; status: string };
 
 const PAGE_SIZE = 60;
 const SOURCE_LABEL: Record<VaultItem["source"], string> = { image: "文字生圖", edit: "圖片編輯", photoset: "寫真套圖", video: "影片" };
@@ -28,6 +33,29 @@ export default function VaultPage() {
   const [kind, setKind] = useState<"all" | "image" | "video">("all");
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<VaultItem | null>(null);
+  const queryClient = useQueryClient();
+  const [publishing, setPublishing] = useState<VaultItem | null>(null);
+  const [title, setTitle] = useState("");
+  const [showPrompt, setShowPrompt] = useState(true);
+  const [sending, setSending] = useState(false);
+  // Which of my works are already on (or waiting for) the wall.
+  const { data: mine } = useQuery<{ items: MyPost[] }>({ queryKey: ["/api/showcase/mine"], enabled: !sendBack });
+  const postOf = (url: string) => mine?.items.find(m => m.mediaUrl === url);
+
+  const publish = async () => {
+    if (!publishing) return;
+    setSending(true);
+    try {
+      await apiRequest("POST", "/api/showcase/posts", { itemId: publishing.id, title: title.trim(), showPrompt });
+      await queryClient.invalidateQueries({ queryKey: ["/api/showcase/mine"] });
+      toast({ title: "已送出，審核通過後就會出現在作品牆" });
+      setPublishing(null); setTitle(""); setShowPrompt(true);
+    } catch (e) {
+      toast({ title: "沒有公開", description: errorText(e), variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
+  };
 
   const { data, isLoading, error } = useQuery<VaultResponse>({
     queryKey: [`/api/vault?kind=${kind}&page=${page}&pageSize=${PAGE_SIZE}`],
@@ -129,6 +157,20 @@ export default function VaultPage() {
                     <i className="fas fa-reply text-xs" />送回小鎮
                   </button>
                 )}
+                {!sendBack && !open.sensitive && (() => {
+                  const post = postOf(open.url);
+                  return post ? (
+                    <Link href={`/wall/${post.id}`}>
+                      <span className="flex items-center justify-center gap-2 h-11 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-sm font-medium cursor-pointer" data-testid="button-vault-view-post">
+                        <i className="fas fa-globe text-xs" />{post.status === "approved" ? "已在作品牆" : post.status === "pending" ? "審核中" : "未通過審核"}
+                      </span>
+                    </Link>
+                  ) : (
+                    <button onClick={() => setPublishing(open)} className="flex items-center justify-center gap-2 h-11 rounded-xl bg-slate-900 text-white text-sm font-medium hover:bg-slate-800" data-testid="button-vault-publish">
+                      <i className="fas fa-globe text-xs" />公開到作品牆
+                    </button>
+                  );
+                })()}
                 <a href={open.url} download target="_blank" rel="noreferrer"
                   className="flex items-center justify-center gap-2 h-11 rounded-xl border border-slate-200 text-slate-700 text-sm font-medium hover:border-indigo-300">
                   <i className="fas fa-download text-xs" />下載
@@ -138,6 +180,31 @@ export default function VaultPage() {
                 )}
                 <button onClick={() => setOpen(null)} className="h-11 rounded-xl text-slate-400 text-sm hover:text-slate-600">關閉</button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {publishing && (
+        <div className="fixed inset-0 z-[70] bg-slate-900/60 flex items-end md:items-center justify-center md:p-4" onClick={() => setPublishing(null)}>
+          <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl p-5 pb-[calc(20px+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()} data-testid="dialog-publish">
+            <h3 className="text-lg font-bold text-slate-900"><i className="fas fa-globe text-indigo-500 mr-2" />公開到作品牆</h3>
+            <p className="text-sm text-slate-600 mt-2">公開後所有人都看得到這件作品和你的使用者名稱。送出後要先經過審核，通過才會上牆；之後可以隨時取消公開。</p>
+            <label className="block text-xs font-semibold text-slate-600 mt-4 mb-1">標題（可不填，最多 40 字）</label>
+            <input value={title} onChange={e => setTitle(e.target.value)} maxLength={40} placeholder="幫作品取個名字"
+              className="w-full h-11 px-3 border border-slate-200 rounded-xl text-sm" data-testid="input-publish-title" />
+            {publishing.prompt && (
+              <label className="flex items-start gap-2 mt-4 text-sm text-slate-800 cursor-pointer">
+                <input type="checkbox" checked={showPrompt} onChange={e => setShowPrompt(e.target.checked)} className="mt-1 accent-indigo-600" data-testid="checkbox-publish-prompt" />
+                <span>一起公開提示詞，讓別人可以「做同款」</span>
+              </label>
+            )}
+            <p className="text-[11px] text-slate-400 mt-3">請不要公開含有他人肖像、個人資料或不適合公開的內容。</p>
+            <div className="grid grid-cols-2 gap-2 mt-5">
+              <button onClick={() => setPublishing(null)} className="h-11 rounded-xl border border-slate-200 text-sm text-slate-600">取消</button>
+              <button onClick={publish} disabled={sending} className="h-11 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-publish-confirm">
+                {sending ? "送出中…" : "送出審核"}
+              </button>
             </div>
           </div>
         </div>

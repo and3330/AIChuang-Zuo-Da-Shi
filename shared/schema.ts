@@ -21,6 +21,8 @@ export const users = pgTable("users", {
   goldSince: timestamp("gold_since"),
   /** When the one-time 小試身手 pack (TRIAL in shared/pricing.ts) was bought. */
   trialUsedAt: timestamp("trial_used_at"),
+  /** Shown on the creator's public page (作品牆). */
+  bio: text("bio"),
   /** "YYYY-MM-DD". Set once in 安全與隱私; needed before the gold tier can be bought. */
   birthDate: text("birth_date"),
   /** The user confirmed being 18+ and accepted the gold-zone terms. */
@@ -721,3 +723,69 @@ export type PartnerToken = typeof partnerTokens.$inferSelect;
 export type PartnerJob = typeof partnerJobs.$inferSelect;
 export type PartnerCharacter = typeof partnerCharacters.$inferSelect;
 export type PartnerEmbedSession = typeof partnerEmbedSessions.$inferSelect;
+
+// ─── 作品牆 (showcase): works published by their makers, plus likes, comments, follows ───
+
+export const showcasePosts = pgTable("showcase_posts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  /** image | video */
+  kind: text("kind").notNull().default("image"),
+  /** The image_generations / video_generations row it came from. */
+  generationId: varchar("generation_id").notNull(),
+  /** Permanent CDN url. One post per picture. */
+  mediaUrl: text("media_url").notNull().unique(),
+  title: text("title").notNull().default(""),
+  prompt: text("prompt").notNull().default(""),
+  /** When false the prompt is never sent to anyone but admins. */
+  showPrompt: boolean("show_prompt").notNull().default(true),
+  /** pending (waiting for review) | approved (on the wall) | rejected */
+  status: text("status").notNull().default("pending"),
+  rejectReason: text("reject_reason"),
+  likeCount: integer("like_count").notNull().default(0),
+  commentCount: integer("comment_count").notNull().default(0),
+  reportCount: integer("report_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  reviewedAt: timestamp("reviewed_at"),
+}, (t) => ({
+  wallIdx: index("showcase_posts_wall_idx").on(t.status, t.createdAt),
+  userIdx: index("showcase_posts_user_idx").on(t.userId),
+}));
+
+export const showcaseLikes = pgTable("showcase_likes", {
+  postId: varchar("post_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  once: uniqueIndex("showcase_likes_once").on(t.postId, t.userId),
+}));
+
+export const showcaseComments = pgTable("showcase_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  postId: varchar("post_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  body: text("body").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  postIdx: index("showcase_comments_post_idx").on(t.postId, t.createdAt),
+}));
+
+export const showcaseReports = pgTable("showcase_reports", {
+  postId: varchar("post_id").notNull(),
+  userId: varchar("user_id").notNull(),
+  reason: text("reason").notNull().default(""),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  once: uniqueIndex("showcase_reports_once").on(t.postId, t.userId),
+}));
+
+export const userFollows = pgTable("user_follows", {
+  followerId: varchar("follower_id").notNull(),
+  followingId: varchar("following_id").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (t) => ({
+  once: uniqueIndex("user_follows_once").on(t.followerId, t.followingId),
+  followingIdx: index("user_follows_following_idx").on(t.followingId),
+}));
+
+export type ShowcasePost = typeof showcasePosts.$inferSelect;

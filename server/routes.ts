@@ -20,6 +20,7 @@ import { registerPartnerRoutes, partnerEmbedGuard } from "./partnerApi";
 import { partnerWalletConfigured, setWalletAccountLookup, forgetWalletAccount, refreshBalanceSoon } from "./partnerWallet";
 import { registerAssetLibraryRoutes } from "./assetLibrary";
 import { registerVaultRoutes } from "./vault";
+import { registerShowcaseRoutes } from "./showcase";
 import { registerCostRoutes, recordProviderUsage } from "./costs";
 import { setAtlasUsageListener } from "./atlasProvider";
 import { partnerStore, embedWalletAccount, createPartnerImageIngestor, createPartnerUploadStore } from "./partnerStore";
@@ -4423,6 +4424,9 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     getUserVideoGenerations: (userId) => storage.getUserVideoGenerations(userId),
     cdnUrl: fixBunnyCdnUrl,
   });
+
+  // ─── 作品牆：公開作品、讚、留言、追蹤、創作者主頁、審核 ─────────────────
+  registerShowcaseRoutes(app, { requireAuth, requireAdmin, cdnUrl: fixBunnyCdnUrl });
 
   // ─── 素材圖庫：清單同步、批次生成預覽圖、瀏覽 ───────────────────────────
   registerAssetLibraryRoutes(app, { requireAuth, requireAdmin, bunnyStorage, cdnUrl: fixBunnyCdnUrl });

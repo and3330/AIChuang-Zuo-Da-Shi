@@ -21,6 +21,9 @@ import CharacterLibraryPage from "@/pages/character-library";
 import SceneLibraryPage from "@/pages/scene-library";
 import GoldHub from "@/pages/gold-hub";
 import StorePage from "@/pages/store";
+import WallPage from "@/pages/wall";
+import WallPostPage from "@/pages/wall-post";
+import CreatorPage from "@/pages/creator";
 import { hasGoldAccess, inGoldZone } from "@/lib/zone";
 import PhotosetPage from "@/pages/photoset";
 import LibraryPage from "@/pages/library";
@@ -335,7 +338,7 @@ function GoldOnly({ children }: { children: ReactNode }) {
 
 // 嵌入模式（客戶小鎮的工作區）不能儲值、改帳號或進後台。成人內容由對方平台為該工作區開啟：
 // 開啟後該子帳號就是黃金會員，一樣到黃金專區使用。
-const EMBED_HIDDEN = ["/account", "/store", "/transactions", "/admin"];
+const EMBED_HIDDEN = ["/account", "/store", "/transactions", "/admin", "/wall", "/u"];
 
 /** Support chat and the install prompt are for people with their own account. */
 function PersonalExtras() {
@@ -379,6 +382,9 @@ function Router() {
       <Route path="/gold/video">{() => <GoldOnly><Home key="gold-video" section="video" /></GoldOnly>}</Route>
       <Route path="/gold/photoset">{() => <GoldOnly><PhotosetPage key="gold-photoset" /></GoldOnly>}</Route>
       <Route path="/gold/library">{() => <GoldOnly><LibraryPage key="gold-library" /></GoldOnly>}</Route>
+      <Route path="/wall" component={WallPage} />
+      <Route path="/wall/:id" component={WallPostPage} />
+      <Route path="/u/:username" component={CreatorPage} />
       <Route path="/store" component={StorePage} />
       <Route path="/account" component={AccountPage} />
       <Route path="/transactions" component={TransactionsPage} />
@@ -409,6 +415,10 @@ function AppContent() {
     return (
       <Switch>
         <Route path="/login" component={AuthPage} />
+        {/* 作品牆不用登入也能看 */}
+        <Route path="/wall" component={WallPage} />
+        <Route path="/wall/:id" component={WallPostPage} />
+        <Route path="/u/:username" component={CreatorPage} />
         <Route path="/privacy" component={PrivacyPage} />
         <Route path="/terms" component={TermsPage} />
         <Route component={LandingPage} />

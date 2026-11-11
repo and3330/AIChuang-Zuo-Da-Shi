@@ -163,6 +163,18 @@ export default function CreateHub() {
           </div>
         </section>
 
+        {/* 作品牆：看別人做了什麼，一鍵做同款 */}
+        <Link href="/wall">
+          <span className="group flex items-center gap-4 p-4 sm:p-5 bg-white border border-indigo-100 rounded-3xl cursor-pointer transition-all hover:border-indigo-300 hover:shadow-glow" data-testid="hub-/wall">
+            <span className="shrink-0 w-12 h-12 rounded-2xl bg-gradient-to-br from-fuchsia-500 to-indigo-600 text-white text-lg flex items-center justify-center"><i className="fas fa-globe" /></span>
+            <span className="flex-1 min-w-0">
+              <span className="block text-base font-bold text-slate-900">作品牆</span>
+              <span className="block text-sm text-slate-500">看看大家做了什麼，喜歡的可以看提示詞、一鍵做同款；也可以公開自己的作品。</span>
+            </span>
+            <i className="fas fa-chevron-right text-xs text-slate-300 group-hover:text-indigo-400" />
+          </span>
+        </Link>
+
         <section>
           <h2 className="text-sm font-semibold text-slate-900 mb-3">個人專區</h2>
           <div className="grid grid-cols-3 gap-3">

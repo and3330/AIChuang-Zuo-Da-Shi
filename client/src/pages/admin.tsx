@@ -13,6 +13,7 @@ import { PartnerTokensPanel } from "@/components/PartnerTokensPanel";
 import { NavigationHeader } from "@/components/AppNav";
 import { LibraryAdminPanel } from "@/components/LibraryAdminPanel";
 import { CostPanel } from "@/components/CostPanel";
+import { ShowcaseAdminPanel } from "@/components/ShowcaseAdminPanel";
 
 interface AdminUser {
   id: string;
@@ -129,7 +130,7 @@ export default function AdminPage() {
   const [creditAmount, setCreditAmount] = useState("");
   const [creditDescription, setCreditDescription] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"users" | "orders" | "generations" | "chats" | "tokens" | "library" | "costs">("users");
+  const [activeTab, setActiveTab] = useState<"users" | "orders" | "generations" | "chats" | "tokens" | "library" | "costs" | "showcase">("users");
   const [orderSearch, setOrderSearch] = useState("");
   const [promptDialog, setPromptDialog] = useState<{ open: boolean; prompt: string; type: string }>({ open: false, prompt: "", type: "" });
   const [mediaDialog, setMediaDialog] = useState<{ open: boolean; url: string; type: "image" | "video" }>({ open: false, url: "", type: "image" });
@@ -351,6 +352,17 @@ export default function AdminPage() {
             <i className="fas fa-coins mr-2"></i>成本
           </button>
           <button
+            onClick={() => setActiveTab("showcase")}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              activeTab === "showcase"
+                ? "bg-purple-600 text-white shadow-sm"
+                : "bg-white text-gray-600 border border-gray-200 hover:bg-gray-50"
+            }`}
+            data-testid="admin-tab-showcase"
+          >
+            <i className="fas fa-globe mr-2"></i>作品牆
+          </button>
+          <button
             onClick={() => setActiveTab("chats")}
             className={`px-4 py-2 rounded-lg text-sm font-medium transition-all relative ${
               activeTab === "chats"
@@ -513,6 +525,8 @@ export default function AdminPage() {
         {activeTab === "library" && <LibraryAdminPanel />}
 
         {activeTab === "costs" && <CostPanel />}
+
+        {activeTab === "showcase" && <ShowcaseAdminPanel />}
 
         {activeTab === "tokens" && (
           <PartnerTokensPanel users={(users ?? []).map((u: any) => ({ id: u.id, username: u.username, email: u.email ?? null, credits: u.credits ?? 0 }))} />
