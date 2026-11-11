@@ -53,15 +53,15 @@ const FAQ_DATA: { keywords: string[]; answer: string }[] = [
   },
   {
     keywords: ["失敗", "錯誤", "不能用", "出問題", "bug"],
-    answer: "生成失敗可能的原因：\n• 積分不足\n• 提示詞包含敏感內容被系統攔截\n• 網路連線問題\n如問題持續，請透過 Telegram 聯繫客服：@amyhong0401",
+    answer: "生成失敗可能的原因：\n• 積分不足\n• 提示詞包含敏感內容被系統攔截\n• 網路連線問題\n如問題持續，請直接在這裡留言給客服，我們會盡快回覆！",
   },
   {
     keywords: ["退款", "退費", "退回"],
-    answer: "如因系統問題導致生成失敗，積分會自動退回。如有其他退款需求，請透過 Telegram 聯繫客服：@amyhong0401",
+    answer: "如因系統問題導致生成失敗，積分會自動退回。如有其他退款需求，請直接在這裡留言給客服，我們會盡快回覆！",
   },
   {
     keywords: ["聯繫", "客服", "聯絡", "email", "信箱"],
-    answer: "您可以透過以下方式聯繫我們：\n• Telegram：@amyhong0401\n• 或直接在這裡留言，我們會盡快回覆！",
+    answer: "請直接在這裡留言給客服，我們會盡快回覆！",
   },
   {
     keywords: ["安全", "隱私", "個資"],
@@ -101,7 +101,7 @@ export default function ChatWidget() {
 
   const welcomeMsg: LocalMessage = {
     id: "welcome",
-    text: "您好！我是 AI 創意工坊的客服小幫手 🤖\n有什麼問題可以問我，或直接留言給客服，我們會盡快回覆！\n\n💬 Telegram：@amyhong0401",
+    text: "您好！我是 AI 創意工坊的客服小幫手 🤖\n有什麼問題可以問我，或直接留言給客服，我們會盡快回覆！",
     isBot: true,
     timestamp: new Date(),
   };
