@@ -585,10 +585,10 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       const code = generateVerificationCode();
       await storage.createVerificationCode(user.email, code, new Date(Date.now() + 10 * 60 * 1000));
-      await gmailTransporter.sendMail({
-        from: `AI 創意工坊 <${process.env.GMAIL_USER || ""}>`,
+      await sendVerificationEmail({
         to: user.email,
-        subject: "AI 創意工坊 - Email 驗證碼",
+        code,
+        purpose: "Email ",
         html: `
           <div style="font-family: 'Microsoft JhengHei', sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f5f3ff; border-radius: 16px;">
             <div style="background: white; border-radius: 12px; padding: 24px; text-align: center;">

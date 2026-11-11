@@ -472,7 +472,7 @@ function CharacterRolePicker({ label, urls, onChange }: { label: string; urls: s
       <label className="text-xs text-[#64748b] block mb-1.5">{label}</label>
       {characters.length === 0 ? (
         <p className="text-xs text-[#64748b] bg-[#f8fafc] border border-[#e2e8f0] rounded-xl p-3">
-          角色庫還沒有角色。先到 <Link href="/character-library"><span className="text-indigo-600 underline cursor-pointer">角色庫</span></Link> 用三張照片建立一個，再回來選。
+          角色庫還沒有角色。先到 <Link href="/character-library"><span className="text-indigo-600 underline cursor-pointer">角色庫</span></Link> 上傳照片建立一個，再回來選。
         </p>
       ) : (
         <select value={current?.id ?? ""} onChange={e => { const c = characters.find(x => x.id === e.target.value); onChange(c ? imagesOf(c) : []); }}

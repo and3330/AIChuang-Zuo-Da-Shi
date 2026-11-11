@@ -3,6 +3,8 @@
 
 /** 每張圖片（文字生圖、圖片編輯、寫真、漫劇分鏡圖都一樣；黃金專區也是這個價）。 */
 export const IMAGE_COST = 5;
+/** 角色四視圖（一次 4 張）。每個帳號的第一次免費；之後每建立一個角色、或重新生成，都收這個價。 */
+export const FOUR_VIEW_COST = 30;
 /** 去除浮水印的加價，每張：一般區。 */
 export const WATERMARK_REMOVAL_COST = 1;
 /** 去除浮水印的加價，每張：黃金專區。 */
