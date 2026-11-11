@@ -259,6 +259,8 @@ curl https://你的網域/api/v1/partner/jobs/0b7a4f0e-5d0c-4c58-9d0e-2f6b3a1c9e
 | 403 | `character_disabled` | 角色已被管理員停用 |
 | 404 | `not_found` | 任務或角色不存在、不屬於這個帳號、`owner_ref` 不符，或端點不存在 |
 | 409 | `four_views_in_progress` | 角色的四視圖還在生成（重做四視圖或刪除角色時） |
+| 409 | `embed_session_open` | 這個 `owner_ref` 還有未結算的嵌入工作階段 |
+| 409 | `embed_settle_in_progress` | 嵌入工作階段正在結算 |
 | 409 | `character_limit_reached` | 這個 `owner_ref` 的角色已達 50 個 |
 | 409 | `character_not_ready` | 角色沒有可用的參考圖 |
 | 413 | `file_too_large` | 上傳檔案超過 10 MB |
@@ -554,6 +556,80 @@ HTTP/1.1 404 Not Found
 ### 肖像下架（管理員）
 
 除了對方自己呼叫 DELETE，管理員可以在「後台 → 對外 API → 對外 API 的 AI 角色」依 `owner_ref` 或角色代號搜尋，停用單一角色，或一次停用某個工作區的全部角色。停用後不能再用來生成或做四視圖；資料與圖片保留，重新啟用即可恢復。對方查詢時會看到 `"disabled": true`。
+
+## 嵌入模式：讓工作區直接使用本站的完整介面
+
+適合不想自己重做一套畫面的進階功能（修圖、漫劇、素材庫等）。對方後端替某個工作區建立一個「嵌入工作階段」，拿到一次性的進入網址，在使用者的瀏覽器用新視窗開啟；使用者就以該工作區專屬的子帳號登入本站，看不到其他工作區的任何東西。
+
+| 項目 | 行為 |
+|---|---|
+| 隔離 | 每個 `owner_ref` 對應一個子帳號，作品、角色庫、作品庫都各自獨立。子帳號沒有密碼，只能經由進入網址登入 |
+| 額度 | 建立時把 `budget` 積分從服務帳號撥到子帳號；使用者在本站的所有花費都扣這筆額度，用完就不能再生成 |
+| 結算 | 呼叫結算後，剩下的積分撥回服務帳號，回傳 `spent`（= `budget` − 剩餘）。向客戶收費請以 `spent` 為準 |
+| 遲到的退點 | 結算後才完成的失敗退點會留在子帳號，下一次建立工作階段時收回，並在回應的 `recovered_credits` 告知，請退還給客戶 |
+| 一次一個 | 同一個 `owner_ref` 同時只能有一個未結算的工作階段，否則回 `409 embed_session_open`（附 `session_id`） |
+| 進入網址 | 10 分鐘內有效、只能用一次。請用 `window.open` 開新視窗，不要用 iframe（本站登入使用第一方 cookie） |
+| 成人內容 | 預設關閉。由對方平台在建立工作階段時帶 `adult_birth_date` 為個別工作區開啟；每次建立都會重設，所以對方關掉後下一次就失效。工作區自己不能在本站開啟 |
+| 限制 | 嵌入模式不能儲值、不能改帳號與成人內容設定、不能進後台；客服對話與安裝提示不顯示。網站的每日上限（圖 50、影片 10）以子帳號計 |
+| 送回成品 | 使用者在本站按「挑成品送回小鎮」，本站對開啟它的視窗送出 `postMessage`，目標來源限定為建立時的 `return_origin` |
+
+### POST /api/v1/partner/embed-sessions
+
+| 欄位 | 必填 | 說明 |
+|---|---|---|
+| `owner_ref` | 是 | 工作區代號 |
+| `budget` | 是 | 這次最多可花的積分，1–100000 |
+| `return_origin` | 是 | 你們網站的來源，例如 `https://town.example.com`。必須是 https |
+| `adult_birth_date` | 否 | 該工作區負責人的生日（`YYYY-MM-DD`）。有帶就代表對方已確認此人年滿 18 歲並同意成人內容條款，這次工作階段可使用成人提示詞；沒帶則關閉。需權杖已開放 NSFW，否則回 `403 nsfw_not_allowed`；未滿 18 歲回 `400` |
+
+```bash
+curl -X POST https://你的網域/api/v1/partner/embed-sessions \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"owner_ref":"ws_12","budget":200,"return_origin":"https://town.example.com"}'
+```
+
+```json
+HTTP/1.1 201 Created
+{
+  "session_id": "6f0e…", "owner_ref": "ws_12", "status": "open", "budget": 200, "spent": null,
+  "url": "https://你的網域/embed/enter?ticket=…",
+  "recovered_credits": 0,
+  "ticket_expires_at": "2026-11-11T08:10:00.000Z",
+  "created_at": "2026-11-11T08:00:00.000Z", "settled_at": null
+}
+```
+
+服務帳號積分不足回 `402 insufficient_credits`，不會建立。
+
+### GET /api/v1/partner/embed-sessions/:id?owner_ref=...
+
+回傳狀態與目前剩餘額度（`remaining`）。`owner_ref` 不符回 `404`。
+
+### POST /api/v1/partner/embed-sessions/:id/settle
+
+內容：`{ "owner_ref": "ws_12" }`。可重複呼叫，結果相同。
+
+```json
+{ "session_id": "6f0e…", "owner_ref": "ws_12", "status": "settled", "budget": 200, "spent": 46, "remaining": 0, "created_at": "…", "settled_at": "…" }
+```
+
+另一個結算正在進行時回 `409 embed_settle_in_progress`（帶 `Retry-After`）。
+
+### 接收送回的成品
+
+在開啟視窗的那一頁監聽：
+
+```js
+window.addEventListener("message", (e) => {
+  if (e.origin !== "https://你的網域" || e.data?.source !== "ai-studio") return;
+  if (e.data.type === "pick") useMedia(e.data.url);   // 成品的永久 CDN 網址
+  if (e.data.type === "done") settleSession();        // 使用者按了「完成」
+});
+```
+
+使用者也可能直接關掉視窗而沒有按「完成」，請在他回到你們頁面時、或一段時間後主動結算。
+
+第一次使用前要再執行一次 `npm run db:push`（新增 `partner_embed_sessions`）。
 
 ## 後台操作：建立與撤銷權杖
 

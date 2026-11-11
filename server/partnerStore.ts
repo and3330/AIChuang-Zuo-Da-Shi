@@ -4,13 +4,13 @@
  * network imports and can be tested with in-memory fakes.
  */
 
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { lookup } from "dns/promises";
 import { isIP } from "net";
 import sharp from "sharp";
 import { db } from "./db";
-import { partnerTokens, partnerJobs, partnerCharacters, type PartnerJob, type PartnerToken } from "@shared/schema";
+import { partnerTokens, partnerJobs, partnerCharacters, partnerEmbedSessions, type PartnerJob, type PartnerToken } from "@shared/schema";
 import { PartnerIdempotencyRace, PartnerIngestError, PartnerUploadError, type PartnerStore, type PartnerUploadFormat } from "./partnerApi";
 import { assertPublicHttpsUrl } from "./ssrfGuard";
 import type { BunnyStorageService } from "./bunnyStorage";
@@ -21,6 +21,39 @@ function isUniqueViolation(e: any): boolean {
 }
 
 export const partnerStore: PartnerStore = {
+  async createEmbedSession(data) {
+    const [row] = await db.insert(partnerEmbedSessions).values(data).returning();
+    return row;
+  },
+  async getEmbedSession(id) {
+    const [row] = await db.select().from(partnerEmbedSessions).where(eq(partnerEmbedSessions.id, id));
+    return row;
+  },
+  async findEmbedSessionByTicket(hash) {
+    const [row] = await db.select().from(partnerEmbedSessions).where(eq(partnerEmbedSessions.ticketHash, hash));
+    return row;
+  },
+  async findUnsettledEmbedSession(tokenId, ownerRef) {
+    const rows = await db.select().from(partnerEmbedSessions)
+      .where(and(eq(partnerEmbedSessions.tokenId, tokenId), eq(partnerEmbedSessions.ownerRef, ownerRef)))
+      .orderBy(desc(partnerEmbedSessions.createdAt));
+    return rows.find(r => r.status !== "settled");
+  },
+  async redeemEmbedTicket(id) {
+    const [row] = await db.update(partnerEmbedSessions).set({ redeemedAt: new Date() })
+      .where(and(eq(partnerEmbedSessions.id, id), isNull(partnerEmbedSessions.redeemedAt), eq(partnerEmbedSessions.status, "open"))).returning();
+    return !!row;
+  },
+  async claimEmbedSettle(id) {
+    const [row] = await db.update(partnerEmbedSessions).set({ status: "settling" })
+      .where(and(eq(partnerEmbedSessions.id, id), eq(partnerEmbedSessions.status, "open"))).returning();
+    return !!row;
+  },
+  async finishEmbedSettle(id, spent) {
+    const [row] = await db.update(partnerEmbedSessions).set({ status: "settled", spent, settledAt: new Date() })
+      .where(eq(partnerEmbedSessions.id, id)).returning();
+    return row;
+  },
   async findTokenByHash(hash) {
     const [row] = await db.select().from(partnerTokens).where(eq(partnerTokens.tokenHash, hash));
     return row;

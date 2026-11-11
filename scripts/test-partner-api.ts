@@ -18,7 +18,7 @@ import {
   registerPartnerRoutes, generatePartnerToken, hashPartnerToken,
   PartnerIdempotencyRace, PartnerIngestError, PartnerUploadError, type PartnerStore, type PartnerDeps,
 } from "../server/partnerApi";
-import type { PartnerJob, PartnerToken, PartnerCharacter } from "../shared/schema";
+import type { PartnerJob, PartnerToken, PartnerCharacter, PartnerEmbedSession } from "../shared/schema";
 
 /* ───────── tiny assertion helpers ───────── */
 let passed = 0;
@@ -39,6 +39,9 @@ const images = new Map<string, any>();
 const videos = new Map<string, any>();
 const calls = { runImage: [] as any[], runVideo: [] as any[], ingest: [] as string[], plan: [] as any[], ledger: [] as string[], uploads: [] as any[], deleted: [] as string[] };
 const characters = new Map<string, PartnerCharacter>();
+const embeds = new Map<string, PartnerEmbedSession>();
+const adult = new Map<string, string | null>();
+let lastSession: any = null;
 /** How the fake workers behave for the next generations. */
 const behaviour = { image: "succeed" as "succeed" | "fail" | "hang" | "partial", video: "succeed" as "succeed" | "fail", plan: "ok" as "ok" | "fail" | "short", storage: true, sessionAdmin: true };
 let clock = Date.now();
@@ -76,6 +79,16 @@ const store: PartnerStore = {
   async listCharacters(userId, ownerRef) { return [...characters.values()].filter(c => c.userId === userId && c.ownerRef === ownerRef).map(c => ({ ...c })); },
   async updateCharacter(id, u) { const c = characters.get(id); if (!c) return undefined; Object.assign(c, u); return { ...c }; },
   async deleteCharacter(id) { characters.delete(id); },
+  async createEmbedSession(d) {
+    const row = { id: randomUUID(), ...d, spent: null, status: "open", createdAt: new Date(clock), redeemedAt: null, settledAt: null } as PartnerEmbedSession;
+    embeds.set(row.id, row); return { ...row };
+  },
+  async getEmbedSession(id) { const e = embeds.get(id); return e ? { ...e } : undefined; },
+  async findEmbedSessionByTicket(hash) { const e = [...embeds.values()].find(x => x.ticketHash === hash); return e ? { ...e } : undefined; },
+  async findUnsettledEmbedSession(tokenId, ownerRef) { const e = [...embeds.values()].find(x => x.tokenId === tokenId && x.ownerRef === ownerRef && x.status !== "settled"); return e ? { ...e } : undefined; },
+  async redeemEmbedTicket(id) { const e = embeds.get(id); if (!e || e.redeemedAt || e.status !== "open") return false; e.redeemedAt = new Date(clock); return true; },
+  async claimEmbedSettle(id) { const e = embeds.get(id); if (!e || e.status !== "open") return false; e.status = "settling"; return true; },
+  async finishEmbedSettle(id, spent) { const e = embeds.get(id); if (!e) return undefined; Object.assign(e, { status: "settled", spent, settledAt: new Date(clock) }); return { ...e }; },
   async adminListCharacters(f) { return [...characters.values()].filter(c => (!f.ownerRef || c.ownerRef === f.ownerRef) && (!f.id || c.id === f.id)).map(c => ({ ...c })); },
 };
 
@@ -89,6 +102,8 @@ const deps: PartnerDeps = {
   core: {
     async getUser(id) { return users.get(id); },
     async getUserByEmail(email) { return [...users.values()].find(u => u.email === email); },
+    async setPartnerUserAdult(userId, birthDate) { adult.set(userId, birthDate); },
+    async createPartnerUser({ username, email }) { const id = `sub-${username}`; users.set(id, { id, credits: 0, email }); return { id }; },
     async atomicDeductCredits(userId, amount, description) {
       const u = users.get(userId)!;
       if (u.credits < amount) throw new Error("insufficient");
@@ -174,7 +189,10 @@ const deps: PartnerDeps = {
 async function main() {
   const app = express();
   app.use(express.json());
-  app.use((req, _res, next) => { (req as any).session = { userId: "admin-1", isAdmin: true }; next(); });
+  app.use((req, _res, next) => {
+    const session: any = { userId: "admin-1", isAdmin: true, regenerate(cb: (e?: unknown) => void) { cb(); }, save(cb: () => void) { cb(); } };
+    (req as any).session = session; lastSession = session; next();
+  });
   registerPartnerRoutes(app, deps);
   const server = app.listen(0, "127.0.0.1");
   await new Promise(r => server.once("listening", r));
@@ -601,6 +619,61 @@ async function main() {
   const dOver = await call("POST", `${P}/images`, { token: LIMITED, body: { prompt: "超過" } });
   check("每日圖片上限：超過 → 429 daily_limit_reached + Retry-After", dOk.status === 202 && dOver.status === 429 && dOver.json?.code === "daily_limit_reached" && Number(dOver.headers.get("retry-after")) >= 1, [dOk.status, dOver.json]);
   check("未設定上限的權杖不受每日上限限制", (await call("POST", `${P}/images`, { token: OTHER, body: { prompt: "無上限" } })).status === 202);
+
+  section("嵌入模式");
+  const svcBefore = users.get("svc")!.credits;
+  const eBad = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: 100, return_origin: "http://evil.example" } });
+  check("return_origin 不是 https → 400，不撥額度", eBad.status === 400 && users.get("svc")!.credits === svcBefore, eBad.json);
+  const eBig = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: svcBefore + 1, return_origin: "https://town.example" } });
+  check("額度超過服務帳號積分 → 402", eBig.status === 402 && eBig.json?.code === "insufficient_credits" && users.get("svc")!.credits === svcBefore, eBig.json);
+  const e1 = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: 100, return_origin: "https://town.example/some/path" } });
+  const sub = [...users.values()].find(u => u.email.endsWith("@partner.invalid"))!;
+  check("建立成功：回傳一次性網址，額度從服務帳號撥到子帳號", e1.status === 201 && /\/embed\/enter\?ticket=[\w-]{20,}$/.test(e1.json?.url ?? "") && e1.json.budget === 100 && e1.json.recovered_credits === 0
+    && users.get("svc")!.credits === svcBefore - 100 && sub?.credits === 100, e1.json);
+  check("資料庫只存票根的雜湊，不存明文", ![...embeds.values()].some(x => e1.json.url.includes(x.ticketHash)) && embeds.get(e1.json.session_id)!.returnOrigin === "https://town.example");
+  const eDup = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: 10, return_origin: "https://town.example" } });
+  check("同一個 owner_ref 還有未結算的 → 409 並附 session_id", eDup.status === 409 && eDup.json?.code === "embed_session_open" && eDup.json.session_id === e1.json.session_id);
+  const eOtherWs = await call("GET", `${P}/embed-sessions/${e1.json.session_id}?owner_ref=ws_99`, { token: TOKEN });
+  const eOtherTok = await call("GET", `${P}/embed-sessions/${e1.json.session_id}?owner_ref=ws_12`, { token: OTHER });
+  check("別的 owner_ref 或別的權杖查不到 → 404", eOtherWs.status === 404 && eOtherTok.status === 404);
+  const ticketPath = new URL(e1.json.url).pathname + new URL(e1.json.url).search;
+  const enter = await fetch(base + ticketPath, { redirect: "manual" });
+  check("進入網址：登入成子帳號並帶嵌入標記，導回首頁", enter.status === 302 && enter.headers.get("location") === "/" && lastSession.userId === sub.id && lastSession.isAdmin === false
+    && lastSession.embed?.sessionId === e1.json.session_id && lastSession.embed?.returnOrigin === "https://town.example");
+  const again = await fetch(base + ticketPath, { redirect: "manual" });
+  check("同一張票第二次使用 → 410", again.status === 410);
+  sub.credits -= 46; calls.ledger.push("-46 子帳號在站內生成");
+  const eGet = await call("GET", `${P}/embed-sessions/${e1.json.session_id}?owner_ref=ws_12`, { token: TOKEN });
+  check("查詢：看得到剩餘額度", eGet.status === 200 && eGet.json.status === "open" && eGet.json.remaining === 54, eGet.json);
+  const eSettleBad = await call("POST", `${P}/embed-sessions/${e1.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_99" } });
+  const eSettle = await call("POST", `${P}/embed-sessions/${e1.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_12" } });
+  check("結算：回傳 spent，剩餘撥回服務帳號，子帳號歸零", eSettleBad.status === 404 && eSettle.status === 200 && eSettle.json.status === "settled" && eSettle.json.spent === 46
+    && users.get("svc")!.credits === svcBefore - 46 && sub.credits === 0, eSettle.json);
+  const eSettle2 = await call("POST", `${P}/embed-sessions/${e1.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_12" } });
+  check("重複結算結果相同，不會再動積分", eSettle2.status === 200 && eSettle2.json.spent === 46 && users.get("svc")!.credits === svcBefore - 46);
+  sub.credits += 6; calls.ledger.push("+6 結算後才到的失敗退點");
+  const e2 = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: 30, return_origin: "https://town.example" } });
+  check("下一次建立：收回遲到的退點並回報 recovered_credits", e2.status === 201 && e2.json.recovered_credits === 6 && sub.credits === 30 && users.get("svc")!.credits === svcBefore - 46 + 6 - 30, e2.json);
+  const e3 = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_13", budget: 5, return_origin: "https://town.example" } });
+  const subs = [...users.values()].filter(u => u.email.endsWith("@partner.invalid"));
+  check("不同 owner_ref 是不同的子帳號", e3.status === 201 && subs.length === 2 && new Set(subs.map(u => u.id)).size === 2);
+  check("沒帶生日 → 成人內容關閉", e1.json.nsfw_allowed === false && adult.get(sub.id) === null);
+  const aNo = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_adult", budget: 5, return_origin: "https://town.example", adult_birth_date: "1990-01-01" } });
+  check("權杖未開放 NSFW 卻帶生日 → 403，不撥額度", aNo.status === 403 && aNo.json?.code === "nsfw_not_allowed", aNo.json);
+  const aKid = await call("POST", `${P}/embed-sessions`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult", budget: 5, return_origin: "https://town.example", adult_birth_date: `${new Date().getFullYear() - 10}-01-01` } });
+  check("未滿 18 歲 → 400", aKid.status === 400, aKid.json);
+  const aYes = await call("POST", `${P}/embed-sessions`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult", budget: 5, return_origin: "https://town.example", adult_birth_date: "1990-01-01" } });
+  const aSub = embeds.get(aYes.json?.session_id)?.userId ?? "";
+  check("權杖已開放且滿 18 歲 → 這個工作區的子帳號開啟成人內容", aYes.status === 201 && aYes.json.nsfw_allowed === true && adult.get(aSub) === "1990-01-01", aYes.json);
+  await call("POST", `${P}/embed-sessions/${aYes.json.session_id}/settle`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult" } });
+  const aOff = await call("POST", `${P}/embed-sessions`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult", budget: 5, return_origin: "https://town.example" } });
+  check("下一次沒帶生日 → 同一個子帳號被關閉", aOff.status === 201 && adult.get(aSub) === null);
+  await call("POST", `${P}/embed-sessions/${aOff.json.session_id}/settle`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult" } });
+  clock += 11 * 60 * 1000;
+  const late = await fetch(base + new URL(e3.json.url).pathname + new URL(e3.json.url).search, { redirect: "manual" });
+  check("票超過 10 分鐘 → 410", late.status === 410);
+  await call("POST", `${P}/embed-sessions/${e2.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_12" } });
+  await call("POST", `${P}/embed-sessions/${e3.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_13" } });
 
   section("撤銷權杖");
   const revoke = await call("POST", `/api/admin/partner-tokens/${created.json.id}/revoke`);
