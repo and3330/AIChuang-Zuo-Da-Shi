@@ -1,4 +1,4 @@
-import { IMAGE_COST } from "@shared/pricing";
+import { FOUR_VIEW_COST } from "@shared/pricing";
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -108,7 +108,7 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
   const { user } = useUser();
   // Each account's first 四視圖 generation is free (not in a partner workspace).
   const freeFourView = !!user && !user.freeFourViewUsedAt && !useEmbed();
-  const fourViewCost = 4 * IMAGE_COST;
+  const fourViewCost = FOUR_VIEW_COST;
   const [showEdit, setShowEdit] = useState(false);
 
   const generateFourViews = useMutation({
@@ -344,7 +344,7 @@ export default function CharacterLibraryPage() {
         <div className="flex items-start justify-between gap-3 flex-wrap mb-6">
           <div className="min-w-0">
             <h1 className="hidden md:block text-2xl font-bold text-[#0f172a]">角色庫</h1>
-            <p className="text-sm text-[#64748b] md:mt-1">上傳最多 10 張照片建立固定角色，建好就在這裡，寫真與漫劇都能重複使用。</p>
+            <p className="text-sm text-[#64748b] md:mt-1">上傳照片建立固定角色並生成四視圖，建好就在這裡，寫真與漫劇都能重複使用。第一個角色免費，之後每個 {FOUR_VIEW_COST} 積分。</p>
           </div>
           <div className="flex gap-2 w-full sm:w-auto">
             <button onClick={() => setShowWizard(true)}

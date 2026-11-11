@@ -17,7 +17,7 @@ import { and, gte, sql } from "drizzle-orm";
 import { db } from "./db";
 import { providerCosts, creditTransactions } from "@shared/schema";
 import { ATLAS_LIBRARY_PRICE_USD } from "./atlasProvider";
-import { IMAGE_COST, WATERMARK_REMOVAL_COST, VIDEO_COST_PER_SECOND, MEMBERSHIP, SIGNUP_CREDITS } from "@shared/pricing";
+import { FOUR_VIEW_COST, IMAGE_COST, WATERMARK_REMOVAL_COST, VIDEO_COST_PER_SECOND, MEMBERSHIP, SIGNUP_CREDITS } from "@shared/pricing";
 
 const num = (name: string, fallback: number): number => {
   const v = Number(process.env[name]);
@@ -121,7 +121,7 @@ export function unitEconomics() {
       row("圖片帶 1 張參考圖", IMAGE_COST, img(1)),
       row("寫真 1 張（帶滿 10 張參考圖）", IMAGE_COST, img(10), "最吃成本的情況"),
       row("去浮水印 1 張（帶 4 張參考圖）", IMAGE_COST + WATERMARK_REMOVAL_COST, img(4)),
-      row("角色四視圖（4 張，各帶 6 張參考圖）", 4 * IMAGE_COST, 4 * img(6)),
+      row("角色四視圖（4 張，各帶 6 張參考圖）", FOUR_VIEW_COST, 4 * img(6)),
       row("影片 720p 5 秒", 5 * VIDEO_COST_PER_SECOND["720p"], 5 * s.wanSecondUsd["720p"]),
       row("影片 1080p 5 秒", 5 * VIDEO_COST_PER_SECOND["1080p"], 5 * s.wanSecondUsd["1080p"]),
     ],

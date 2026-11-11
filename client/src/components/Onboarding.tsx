@@ -11,14 +11,14 @@ import { IMAGE_COST, SIGNUP_CREDITS } from "@shared/pricing";
 // 想先做別的可以按「我想先做別的」，換成選單。做完、選了別的或按「略過」都會記錄，之後不再出現。
 
 const STEPS: Array<{ icon: string; title: string; desc: string }> = [
-  { icon: "fa-user-plus", title: "上傳照片，建立你的角色", desc: "最多 10 張自己的照片。第一次會免費幫你生成角色四視圖。" },
+  { icon: "fa-user-plus", title: "上傳照片，建立你的角色", desc: "準備 6 到 10 張自己的清楚照片。第一次會免費幫你生成角色四視圖。" },
   { icon: "fa-shirt", title: "選一套服裝", desc: "從上千套穿搭裡點一套，也可以按「隨機」。" },
   { icon: "fa-person-walking", title: "選一個姿勢", desc: "不選也可以，AI 會幫你安排。" },
   { icon: "fa-images", title: "生成你的第一組寫真", desc: "AI 先免費規劃鏡頭，確認後才扣積分。" },
 ];
 
 const OTHERS: Array<{ href: string; icon: string; title: string; desc: string }> = [
-  { href: "/character-library", icon: "fa-user-plus", title: "先建立我的角色", desc: "上傳照片建立角色，第一次免費生成四視圖，之後每個功能都能用。" },
+  { href: "/character-library", icon: "fa-user-plus", title: "先建立我的角色", desc: "上傳照片建立角色，第一個角色免費生成四視圖，之後每個功能都能用。" },
   { href: "/photoset?mode=scene", icon: "fa-panorama", title: "照片同款", desc: "放一張喜歡的照片，換成你的角色和服裝。" },
   { href: "/create/image", icon: "fa-image", title: "圖片生成", desc: "用一句話畫一張圖，或請 AI 修改你的照片。" },
   { href: "/wall", icon: "fa-globe", title: "先看看別人的作品", desc: "作品牆上的作品可以看提示詞、做同款。" },

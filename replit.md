@@ -130,3 +130,5 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 角色四視圖改成串接：先出正面，其餘三張把正面圖放在參考圖第 1 張（再接本人照片），四張服裝才會一致。模型維持 Seedream 5.5（2026-11-11 實測：Nano Banana 2.1 服裝一致性較好，但使用者認為 Seedream 臉比較像；FLUX 3 會擋清涼的參考照）。
 - 新手導覽改成單一主線（`Onboarding.tsx`）：一頁說明四步（建立角色 → 選服裝 → 選姿勢 → 生成），按開始就進寫真工作室素材套圖；想先做別的可切換選單。寫真工作室預設張數會依餘額調整（新帳號 10 積分＝2 張）。一組寫真完成後跳出會員商城邀請（非會員一定跳；會員在餘額不夠再做同樣一組時才跳；黃金專區不跳）。
 - 黃金會員入口改到帳戶設定：存了滿 18 歲的生日後，生日上方出現「內容審查限制」，點開是「是否開啟 NSFW 模式」開關，打開跳出申請視窗（`GoldApplyDialog`）：認證 Email（`/api/account/email-code`、`/api/account/verify-email`）→ 真實姓名（`users.real_name`）→ 同意 AI 生成內容使用條款（`GOLD_TERMS_OF_USE`）→ 問是否加入 US$22。申請完成（`goldApplicationDone`）後會員商城才出現黃金會員；付款成功跳出導覽（從「我的」選單進入黃金專區）。除了那個開關，前台不出現 NSFW／成人字眼。
+- 帳號的第一個角色至少要 6 張照片（`FIRST_CHARACTER_MIN_PHOTOS`，只在 `CharacterWizard` 前端檢查；之後的角色 1 張即可）。精靈會提醒成品取決於照片品質，短邊小於 640 像素的照片標「解析度低」。
+- 四視圖改為 30 積分（`FOUR_VIEW_COST`，夥伴 API 價格不變）。第二個角色開始，精靈建立角色時一律生成四視圖並收 30 積分，積分不夠不能建立；第一個角色仍免費。帳戶 Email 驗證信改用 `sendVerificationEmail`（Resend）。

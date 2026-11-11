@@ -8,7 +8,7 @@
  *   - Per-episode ZIP download (all assets)
  */
 
-import { IMAGE_COST } from "@shared/pricing";
+import { FOUR_VIEW_COST, IMAGE_COST } from "@shared/pricing";
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 import { ObjectStorageService } from "./objectStorage";
@@ -34,7 +34,7 @@ import { assertAllowedRemoteUrl, assertPublicHttpsUrl } from "./ssrfGuard";
 import { atlasGenerateImage, atlasIsConfigured } from "./atlasProvider";
 
 
-const FOUR_VIEW_CREDIT_COST = 4 * IMAGE_COST; // 4 images
+const FOUR_VIEW_CREDIT_COST = FOUR_VIEW_COST; // 4 images
 
 export function registerDramaLibraryRoutes(
   app: Express,
