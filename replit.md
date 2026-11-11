@@ -109,3 +109,4 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - Bunny 上傳遇到網路錯誤、429、5xx 會重試最多 3 次，避免已付費生成的圖因為存不進去而重畫。
 - 素材圖庫預覽圖預設改用 Seedream 5.5 文字生圖（`bytedance/seedream-v5.5/text-to-image`，不帶參考圖；去背素材送 `background: transparent` + PNG）。要換回 GPT Image 2.5 Flare：設定 `LIBRARY_IMAGE_MODEL=openai/gpt-image-2.5-flare/text-to-image`。
 - 服裝圖庫新增成人向 21 套 × 8 色 = 168 筆（`ADULT_COSTUME_GROUPS`：內衣、性感睡衣、性感泳裝、派對扮裝），`adult: true`、只有管理員看得到；圖庫總數 6,925（姿勢 2,034／服裝 3,392／人像 1,499）。
+- 素材圖庫的成人向素材（`adult: true`）：管理員，以及已在帳號頁啟用「成人內容」的會員（需填生日、成年並同意條款，`canUseNsfw()`）都看得到；其他人查不到這些列。

@@ -22,7 +22,8 @@ import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import sharp from "sharp";
 import { z } from "zod";
 import { db } from "./db";
-import { libraryAssets, type LibraryAsset } from "@shared/schema";
+import { libraryAssets, users, type LibraryAsset } from "@shared/schema";
+import { canUseNsfw } from "@shared/safety";
 import { libraryCatalog, LIBRARIES, type LibraryId } from "@shared/libraryCatalog";
 import { libraryConcurrencySchema, libraryConcurrencyError } from "@shared/libraryGeneration";
 import { atlasGenerateLibraryImage, atlasIsConfigured, ATLAS_LIBRARY_MODEL, ATLAS_LIBRARY_PRICE_USD } from "./atlasProvider";
@@ -70,6 +71,24 @@ export function registerAssetLibraryRoutes(
   },
 ) {
   const { requireAuth, requireAdmin, bunnyStorage, cdnUrl } = deps;
+
+  /**
+   * Adult-flagged assets are shown to admins and to members who turned on
+   * 成人內容 in their account (which requires a birth date of legal age and
+   * accepting the terms). Everyone else never receives those rows.
+   */
+  async function canSeeAdult(req: Request): Promise<boolean> {
+    const session = req.session as any;
+    if (session?.isAdmin) return true;
+    if (!session?.userId) return false;
+    try {
+      const [u] = await db.select({ birthDate: users.birthDate, nsfwEnabled: users.nsfwEnabled })
+        .from(users).where(eq(users.id, session.userId)).limit(1);
+      return canUseNsfw(u);
+    } catch {
+      return false;
+    }
+  }
 
   /* ───────── catalog → database ───────── */
 
@@ -349,8 +368,9 @@ export function registerAssetLibraryRoutes(
     const isAdmin = !!(req.session as any)?.isAdmin;
     const showUnready = isAdmin && includeUnready === "1";
     try {
+      const showAdult = await canSeeAdult(req);
       const base = [eq(libraryAssets.library, library)];
-      if (!isAdmin) base.push(eq(libraryAssets.adult, false));
+      if (!showAdult) base.push(eq(libraryAssets.adult, false));
       if (!showUnready) base.push(eq(libraryAssets.status, "ready"));
 
       const filters = [...base];
@@ -409,8 +429,8 @@ export function registerAssetLibraryRoutes(
     const isAdmin = !!(req.session as any)?.isAdmin;
     try {
       const filters = [eq(libraryAssets.library, library)];
-      // Adult-flagged categories follow the same rule as the existing adult page: admins only.
-      if (!isAdmin) filters.push(eq(libraryAssets.adult, false));
+      const showAdult = await canSeeAdult(req);
+      if (!showAdult) filters.push(eq(libraryAssets.adult, false));
       if (!(isAdmin && includeUnready === "1")) filters.push(eq(libraryAssets.status, "ready"));
       if (category) filters.push(eq(libraryAssets.category, category));
       if (q?.trim()) filters.push(sql`(${libraryAssets.name} ILIKE ${"%" + q.trim() + "%"} OR ${q.trim()} = ANY(${libraryAssets.tags}))`);
@@ -426,7 +446,7 @@ export function registerAssetLibraryRoutes(
         .orderBy(asc(libraryAssets.sortOrder)).limit(pageSize).offset((page - 1) * pageSize);
 
       const categoryFilters = [eq(libraryAssets.library, library)];
-      if (!isAdmin) categoryFilters.push(eq(libraryAssets.adult, false));
+      if (!showAdult) categoryFilters.push(eq(libraryAssets.adult, false));
       if (!(isAdmin && includeUnready === "1")) categoryFilters.push(eq(libraryAssets.status, "ready"));
       const categories = await db.select({
         category: libraryAssets.category, adult: sql<boolean>`bool_or(${libraryAssets.adult})`, n: sql<number>`count(*)::int`,
