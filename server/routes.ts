@@ -17,11 +17,12 @@ import sharp from "sharp";
 import { registerDramaLibraryRoutes } from "./dramaLibrary";
 import { registerPhotosetRoutes, createPhotosetPlanner } from "./photoset";
 import { registerPartnerRoutes, partnerEmbedGuard } from "./partnerApi";
+import { partnerWalletConfigured, setWalletAccountLookup, forgetWalletAccount, walletAccountFor, walletBalance } from "./partnerWallet";
 import { registerAssetLibraryRoutes } from "./assetLibrary";
 import { registerVaultRoutes } from "./vault";
 import { registerCostRoutes, recordProviderUsage } from "./costs";
 import { setAtlasUsageListener } from "./atlasProvider";
-import { partnerStore, createPartnerImageIngestor, createPartnerUploadStore } from "./partnerStore";
+import { partnerStore, embedWalletAccount, createPartnerImageIngestor, createPartnerUploadStore } from "./partnerStore";
 import { atlasSizeDimensions } from "./atlasProvider";
 import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
 import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIsConfigured, ATLAS_EDIT_MODEL, ATLAS_T2I_MODEL, ATLAS_I2V_MODEL, ATLAS_T2V_MODEL, ATLAS_MAX_REFERENCE_IMAGES } from "./atlasProvider";
@@ -111,6 +112,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const objectStorageService = new ObjectStorageService();
   const bunnyStorage = new BunnyStorageService();
   app.use(partnerEmbedGuard);
+  setWalletAccountLookup(embedWalletAccount);
   if (bunnyStorage.isConfigured()) {
     console.log("✅ Bunny.net storage configured");
   } else {
@@ -463,6 +465,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
     const user = await storage.getUser(req.session.userId);
     if (!user) {
       return res.status(401).json({ error: "用户不存在" });
+    }
+    if (req.session.embed) {
+      // Show the partner's live balance; fall back to the last known one if it cannot be reached.
+      try {
+        const wallet = await walletAccountFor(user.id);
+        if (wallet) { user.credits = await walletBalance(wallet.ownerRef); await storage.setCreditsMirror(user.id, user.credits); }
+      } catch { /* keep the mirror */ }
     }
 
     res.json({
@@ -4335,6 +4344,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     core: {
       getUser: (id) => storage.getUser(id),
       getUserByEmail: (email) => storage.getUserByEmail(email),
+      setCreditsMirror: async (userId, credits) => { forgetWalletAccount(userId); await storage.setCreditsMirror(userId, credits); },
       setPartnerUserAdult: async (userId, birthDate) => {
         await storage.updateUserProfile(userId, birthDate
           ? { birthDate, nsfwEnabled: true, nsfwConsentAt: new Date() }
@@ -4362,6 +4372,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
     isCdnUrl: (url) => bunnyStorage.isOwnCdnUrl(url),
     deleteStored: (url) => bunnyStorage.deleteByCdnUrl(url),
     storageReady: () => bunnyStorage.isConfigured(),
+    walletReady: partnerWalletConfigured,
     planPhotoset: (input) => createPhotosetPlanner(objectStorageService).plan(input),
     sizeDimensions: atlasSizeDimensions,
     cdnUrl: fixBunnyCdnUrl,

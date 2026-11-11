@@ -14,18 +14,35 @@ export function useEmbed(): EmbedInfo | null {
   return ((user as { embed?: EmbedInfo | null } | null | undefined)?.embed) ?? null;
 }
 
+/** Hands one result to the partner page that opened this window. False when that page is gone. */
+export function sendToPartner(embed: EmbedInfo, message: Record<string, unknown>): boolean {
+  const opener = window.opener as Window | null;
+  if (!opener || opener.closed) return false;
+  opener.postMessage({ source: "ai-studio", ...message }, embed.returnOrigin);
+  return true;
+}
+
+/** A "send back" handler for result views. Null outside embed mode, so callers can hide the button. */
+export function useSendBack(): ((url: string) => void) | null {
+  const embed = useEmbed();
+  const { toast } = useToast();
+  if (!embed) return null;
+  return (url: string) => {
+    if (sendToPartner(embed, { type: "pick", url })) toast({ title: "已送回客戶小鎮", description: "回到小鎮的「創作」就看得到。" });
+    else {
+      navigator.clipboard?.writeText(url).catch(() => undefined);
+      toast({ title: "找不到客戶小鎮的視窗", description: "已複製成品網址，請回客戶小鎮貼到貼文的媒體欄。" });
+    }
+  };
+}
+
 export default function EmbedBar() {
   const embed = useEmbed();
   const { toast } = useToast();
   const [picking, setPicking] = useState(false);
   if (!embed) return null;
 
-  const send = (message: Record<string, unknown>): boolean => {
-    const opener = window.opener as Window | null;
-    if (!opener || opener.closed) return false;
-    opener.postMessage({ source: "ai-studio", ...message }, embed.returnOrigin);
-    return true;
-  };
+  const send = (message: Record<string, unknown>) => sendToPartner(embed, message);
   const pick = (url: string) => {
     setPicking(false);
     if (send({ type: "pick", url })) {
@@ -39,7 +56,7 @@ export default function EmbedBar() {
     send({ type: "done" });
     window.close();
     // Browsers refuse to close a tab the user opened themselves.
-    toast({ title: "可以關閉這個分頁了", description: "回到客戶小鎮後會自動結算這次用掉的點數。" });
+    toast({ title: "可以關閉這個分頁了", description: "成品都在客戶小鎮的「創作」裡。" });
   };
 
   return (

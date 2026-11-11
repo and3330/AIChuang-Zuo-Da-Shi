@@ -13,6 +13,8 @@
 
 import express from "express";
 import type { AddressInfo } from "net";
+import http from "http";
+import { walletCharge, walletRefund, walletBalance, PartnerWalletError } from "../server/partnerWallet";
 import { randomUUID } from "crypto";
 import {
   registerPartnerRoutes, generatePartnerToken, hashPartnerToken,
@@ -41,6 +43,8 @@ const calls = { runImage: [] as any[], runVideo: [] as any[], ingest: [] as stri
 const characters = new Map<string, PartnerCharacter>();
 const embeds = new Map<string, PartnerEmbedSession>();
 const adult = new Map<string, string | null>();
+let mirrored = 0;
+const behaviourWallet = { ready: true };
 let lastSession: any = null;
 /** How the fake workers behave for the next generations. */
 const behaviour = { image: "succeed" as "succeed" | "fail" | "hang" | "partial", video: "succeed" as "succeed" | "fail", plan: "ok" as "ok" | "fail" | "short", storage: true, sessionAdmin: true };
@@ -83,12 +87,8 @@ const store: PartnerStore = {
     const row = { id: randomUUID(), ...d, spent: null, status: "open", createdAt: new Date(clock), redeemedAt: null, settledAt: null } as PartnerEmbedSession;
     embeds.set(row.id, row); return { ...row };
   },
-  async getEmbedSession(id) { const e = embeds.get(id); return e ? { ...e } : undefined; },
   async findEmbedSessionByTicket(hash) { const e = [...embeds.values()].find(x => x.ticketHash === hash); return e ? { ...e } : undefined; },
-  async findUnsettledEmbedSession(tokenId, ownerRef) { const e = [...embeds.values()].find(x => x.tokenId === tokenId && x.ownerRef === ownerRef && x.status !== "settled"); return e ? { ...e } : undefined; },
-  async redeemEmbedTicket(id) { const e = embeds.get(id); if (!e || e.redeemedAt || e.status !== "open") return false; e.redeemedAt = new Date(clock); return true; },
-  async claimEmbedSettle(id) { const e = embeds.get(id); if (!e || e.status !== "open") return false; e.status = "settling"; return true; },
-  async finishEmbedSettle(id, spent) { const e = embeds.get(id); if (!e) return undefined; Object.assign(e, { status: "settled", spent, settledAt: new Date(clock) }); return { ...e }; },
+  async redeemEmbedTicket(id) { const e = embeds.get(id); if (!e || e.redeemedAt) return false; e.redeemedAt = new Date(clock); return true; },
   async adminListCharacters(f) { return [...characters.values()].filter(c => (!f.ownerRef || c.ownerRef === f.ownerRef) && (!f.id || c.id === f.id)).map(c => ({ ...c })); },
 };
 
@@ -103,6 +103,7 @@ const deps: PartnerDeps = {
     async getUser(id) { return users.get(id); },
     async getUserByEmail(email) { return [...users.values()].find(u => u.email === email); },
     async setPartnerUserAdult(userId, birthDate) { adult.set(userId, birthDate); },
+    async setCreditsMirror(userId, credits) { mirrored += credits - users.get(userId)!.credits; users.get(userId)!.credits = credits; },
     async createPartnerUser({ username, email }) { const id = `sub-${username}`; users.set(id, { id, credits: 0, email }); return { id }; },
     async atomicDeductCredits(userId, amount, description) {
       const u = users.get(userId)!;
@@ -178,6 +179,7 @@ const deps: PartnerDeps = {
     const n = behaviour.plan === "short" ? input.count - 1 : input.count;
     return { analysis: "分析", shots: Array.from({ length: n }, (_, i) => ({ title: `鏡頭 ${i + 1}`, prompt: `鏡頭 ${i + 1} 的描述` })) };
   },
+  walletReady: () => behaviourWallet.ready,
   sizeDimensions(size) { const [w, h] = size.split("x").map(Number); return { width: w, height: h }; },
   cdnUrl: (u) => (u ? u.replace("https://storage.bunnycdn.com", CDN) : u),
   requireAuth: (_req, _res, next) => next(),
@@ -622,58 +624,70 @@ async function main() {
 
   section("嵌入模式");
   const svcBefore = users.get("svc")!.credits;
-  const eBad = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: 100, return_origin: "http://evil.example" } });
-  check("return_origin 不是 https → 400，不撥額度", eBad.status === 400 && users.get("svc")!.credits === svcBefore, eBad.json);
-  const eBig = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: svcBefore + 1, return_origin: "https://town.example" } });
-  check("額度超過服務帳號積分 → 402", eBig.status === 402 && eBig.json?.code === "insufficient_credits" && users.get("svc")!.credits === svcBefore, eBig.json);
-  const e1 = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: 100, return_origin: "https://town.example/some/path" } });
+  const eBad = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", balance: 100, return_origin: "http://evil.example" } });
+  check("return_origin 不是 https → 400", eBad.status === 400, eBad.json);
+  behaviourWallet.ready = false;
+  const eNoWallet = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", balance: 100, return_origin: "https://town.example" } });
+  behaviourWallet.ready = true;
+  check("未設定錢包端點 → 503 wallet_not_configured", eNoWallet.status === 503 && eNoWallet.json?.code === "wallet_not_configured", eNoWallet.json);
+  const e1 = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", balance: 480, return_origin: "https://town.example/some/path" } });
   const sub = [...users.values()].find(u => u.email.endsWith("@partner.invalid"))!;
-  check("建立成功：回傳一次性網址，額度從服務帳號撥到子帳號", e1.status === 201 && /\/embed\/enter\?ticket=[\w-]{20,}$/.test(e1.json?.url ?? "") && e1.json.budget === 100 && e1.json.recovered_credits === 0
-    && users.get("svc")!.credits === svcBefore - 100 && sub?.credits === 100, e1.json);
+  check("建立成功：回傳一次性網址；服務帳號積分不動，子帳號顯示對方的餘額", e1.status === 201 && /\/embed\/enter\?ticket=[\w-]{20,}$/.test(e1.json?.url ?? "")
+    && users.get("svc")!.credits === svcBefore && sub?.credits === 480, e1.json);
   check("資料庫只存票根的雜湊，不存明文", ![...embeds.values()].some(x => e1.json.url.includes(x.ticketHash)) && embeds.get(e1.json.session_id)!.returnOrigin === "https://town.example");
-  const eDup = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: 10, return_origin: "https://town.example" } });
-  check("同一個 owner_ref 還有未結算的 → 409 並附 session_id", eDup.status === 409 && eDup.json?.code === "embed_session_open" && eDup.json.session_id === e1.json.session_id);
-  const eOtherWs = await call("GET", `${P}/embed-sessions/${e1.json.session_id}?owner_ref=ws_99`, { token: TOKEN });
-  const eOtherTok = await call("GET", `${P}/embed-sessions/${e1.json.session_id}?owner_ref=ws_12`, { token: OTHER });
-  check("別的 owner_ref 或別的權杖查不到 → 404", eOtherWs.status === 404 && eOtherTok.status === 404);
   const ticketPath = new URL(e1.json.url).pathname + new URL(e1.json.url).search;
   const enter = await fetch(base + ticketPath, { redirect: "manual" });
   check("進入網址：登入成子帳號並帶嵌入標記，導回首頁", enter.status === 302 && enter.headers.get("location") === "/" && lastSession.userId === sub.id && lastSession.isAdmin === false
     && lastSession.embed?.sessionId === e1.json.session_id && lastSession.embed?.returnOrigin === "https://town.example");
   const again = await fetch(base + ticketPath, { redirect: "manual" });
   check("同一張票第二次使用 → 410", again.status === 410);
-  sub.credits -= 46; calls.ledger.push("-46 子帳號在站內生成");
-  const eGet = await call("GET", `${P}/embed-sessions/${e1.json.session_id}?owner_ref=ws_12`, { token: TOKEN });
-  check("查詢：看得到剩餘額度", eGet.status === 200 && eGet.json.status === "open" && eGet.json.remaining === 54, eGet.json);
-  const eSettleBad = await call("POST", `${P}/embed-sessions/${e1.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_99" } });
-  const eSettle = await call("POST", `${P}/embed-sessions/${e1.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_12" } });
-  check("結算：回傳 spent，剩餘撥回服務帳號，子帳號歸零", eSettleBad.status === 404 && eSettle.status === 200 && eSettle.json.status === "settled" && eSettle.json.spent === 46
-    && users.get("svc")!.credits === svcBefore - 46 && sub.credits === 0, eSettle.json);
-  const eSettle2 = await call("POST", `${P}/embed-sessions/${e1.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_12" } });
-  check("重複結算結果相同，不會再動積分", eSettle2.status === 200 && eSettle2.json.spent === 46 && users.get("svc")!.credits === svcBefore - 46);
-  sub.credits += 6; calls.ledger.push("+6 結算後才到的失敗退點");
-  const e2 = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", budget: 30, return_origin: "https://town.example" } });
-  check("下一次建立：收回遲到的退點並回報 recovered_credits", e2.status === 201 && e2.json.recovered_credits === 6 && sub.credits === 30 && users.get("svc")!.credits === svcBefore - 46 + 6 - 30, e2.json);
-  const e3 = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_13", budget: 5, return_origin: "https://town.example" } });
+  const e2 = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_12", balance: 300, return_origin: "https://town.example" } });
+  check("同一個工作區可以再開，沿用同一個子帳號並更新顯示餘額", e2.status === 201 && sub.credits === 300 && [...users.values()].filter(u => u.email.endsWith("@partner.invalid")).length === 1);
+  const e3 = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_13", balance: 5, return_origin: "https://town.example" } });
   const subs = [...users.values()].filter(u => u.email.endsWith("@partner.invalid"));
   check("不同 owner_ref 是不同的子帳號", e3.status === 201 && subs.length === 2 && new Set(subs.map(u => u.id)).size === 2);
   check("沒帶生日 → 成人內容關閉", e1.json.nsfw_allowed === false && adult.get(sub.id) === null);
-  const aNo = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_adult", budget: 5, return_origin: "https://town.example", adult_birth_date: "1990-01-01" } });
-  check("權杖未開放 NSFW 卻帶生日 → 403，不撥額度", aNo.status === 403 && aNo.json?.code === "nsfw_not_allowed", aNo.json);
-  const aKid = await call("POST", `${P}/embed-sessions`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult", budget: 5, return_origin: "https://town.example", adult_birth_date: `${new Date().getFullYear() - 10}-01-01` } });
+  const aNo = await call("POST", `${P}/embed-sessions`, { token: TOKEN, body: { owner_ref: "ws_adult", balance: 5, return_origin: "https://town.example", adult_birth_date: "1990-01-01" } });
+  check("權杖未開放 NSFW 卻帶生日 → 403", aNo.status === 403 && aNo.json?.code === "nsfw_not_allowed", aNo.json);
+  const aKid = await call("POST", `${P}/embed-sessions`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult", balance: 5, return_origin: "https://town.example", adult_birth_date: `${new Date().getFullYear() - 10}-01-01` } });
   check("未滿 18 歲 → 400", aKid.status === 400, aKid.json);
-  const aYes = await call("POST", `${P}/embed-sessions`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult", budget: 5, return_origin: "https://town.example", adult_birth_date: "1990-01-01" } });
+  const aYes = await call("POST", `${P}/embed-sessions`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult", balance: 5, return_origin: "https://town.example", adult_birth_date: "1990-01-01" } });
   const aSub = embeds.get(aYes.json?.session_id)?.userId ?? "";
   check("權杖已開放且滿 18 歲 → 這個工作區的子帳號開啟成人內容", aYes.status === 201 && aYes.json.nsfw_allowed === true && adult.get(aSub) === "1990-01-01", aYes.json);
-  await call("POST", `${P}/embed-sessions/${aYes.json.session_id}/settle`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult" } });
-  const aOff = await call("POST", `${P}/embed-sessions`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult", budget: 5, return_origin: "https://town.example" } });
+  const aOff = await call("POST", `${P}/embed-sessions`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult", balance: 5, return_origin: "https://town.example" } });
   check("下一次沒帶生日 → 同一個子帳號被關閉", aOff.status === 201 && adult.get(aSub) === null);
-  await call("POST", `${P}/embed-sessions/${aOff.json.session_id}/settle`, { token: NSFW_TOKEN, body: { owner_ref: "ws_adult" } });
   clock += 11 * 60 * 1000;
   const late = await fetch(base + new URL(e3.json.url).pathname + new URL(e3.json.url).search, { redirect: "manual" });
   check("票超過 10 分鐘 → 410", late.status === 410);
-  await call("POST", `${P}/embed-sessions/${e2.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_12" } });
-  await call("POST", `${P}/embed-sessions/${e3.json.session_id}/settle`, { token: TOKEN, body: { owner_ref: "ws_13" } });
+
+  section("共用錢包（向對方扣點與退點）");
+  const walletCalls: any[] = []; let walletMode: "ok" | "poor" | "flaky" | "down" = "ok"; let walletBal = 100;
+  const walletServer = http.createServer(async (req, res) => {
+    let raw = ""; for await (const c of req) raw += c;
+    const b = JSON.parse(raw); walletCalls.push({ ...b, auth: req.headers.authorization });
+    const send = (status: number, data: unknown) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(data)); };
+    if (walletMode === "down") return send(500, {});
+    if (walletMode === "flaky") { walletMode = "ok"; return send(503, {}); }
+    if (b.action === "charge") { if (walletMode === "poor" || walletBal < b.amount) return send(402, { code: "insufficient_credits", balance: walletBal }); walletBal -= b.amount; }
+    if (b.action === "refund") walletBal += b.amount;
+    send(200, { balance: walletBal });
+  }).listen(0, "127.0.0.1");
+  await new Promise(r => walletServer.once("listening", r));
+  process.env.PARTNER_WALLET_URL = `http://127.0.0.1:${(walletServer.address() as AddressInfo).port}/wallet`;
+  process.env.PARTNER_WALLET_SECRET = "wallet-test-secret";
+  const afterCharge = await walletCharge("ws_12", 30, "圖片生成");
+  check("扣點：帶密鑰、工作區代號、金額與單號，回傳新餘額", afterCharge === 70 && walletCalls[0].auth === "Bearer wallet-test-secret" && walletCalls[0].owner_ref === "ws_12" && walletCalls[0].amount === 30 && /^[0-9a-f-]{36}$/.test(walletCalls[0].ref), walletCalls[0]);
+  check("退點與查餘額", (await walletRefund("ws_12", 6, "失敗退還")) === 76 && (await walletBalance("ws_12")) === 76);
+  let poor: unknown = null; try { await walletCharge("ws_12", 999, "太貴"); } catch (e) { poor = e; }
+  check("對方點數不足 → insufficient，不重試", poor instanceof PartnerWalletError && poor.kind === "insufficient" && walletCalls.filter(c => c.amount === 999).length === 1);
+  walletMode = "flaky"; const n0 = walletCalls.length;
+  const retried = await walletCharge("ws_12", 10, "重試");
+  const pair = walletCalls.slice(n0);
+  check("暫時錯誤會用同一個單號重送一次", retried === 66 && pair.length === 2 && pair[0].ref === pair[1].ref, pair.map(c => c.ref));
+  walletMode = "down"; let down: unknown = null; try { await walletCharge("ws_12", 1, "斷線"); } catch (e) { down = e; }
+  check("對方連不上 → unavailable，不當成扣點成功", down instanceof PartnerWalletError && down.kind === "unavailable" && walletBal === 66);
+  walletServer.close();
+  everyBody.push(JSON.stringify(walletCalls.map(c => ({ ...c, auth: undefined }))));
 
   section("撤銷權杖");
   const revoke = await call("POST", `/api/admin/partner-tokens/${created.json.id}/revoke`);
@@ -693,7 +707,7 @@ async function main() {
   check("明文權杖只在各自的建立回應出現一次", tokenEchoes.every(n => n === 1), tokenEchoes);
   check("所有結果網址都是 CDN https，沒有 /objects/ 或供應商暫時網址", !/provider\.example|"\/objects\//.test(allText));
   const ledgerSum = calls.ledger.reduce((n, l) => n + Number(l.split(" ")[0]), 0);
-  check("積分帳目前後一致（起始 + 異動 = 目前）", 2005 + ledgerSum === [...users.values()].reduce((n, u) => n + u.credits, 0), { ledgerSum });
+  check("積分帳目前後一致（起始 + 異動 = 目前）", 2005 + ledgerSum + mirrored === [...users.values()].reduce((n, u) => n + u.credits, 0), { ledgerSum });
 
   server.close();
   console.log(`\n${passed} passed, ${failures.length} failed`);

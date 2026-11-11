@@ -116,15 +116,9 @@ export interface PartnerStore {
   adminListCharacters(filter: { ownerRef?: string; id?: string }): Promise<PartnerCharacter[]>;
 
   createEmbedSession(data: { tokenId: string; ownerRef: string; userId: string; ticketHash: string; budget: number; returnOrigin: string }): Promise<PartnerEmbedSession>;
-  getEmbedSession(id: string): Promise<PartnerEmbedSession | undefined>;
   findEmbedSessionByTicket(hash: string): Promise<PartnerEmbedSession | undefined>;
-  /** The newest session of this workspace that is not settled yet, if any. */
-  findUnsettledEmbedSession(tokenId: string, ownerRef: string): Promise<PartnerEmbedSession | undefined>;
   /** True only for the first caller: marks the one-time ticket as used. */
   redeemEmbedTicket(id: string): Promise<boolean>;
-  /** True only for the caller that moved the session from open to settling. */
-  claimEmbedSettle(id: string): Promise<boolean>;
-  finishEmbedSettle(id: string, spent: number): Promise<PartnerEmbedSession | undefined>;
 }
 
 export class PartnerIdempotencyRace extends Error {}
@@ -138,6 +132,8 @@ export type PartnerDeps = {
     createPartnerUser(data: { username: string; email: string }): Promise<{ id: string }>;
     /** Turns adult prompts on (with the responsible adult's birth date) or off for a sub-account. */
     setPartnerUserAdult(userId: string, birthDate: string | null): Promise<void>;
+    /** Sets the displayed balance of a sub-account without moving any money. */
+    setCreditsMirror(userId: string, credits: number): Promise<void>;
     /** Throws when the balance is insufficient. */
     atomicDeductCredits(userId: string, amount: number, description: string): Promise<{ newBalance: number }>;
     atomicAddCredits(userId: string, amount: number, description: string): Promise<void>;
@@ -161,6 +157,8 @@ export type PartnerDeps = {
   deleteStored(url: string): Promise<boolean>;
   /** False when the CDN is not configured (results could not be returned). */
   storageReady(): boolean;
+  /** True when the partner wallet endpoint is configured (needed for embed mode). */
+  walletReady(): boolean;
   /** Same planner as POST /api/photosets/plan. */
   planPhotoset(input: Record<string, any>): Promise<{ analysis: string; shots: { title: string; prompt: string }[] }>;
   /** Width/height an app-level image size resolves to. */
@@ -1396,14 +1394,16 @@ export function registerPartnerRoutes(app: Express, deps: PartnerDeps) {
 
   /* ───────────── embed mode: a workspace opens this site's own UI ───────────── */
   // Each owner_ref gets its own sub-account, so the whole site works unchanged and
-  // workspaces never see each other's work. The partner sets a credit budget per
-  // session; it is moved to the sub-account now and the remainder is moved back on settle.
+  // workspaces never see each other's work. A sub-account holds no credits here: every
+  // deduction and refund goes to the partner's wallet (server/partnerWallet.ts).
 
   const EMBED_TICKET_MS = 10 * 60 * 1000;
+  const EMBED_LOGIN_MS = 12 * 60 * 60 * 1000;
   const embedCreateSchema = z.object({
     owner_ref: z.string().regex(/^[\x21-\x7e]{1,100}$/, "owner_ref 必須是 1–100 個英數或符號字元"),
-    budget: z.number().int().min(1).max(100_000),
     return_origin: z.string().max(200),
+    /** The workspace's current balance in the partner's wallet, shown until the first charge. */
+    balance: z.number().int().min(0).max(100_000_000),
     /** Birth date of the adult responsible for this workspace. Present = adult prompts allowed in this session. */
     adult_birth_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "adult_birth_date 必須是 YYYY-MM-DD").optional(),
   }).strict();
@@ -1424,42 +1424,12 @@ export function registerPartnerRoutes(app: Express, deps: PartnerDeps) {
     return (await deps.core.createPartnerUser({ username: `partner-${key}`, email })).id;
   }
 
-  /** Moves every credit the sub-account holds back to the service account. Returns the amount moved. */
-  async function sweepEmbedCredits(subUserId: string, serviceUserId: string, note: string): Promise<number> {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const left = (await deps.core.getUser(subUserId))?.credits ?? 0;
-      if (left <= 0) return 0;
-      try { await deps.core.atomicDeductCredits(subUserId, left, note); }
-      catch { continue; } // the balance moved under us; read it again
-      await deps.core.atomicAddCredits(serviceUserId, left, note);
-      return left;
-    }
-    return 0;
-  }
-
-  function embedView(s: PartnerEmbedSession, remaining?: number) {
-    return {
-      session_id: s.id, owner_ref: s.ownerRef, status: s.status, budget: s.budget, spent: s.spent ?? null,
-      ...(remaining === undefined ? {} : { remaining }),
-      created_at: s.createdAt, settled_at: s.settledAt ?? null,
-    };
-  }
-
-  async function ownEmbedSession(req: AuthedRequest, ownerRef: unknown): Promise<PartnerEmbedSession> {
-    const s = await deps.store.getEmbedSession(String(req.params.id));
-    if (!s || s.tokenId !== req.partnerToken!.id || s.ownerRef !== ownerRef) throw new PartnerError(404, "not_found", "找不到這個嵌入工作階段。");
-    return s;
-  }
-
   app.post(`${BASE}/embed-sessions`, authenticate, async (req: AuthedRequest, res) => {
     try {
       const token = req.partnerToken!;
       const body = parseBody(embedCreateSchema, req.body);
       const origin = embedOrigin(body.return_origin);
-      const open = await deps.store.findUnsettledEmbedSession(token.id, body.owner_ref);
-      if (open) {
-        return res.status(409).json({ error: "這個工作區還有未結算的嵌入工作階段，請先結算。", code: "embed_session_open", session_id: open.id });
-      }
+      if (!deps.walletReady()) throw new PartnerError(503, "wallet_not_configured", "尚未設定對方的錢包端點，暫時無法開啟。");
       if (body.adult_birth_date !== undefined) {
         if (!token.allowNsfw) throw new PartnerError(403, "nsfw_not_allowed", "這個權杖未開放成人內容，無法為工作區開啟。");
         if (!isAdult(body.adult_birth_date)) throw new PartnerError(400, "invalid_request", "adult_birth_date 顯示未滿 18 歲，無法開啟成人內容。");
@@ -1467,26 +1437,15 @@ export function registerPartnerRoutes(app: Express, deps: PartnerDeps) {
       const subUserId = await embedUser(token, body.owner_ref);
       // Set on every session, so turning it off on the partner's side takes effect next time.
       await deps.core.setPartnerUserAdult(subUserId, body.adult_birth_date ?? null);
-      // Credits that came back after the last settle (late refunds) belong to the partner's customer.
-      const recovered = await sweepEmbedCredits(subUserId, token.userId, `嵌入模式回收 ${body.owner_ref}`);
-      try { await deps.core.atomicDeductCredits(token.userId, body.budget, `嵌入模式預撥 ${body.owner_ref}`); }
-      catch { throw new PartnerError(402, "insufficient_credits", "積分不足，無法預撥這次的額度。"); }
       const ticket = randomBytes(32).toString("base64url");
-      let session: PartnerEmbedSession;
-      try {
-        await deps.core.atomicAddCredits(subUserId, body.budget, "客戶小鎮預撥額度");
-        session = await deps.store.createEmbedSession({
-          tokenId: token.id, ownerRef: body.owner_ref, userId: subUserId, ticketHash: createHash("sha256").update(ticket).digest("hex"),
-          budget: body.budget, returnOrigin: origin,
-        });
-      } catch (e) {
-        await sweepEmbedCredits(subUserId, token.userId, `嵌入模式建立失敗退回 ${body.owner_ref}`).catch(() => 0);
-        throw e;
-      }
+      const session = await deps.store.createEmbedSession({
+        tokenId: token.id, ownerRef: body.owner_ref, userId: subUserId, ticketHash: createHash("sha256").update(ticket).digest("hex"),
+        budget: body.balance, returnOrigin: origin,
+      });
+      await deps.core.setCreditsMirror(subUserId, body.balance);
       res.status(201).json({
-        ...embedView(session),
+        session_id: session.id, owner_ref: session.ownerRef,
         url: `${req.protocol}://${req.get("host")}/embed/enter?ticket=${ticket}`,
-        recovered_credits: recovered,
         nsfw_allowed: body.adult_birth_date !== undefined,
         ticket_expires_at: new Date(now() + EMBED_TICKET_MS).toISOString(),
       });
@@ -1495,34 +1454,7 @@ export function registerPartnerRoutes(app: Express, deps: PartnerDeps) {
     }
   });
 
-  app.get(`${BASE}/embed-sessions/:id`, authenticate, async (req: AuthedRequest, res) => {
-    try {
-      const s = await ownEmbedSession(req, req.query.owner_ref);
-      const remaining = s.status === "settled" ? 0 : (await deps.core.getUser(s.userId))?.credits ?? 0;
-      res.json(embedView(s, remaining));
-    } catch (e) {
-      sendError(res, e);
-    }
-  });
-
-  app.post(`${BASE}/embed-sessions/:id/settle`, authenticate, async (req: AuthedRequest, res) => {
-    try {
-      const s = await ownEmbedSession(req, req.body?.owner_ref);
-      if (s.status === "settled") return res.json(embedView(s, 0));
-      if (!(await deps.store.claimEmbedSettle(s.id))) {
-        const latest = await deps.store.getEmbedSession(s.id);
-        if (latest?.status === "settled") return res.json(embedView(latest, 0));
-        throw new PartnerError(409, "embed_settle_in_progress", "這個工作階段正在結算，請稍後再查。", { "Retry-After": "2" });
-      }
-      const remaining = await sweepEmbedCredits(s.userId, req.partnerToken!.userId, `嵌入模式結算 ${s.ownerRef}`);
-      const settled = await deps.store.finishEmbedSettle(s.id, Math.max(0, s.budget - remaining));
-      res.json(embedView(settled ?? s, 0));
-    } catch (e) {
-      sendError(res, e);
-    }
-  });
-
-  // Browser entry: trades the one-time ticket for a normal site session as the workspace's sub-account.
+  // Browser entry: trades the one-time ticket for a site session as the workspace's sub-account.
   app.get("/embed/enter", async (req, res) => {
     const fail = () => res.status(410).type("html").send(
       '<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><body style="font-family:sans-serif;padding:2rem;text-align:center"><h1 style="font-size:1.25rem">這個連結已經失效</h1><p>請回到客戶小鎮，重新開啟創作工坊。</p></body>');
@@ -1530,7 +1462,7 @@ export function registerPartnerRoutes(app: Express, deps: PartnerDeps) {
       const ticket = typeof req.query.ticket === "string" ? req.query.ticket : "";
       if (!/^[A-Za-z0-9_-]{20,100}$/.test(ticket)) return fail();
       const s = await deps.store.findEmbedSessionByTicket(createHash("sha256").update(ticket).digest("hex"));
-      if (!s || s.status !== "open" || s.redeemedAt || now() - new Date(s.createdAt ?? 0).getTime() > EMBED_TICKET_MS) return fail();
+      if (!s || s.redeemedAt || now() - new Date(s.createdAt ?? 0).getTime() > EMBED_TICKET_MS) return fail();
       if (!(await deps.store.redeemEmbedTicket(s.id))) return fail();
       req.session.regenerate((err) => {
         if (err) return fail();
@@ -1538,6 +1470,8 @@ export function registerPartnerRoutes(app: Express, deps: PartnerDeps) {
         req.session.username = "客戶小鎮";
         req.session.isAdmin = false;
         req.session.embed = { sessionId: s.id, returnOrigin: s.returnOrigin };
+        // Shorter than a normal sign-in: access follows the partner's own login.
+        if (req.session.cookie) req.session.cookie.maxAge = EMBED_LOGIN_MS;
         res.setHeader("Referrer-Policy", "no-referrer");
         req.session.save(() => res.redirect("/"));
       });

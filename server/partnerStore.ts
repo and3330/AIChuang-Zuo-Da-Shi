@@ -25,34 +25,14 @@ export const partnerStore: PartnerStore = {
     const [row] = await db.insert(partnerEmbedSessions).values(data).returning();
     return row;
   },
-  async getEmbedSession(id) {
-    const [row] = await db.select().from(partnerEmbedSessions).where(eq(partnerEmbedSessions.id, id));
-    return row;
-  },
   async findEmbedSessionByTicket(hash) {
     const [row] = await db.select().from(partnerEmbedSessions).where(eq(partnerEmbedSessions.ticketHash, hash));
     return row;
   },
-  async findUnsettledEmbedSession(tokenId, ownerRef) {
-    const rows = await db.select().from(partnerEmbedSessions)
-      .where(and(eq(partnerEmbedSessions.tokenId, tokenId), eq(partnerEmbedSessions.ownerRef, ownerRef)))
-      .orderBy(desc(partnerEmbedSessions.createdAt));
-    return rows.find(r => r.status !== "settled");
-  },
   async redeemEmbedTicket(id) {
     const [row] = await db.update(partnerEmbedSessions).set({ redeemedAt: new Date() })
-      .where(and(eq(partnerEmbedSessions.id, id), isNull(partnerEmbedSessions.redeemedAt), eq(partnerEmbedSessions.status, "open"))).returning();
+      .where(and(eq(partnerEmbedSessions.id, id), isNull(partnerEmbedSessions.redeemedAt))).returning();
     return !!row;
-  },
-  async claimEmbedSettle(id) {
-    const [row] = await db.update(partnerEmbedSessions).set({ status: "settling" })
-      .where(and(eq(partnerEmbedSessions.id, id), eq(partnerEmbedSessions.status, "open"))).returning();
-    return !!row;
-  },
-  async finishEmbedSettle(id, spent) {
-    const [row] = await db.update(partnerEmbedSessions).set({ status: "settled", spent, settledAt: new Date() })
-      .where(eq(partnerEmbedSessions.id, id)).returning();
-    return row;
   },
   async findTokenByHash(hash) {
     const [row] = await db.select().from(partnerTokens).where(eq(partnerTokens.tokenHash, hash));
@@ -300,4 +280,12 @@ export function createPartnerUploadStore(
     if (!url) throw new Error("CDN upload returned no URL");
     return { url, width, height };
   };
+}
+
+/** The partner wallet a sub-account spends from, or null for an ordinary account. */
+export async function embedWalletAccount(userId: string): Promise<{ ownerRef: string; serviceUserId: string } | null> {
+  const [session] = await db.select().from(partnerEmbedSessions).where(eq(partnerEmbedSessions.userId, userId)).orderBy(desc(partnerEmbedSessions.createdAt)).limit(1);
+  if (!session) return null;
+  const [token] = await db.select().from(partnerTokens).where(eq(partnerTokens.id, session.tokenId));
+  return token ? { ownerRef: session.ownerRef, serviceUserId: token.userId } : null;
 }
