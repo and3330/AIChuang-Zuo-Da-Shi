@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useEffect } from "react";
 
 interface SeoOptions {
@@ -23,7 +24,8 @@ function getOrCreateMeta(attr: string, value: string): HTMLMetaElement {
 
 export function useSeo({ title, description, keywords, canonical }: SeoOptions) {
   useEffect(() => {
-    const fullTitle = title.includes("AI 創意工坊") ? title : `${title} | AI 創意工坊`;
+    const brand = tr("AI 創意工坊");
+    const fullTitle = title.includes(brand) ? title : `${title} | ${brand}`;
     document.title = fullTitle;
 
     getOrCreateMeta("property", "og:title").setAttribute("content", fullTitle);
@@ -51,7 +53,7 @@ export function useSeo({ title, description, keywords, canonical }: SeoOptions) 
     }
 
     return () => {
-      document.title = "AI 創意工坊 - AI 圖片與影片生成平台";
+      document.title = tr("AI 創意工坊 - AI 圖片與影片生成平台");
     };
   }, [title, description, keywords, canonical]);
 }

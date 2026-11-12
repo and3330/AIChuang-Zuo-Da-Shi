@@ -1,3 +1,6 @@
+import { LangSwitch } from "@/components/LangSwitch";
+import { SIGNUP_CREDITS } from "@shared/pricing";
+import { tr, getLang, trServer } from "@/lib/i18n";
 import { useState, useEffect, type ReactNode } from "react";
 import { Switch, Route, Link, Redirect, useLocation } from "wouter";
 import { queryClient, apiRequest, getQueryFn } from "./lib/queryClient";
@@ -63,12 +66,12 @@ function AuthPage() {
 
   const handleSendCode = async () => {
     if (!email) {
-      setError("請先輸入電子郵件");
+      setError(tr("請先輸入電子郵件"));
       return;
     }
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      setError("請輸入有效的電子郵件地址");
+      setError(tr("請輸入有效的電子郵件地址"));
       return;
     }
 
@@ -78,19 +81,19 @@ function AuthPage() {
     try {
       const res = await fetch("/api/auth/send-verification", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-Lang": getLang() },
         body: JSON.stringify({ email }),
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error || "驗證碼發送失敗");
+        setError(trServer(data.error) || tr("驗證碼發送失敗"));
         return;
       }
       setCodeSent(true);
       setCountdown(60);
-      toast({ title: "驗證碼已發送", description: "請查看您的電子郵件信箱" });
+      toast({ title: tr("驗證碼已發送"), description: tr("請查看您的電子郵件信箱") });
     } catch {
-      setError("驗證碼發送失敗，請稍後再試");
+      setError(tr("驗證碼發送失敗，請稍後再試"));
     } finally {
       setIsSendingCode(false);
     }
@@ -109,12 +112,12 @@ function AuthPage() {
         userData = data.user;
       } else {
         if (!email) {
-          setError("請輸入電子郵件");
+          setError(tr("請輸入電子郵件"));
           setIsSubmitting(false);
           return;
         }
         if (!verificationCode || verificationCode.length !== 6) {
-          setError("請輸入 6 位數驗證碼");
+          setError(tr("請輸入 6 位數驗證碼"));
           setIsSubmitting(false);
           return;
         }
@@ -124,19 +127,19 @@ function AuthPage() {
       }
       queryClient.setQueryData(["/api/auth/me"], userData);
       toast({
-        title: activeTab === "login" ? "登入成功" : "註冊成功",
-        description: activeTab === "register" ? "歡迎加入！已獲得 10 積分" : "歡迎回來！",
+        title: activeTab === "login" ? tr("登入成功") : tr("註冊成功"),
+        description: activeTab === "register" ? tr("歡迎加入！已獲得 {n} 積分", { n: SIGNUP_CREDITS }) : tr("歡迎回來！"),
       });
     } catch (err: any) {
-      const message = err?.message || "操作失敗，請稍後再試";
+      const message = err?.message || tr("操作失敗，請稍後再試");
       if (message.includes("401") || message.includes("Unauthorized")) {
-        setError("帳號或密碼錯誤");
-      } else if (message.includes("已被註冊") || message.includes("already exists")) {
-        setError("此帳號或電子郵件已被註冊");
-      } else if (message.includes("驗證碼")) {
-        setError("驗證碼無效或已過期，請重新獲取");
+        setError(tr("帳號或密碼錯誤"));
+      } else if (message.includes("已被註冊") || message.includes("already exists") || message.includes("already registered") || message.includes("is taken")) {
+        setError(tr("此帳號或電子郵件已被註冊"));
+      } else if (message.includes("驗證碼") || /\bcode\b/i.test(message)) {
+        setError(tr("驗證碼無效或已過期，請重新獲取"));
       } else if (message.includes("400")) {
-        setError("請填寫所有必要欄位");
+        setError(tr("請填寫所有必要欄位"));
       } else {
         setError(message);
       }
@@ -160,15 +163,16 @@ function AuthPage() {
       <Card className="w-full max-w-md mx-4 shadow-xl">
         <CardHeader className="text-center pb-2">
           <Link href="/" className="text-sm text-gray-400 hover:text-purple-600 mb-3 inline-flex items-center gap-1">
-            <i className="fas fa-arrow-left"></i> 返回首頁
+            <i className="fas fa-arrow-left"></i> {tr("返回首頁")}
           </Link>
+          <div className="flex justify-center mb-2"><LangSwitch className="text-gray-500" /></div>
           <div className="flex items-center justify-center gap-2 mb-2">
             <span className="text-3xl">✨</span>
             <CardTitle className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-              AI 創意工坊
+              {tr("AI 創意工坊")}
             </CardTitle>
           </div>
-          <p className="text-gray-500 text-sm">AI 圖片與影片生成平台</p>
+          <p className="text-gray-500 text-sm">{tr("AI 圖片與影片生成平台")}</p>
         </CardHeader>
         <CardContent>
           <div className="flex mb-6 bg-gray-100 rounded-lg p-1">
@@ -181,7 +185,7 @@ function AuthPage() {
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              登入
+              {tr("登入")}
             </button>
             <button
               type="button"
@@ -192,18 +196,18 @@ function AuthPage() {
                   : "text-gray-500 hover:text-gray-700"
               }`}
             >
-              註冊
+              {tr("註冊")}
             </button>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">帳號</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{tr("帳號")}</label>
               <Input
                 type="text"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="請輸入帳號"
+                placeholder={tr("請輸入帳號")}
                 required
               />
             </div>
@@ -211,13 +215,13 @@ function AuthPage() {
             {activeTab === "register" && (
               <>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">電子郵件</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tr("電子郵件")}</label>
                   <div className="flex gap-2">
                     <Input
                       type="email"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      placeholder="請輸入電子郵件"
+                      placeholder={tr("請輸入電子郵件")}
                       required
                       className="flex-1"
                     />
@@ -229,18 +233,18 @@ function AuthPage() {
                       className="shrink-0 text-sm border-purple-300 text-purple-600 hover:bg-purple-50"
                     >
                       {isSendingCode
-                        ? "發送中..."
+                        ? tr("發送中...")
                         : countdown > 0
                           ? `${countdown}s`
                           : codeSent
-                            ? "重新發送"
-                            : "取得驗證碼"}
+                            ? tr("重新發送")
+                            : tr("取得驗證碼")}
                     </Button>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">驗證碼</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{tr("驗證碼")}</label>
                   <Input
                     type="text"
                     value={verificationCode}
@@ -248,25 +252,25 @@ function AuthPage() {
                       const val = e.target.value.replace(/\D/g, "").slice(0, 6);
                       setVerificationCode(val);
                     }}
-                    placeholder="請輸入 6 位數驗證碼"
+                    placeholder={tr("請輸入 6 位數驗證碼")}
                     required
                     maxLength={6}
                     className="tracking-[0.3em] text-center text-lg font-mono"
                   />
                   {codeSent && (
-                    <p className="text-xs text-green-600 mt-1">驗證碼已發送至 {email}，有效期 10 分鐘</p>
+                    <p className="text-xs text-green-600 mt-1">{tr("驗證碼已發送至 {email}，有效期 10 分鐘", { email })}</p>
                   )}
                 </div>
               </>
             )}
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">密碼</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{tr("密碼")}</label>
               <Input
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="請輸入密碼"
+                placeholder={tr("請輸入密碼")}
                 required
               />
             </div>
@@ -277,7 +281,7 @@ function AuthPage() {
 
             {activeTab === "register" && (
               <p className="text-center text-sm text-purple-600 font-medium">
-                🎁 註冊即送 10 積分！
+                🎁 {tr("註冊即送 {n} 積分！", { n: SIGNUP_CREDITS })}
               </p>
             )}
 
@@ -287,10 +291,10 @@ function AuthPage() {
               disabled={isSubmitting || (activeTab === "register" && !codeSent)}
             >
               {isSubmitting
-                ? "處理中..."
+                ? tr("處理中...")
                 : activeTab === "login"
-                  ? "登入"
-                  : "註冊"}
+                  ? tr("登入")
+                  : tr("註冊")}
             </Button>
           </form>
 
@@ -299,7 +303,7 @@ function AuthPage() {
               <div className="w-full border-t border-gray-200" />
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="bg-white px-3 text-gray-400">或</span>
+              <span className="bg-white px-3 text-gray-400">{tr("或")}</span>
             </div>
           </div>
 
@@ -315,7 +319,7 @@ function AuthPage() {
               <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
               <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
             </svg>
-            <span className="text-gray-700 font-medium">使用 Google 帳號登入</span>
+            <span className="text-gray-700 font-medium">{tr("使用 Google 帳號登入")}</span>
           </Button>
         </CardContent>
       </Card>
@@ -410,7 +414,7 @@ function AppContent() {
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-4 border-purple-600 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-500">載入中...</p>
+          <p className="text-gray-500">{tr("載入中...")}</p>
         </div>
       </div>
     );

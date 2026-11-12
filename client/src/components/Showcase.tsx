@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { Link } from "wouter";
 import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "@/components/AppNav";
@@ -38,13 +39,13 @@ export function ShowcaseHeader() {
         <Link href="/">
           <span className="flex items-center gap-2.5 cursor-pointer">
             <span className="w-8 h-8 rounded-xl bg-brand shadow-glow text-white text-sm flex items-center justify-center"><i className="fas fa-wand-magic-sparkles" /></span>
-            <span className="text-base font-bold text-slate-900">AI 創意工坊</span>
+            <span className="text-base font-bold text-slate-900">{tr("AI 創意工坊")}</span>
           </span>
         </Link>
-        <Link href="/wall"><span className="text-sm font-medium text-slate-600 hover:text-slate-900 cursor-pointer">作品牆</span></Link>
+        <Link href="/wall"><span className="text-sm font-medium text-slate-600 hover:text-slate-900 cursor-pointer">{tr("作品牆")}</span></Link>
         <span className="flex-1" />
         <Link href="/login">
-          <span className="inline-flex items-center h-9 px-4 rounded-full bg-indigo-600 text-white text-sm font-semibold cursor-pointer" data-testid="showcase-login">免費註冊／登入</span>
+          <span className="inline-flex items-center h-9 px-4 rounded-full bg-indigo-600 text-white text-sm font-semibold cursor-pointer" data-testid="showcase-login">{tr("免費註冊／登入")}</span>
         </Link>
       </div>
     </header>
@@ -64,11 +65,11 @@ export function PostCard({ post, showStatus = false }: { post: PostCardData; sho
         <span className="relative block bg-slate-100">
           {post.kind === "video"
             ? <video src={post.mediaUrl} muted playsInline preload="metadata" className="w-full block" />
-            : <img src={post.mediaUrl} alt={post.title || "作品"} loading="lazy" className="w-full block" />}
+            : <img src={post.mediaUrl} alt={post.title || tr("作品")} loading="lazy" className="w-full block" />}
           {post.kind === "video" && <span className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white flex items-center justify-center"><i className="fas fa-play text-[10px]" /></span>}
           {showStatus && post.status !== "approved" && (
             <span className={`absolute top-2 left-2 px-2 py-0.5 rounded-full text-[11px] font-semibold ${post.status === "pending" ? "bg-amber-400 text-amber-950" : "bg-red-500 text-white"}`}>
-              {post.status === "pending" ? "審核中" : "未通過"}
+              {post.status === "pending" ? tr("審核中") : tr("未通過")}
             </span>
           )}
         </span>
@@ -99,9 +100,9 @@ export function Pager({ page, pages, onPage }: { page: number; pages: number; on
   if (pages <= 1) return null;
   return (
     <div className="flex items-center justify-center gap-3 mt-6">
-      <button onClick={() => onPage(Math.max(1, page - 1))} disabled={page <= 1} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm disabled:opacity-40">上一頁</button>
+      <button onClick={() => onPage(Math.max(1, page - 1))} disabled={page <= 1} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm disabled:opacity-40">{tr("上一頁")}</button>
       <span className="text-sm text-slate-600">{page} / {pages}</span>
-      <button onClick={() => onPage(Math.min(pages, page + 1))} disabled={page >= pages} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm disabled:opacity-40">下一頁</button>
+      <button onClick={() => onPage(Math.min(pages, page + 1))} disabled={page >= pages} className="px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-sm disabled:opacity-40">{tr("下一頁")}</button>
     </div>
   );
 }

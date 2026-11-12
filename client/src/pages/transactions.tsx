@@ -1,3 +1,4 @@
+import { dateLocale, tr, trServer } from "@/lib/i18n";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useUser } from "@/hooks/use-user";
@@ -9,18 +10,18 @@ import type { CreditTransaction, User } from "@shared/schema";
 import { NavigationHeader } from "./account";
 
 const typeConfig: Record<string, { label: string; color: string; bgColor: string }> = {
-  topup: { label: "充值", color: "text-green-700", bgColor: "bg-green-100" },
-  consume: { label: "消費", color: "text-red-700", bgColor: "bg-red-100" },
-  refund: { label: "退款", color: "text-blue-700", bgColor: "bg-blue-100" },
+  topup: { label: tr("充值"), color: "text-green-700", bgColor: "bg-green-100" },
+  consume: { label: tr("消費"), color: "text-red-700", bgColor: "bg-red-100" },
+  refund: { label: tr("退款"), color: "text-blue-700", bgColor: "bg-blue-100" },
 };
 
 export default function TransactionsPage() {
   const { user } = useUser();
 
   useSeo({
-    title: "交易記錄 - 積分使用明細 | AI 創意工坊",
-    description: "查看您在 AI 創意工坊的所有交易記錄，包含充值、消費、退款等積分使用明細。",
-    keywords: "交易記錄,積分明細,消費記錄,充值記錄",
+    title: tr("交易記錄 - 積分使用明細 | AI 創意工坊"),
+    description: tr("查看您在 AI 創意工坊的所有交易記錄，包含充值、消費、退款等積分使用明細。"),
+    keywords: tr("交易記錄,積分明細,消費記錄,充值記錄"),
   });
 
   const { data: transactions, isLoading } = useQuery<CreditTransaction[]>({
@@ -42,13 +43,13 @@ export default function TransactionsPage() {
                   <i className="fas fa-wallet text-xl text-yellow-600"></i>
                 </div>
                 <div>
-                  <p className="text-sm text-gray-500">目前餘額</p>
-                  <p className="text-2xl font-bold text-yellow-600">{user.credits ?? 0} <span className="text-sm font-normal text-gray-500">積分</span></p>
+                  <p className="text-sm text-gray-500">{tr("目前餘額")}</p>
+                  <p className="text-2xl font-bold text-yellow-600">{user.credits ?? 0} <span className="text-sm font-normal text-gray-500">{tr("積分")}</span></p>
                 </div>
               </div>
               <Link href="/store">
                 <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
-                  <i className="fas fa-plus mr-2"></i> 充值
+                  <i className="fas fa-plus mr-2"></i> {tr("充值")}
                 </Button>
               </Link>
             </div>
@@ -59,19 +60,19 @@ export default function TransactionsPage() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
               <i className="fas fa-history text-purple-600"></i>
-              交易記錄
+              {tr("交易記錄")}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {isLoading ? (
               <div className="flex flex-col items-center py-12">
                 <div className="w-8 h-8 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-3" />
-                <p className="text-gray-500 text-sm">載入中...</p>
+                <p className="text-gray-500 text-sm">{tr("載入中...")}</p>
               </div>
             ) : !transactions || transactions.length === 0 ? (
               <div className="flex flex-col items-center py-12 text-gray-400">
                 <i className="fas fa-receipt text-4xl mb-3"></i>
-                <p className="text-lg">暫無交易記錄</p>
+                <p className="text-lg">{tr("暫無交易記錄")}</p>
               </div>
             ) : (
               <div className="space-y-2">
@@ -79,7 +80,7 @@ export default function TransactionsPage() {
                   const config = typeConfig[tx.type] ?? { label: tx.type, color: "text-gray-700", bgColor: "bg-gray-100" };
                   const isPositive = tx.amount > 0;
                   const dateStr = tx.createdAt
-                    ? new Date(tx.createdAt).toLocaleString("zh-TW", {
+                    ? new Date(tx.createdAt).toLocaleString(dateLocale(), {
                         year: "numeric",
                         month: "2-digit",
                         day: "2-digit",
@@ -99,7 +100,7 @@ export default function TransactionsPage() {
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-gray-800 truncate">
-                            {tx.description || config.label}
+                            {trServer(tx.description) || config.label}
                           </p>
                           <p className="text-xs text-gray-400">{dateStr}</p>
                         </div>
@@ -109,7 +110,7 @@ export default function TransactionsPage() {
                           {isPositive ? "+" : ""}{tx.amount}
                         </span>
                         <span className="text-xs text-gray-400 w-20 text-right">
-                          餘額 {tx.balance}
+                          {tr("餘額 {0}", { 0: tx.balance })}
                         </span>
                       </div>
                     </div>

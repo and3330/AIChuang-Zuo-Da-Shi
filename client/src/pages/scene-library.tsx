@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -14,7 +15,7 @@ async function uploadToObjectStorage(file: File): Promise<string> {
     body: file,
     headers: { "Content-Type": file.type },
   });
-  if (!putRes.ok) throw new Error("上傳失敗");
+  if (!putRes.ok) throw new Error(tr("上傳失敗"));
   const pathRes = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
   const { objectPath } = await pathRes.json();
   return objectPath as string;
@@ -29,7 +30,7 @@ function SceneCard({ scene }: { scene: SceneLibraryItem }) {
     mutationFn: () => apiRequest("DELETE", `/api/scene-library/${scene.id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scene-library"] });
-      toast({ title: "場景已刪除" });
+      toast({ title: tr("場景已刪除") });
     },
   });
 
@@ -43,15 +44,15 @@ function SceneCard({ scene }: { scene: SceneLibraryItem }) {
           {scene.description && (
             <p className="text-xs text-[#64748b] mt-1 line-clamp-2">{scene.description}</p>
           )}
-          <p className="text-[10px] text-[#94a3b8] mt-2">{refs.length} 張參考圖</p>
+          <p className="text-[10px] text-[#94a3b8] mt-2">{tr("{0} 張參考圖", { 0: refs.length })}</p>
         </div>
         <div className="flex flex-col gap-1.5">
-          <button onClick={() => setShowEdit(true)} className="text-xs text-indigo-500 hover:underline" data-testid={`button-edit-scene-${scene.id}`}>編輯</button>
+          <button onClick={() => setShowEdit(true)} className="text-xs text-indigo-500 hover:underline" data-testid={`button-edit-scene-${scene.id}`}>{tr("編輯")}</button>
           <button
-            onClick={() => { if (confirm(`刪除場景「${scene.name}」？`)) deleteMutation.mutate(); }}
+            onClick={() => { if (confirm(tr("刪除場景「{0}」？", { 0: scene.name }))) deleteMutation.mutate(); }}
             className="text-xs text-[#ef4444] hover:underline"
             data-testid={`button-delete-scene-${scene.id}`}
-          >刪除</button>
+          >{tr("刪除")}</button>
         </div>
       </div>
 
@@ -93,10 +94,10 @@ function SceneFormModal({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/scene-library"] });
-      toast({ title: scene ? "場景已更新" : "場景已建立" });
+      toast({ title: scene ? tr("場景已更新") : tr("場景已建立") });
       onClose();
     },
-    onError: (e: any) => toast({ title: "儲存失敗", description: e.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: tr("儲存失敗"), description: e.message, variant: "destructive" }),
   });
 
   const handleFiles = async (files: FileList | null) => {
@@ -109,7 +110,7 @@ function SceneFormModal({
       }
       setRefImageUrls(prev => [...prev, ...uploaded].slice(0, 6));
     } catch (e: any) {
-      toast({ title: "上傳失敗", description: e.message, variant: "destructive" });
+      toast({ title: tr("上傳失敗"), description: e.message, variant: "destructive" });
     } finally {
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
@@ -119,33 +120,33 @@ function SceneFormModal({
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
       <div onClick={e => e.stopPropagation()} className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-4">
-        <h2 className="text-xl font-bold text-[#0f172a]">{scene ? "編輯場景" : "新增場景"}</h2>
+        <h2 className="text-xl font-bold text-[#0f172a]">{scene ? tr("編輯場景") : tr("新增場景")}</h2>
 
         <div>
-          <label className="text-xs text-[#64748b] uppercase">名稱</label>
+          <label className="text-xs text-[#64748b] uppercase">{tr("名稱")}</label>
           <input value={name} onChange={e => setName(e.target.value)}
-            placeholder="例如：學校天台、雨夜街角"
+            placeholder={tr("例如：學校天台、雨夜街角")}
             className="w-full mt-1 bg-white border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm text-[#0f172a]"
             data-testid="input-scene-name" />
         </div>
 
         <div>
-          <label className="text-xs text-[#64748b] uppercase">描述（給 AI 的場景說明）</label>
+          <label className="text-xs text-[#64748b] uppercase">{tr("描述（給 AI 的場景說明）")}</label>
           <textarea value={description} onChange={e => setDescription(e.target.value)}
             rows={3}
-            placeholder="例如：暮色中的學校天台，鐵欄杆，遠處城市天際線"
+            placeholder={tr("例如：暮色中的學校天台，鐵欄杆，遠處城市天際線")}
             className="w-full mt-1 bg-white border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm text-[#0f172a]"
             data-testid="textarea-scene-description" />
         </div>
 
         <div>
           <div className="flex items-center justify-between mb-2">
-            <label className="text-xs text-[#64748b] uppercase">參考圖（最多 6 張，第 1 張為主視覺）</label>
+            <label className="text-xs text-[#64748b] uppercase">{tr("參考圖（最多 6 張，第 1 張為主視覺）")}</label>
             <button type="button" onClick={() => fileRef.current?.click()}
               disabled={uploading || refImageUrls.length >= 6}
               className="text-xs text-indigo-500 hover:text-indigo-600 disabled:text-[#cbd5e1]"
               data-testid="button-upload-scene-ref">
-              {uploading ? "上傳中…" : "+ 上傳"}
+              {uploading ? tr("上傳中…") : tr("+ 上傳")}
             </button>
             <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
               onChange={e => handleFiles(e.target.files)} />
@@ -161,19 +162,19 @@ function SceneFormModal({
               ))}
             </div>
           ) : (
-            <p className="text-xs text-[#94a3b8] text-center py-4 border border-dashed border-[#cbd5e1] rounded-lg">尚未上傳</p>
+            <p className="text-xs text-[#94a3b8] text-center py-4 border border-dashed border-[#cbd5e1] rounded-lg">{tr("尚未上傳")}</p>
           )}
         </div>
 
         <div className="flex gap-2 pt-2">
-          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border border-[#cbd5e1] text-sm text-[#64748b] hover:bg-[#f8fafc]">取消</button>
+          <button onClick={onClose} className="flex-1 px-4 py-2 rounded-lg border border-[#cbd5e1] text-sm text-[#64748b] hover:bg-[#f8fafc]">{tr("取消")}</button>
           <button
-            onClick={() => { if (!name.trim()) { toast({ title: "請填名稱" }); return; } saveMutation.mutate(); }}
+            onClick={() => { if (!name.trim()) { toast({ title: tr("請填名稱") }); return; } saveMutation.mutate(); }}
             disabled={saveMutation.isPending}
             className="flex-1 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-600 disabled:bg-[#cbd5e1]"
             data-testid="button-save-scene"
           >
-            {saveMutation.isPending ? "儲存中…" : "儲存"}
+            {saveMutation.isPending ? tr("儲存中…") : tr("儲存")}
           </button>
         </div>
       </div>
@@ -201,22 +202,22 @@ export default function SceneLibraryPage() {
       <div className="max-w-6xl mx-auto px-4 py-8">
         <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-[#0f172a]">🏞 場景庫</h1>
-            <p className="text-sm text-[#64748b] mt-1">把常用場景／背景存起來，跨集數重複使用，畫面更一致。</p>
+            <h1 className="text-2xl font-bold text-[#0f172a]">{tr("🏞 場景庫")}</h1>
+            <p className="text-sm text-[#64748b] mt-1">{tr("把常用場景／背景存起來，跨集數重複使用，畫面更一致。")}</p>
           </div>
           <div className="flex gap-2">
             <Link href="/character-library">
               <button className="px-4 py-2 rounded-lg border border-[#cbd5e1] text-sm text-[#64748b] hover:bg-white" data-testid="link-go-charlib">
-                🎭 角色庫
+                {tr("🎭 角色庫")}
               </button>
             </Link>
             <Link href="/drama">
               <button className="px-4 py-2 rounded-lg border border-[#cbd5e1] text-sm text-[#64748b] hover:bg-white" data-testid="link-back-drama">
-                ← 回漫劇工作室
+                {tr("← 回漫劇工作室")}
               </button>
             </Link>
             <button onClick={() => setShowCreate(true)} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium hover:bg-indigo-600" data-testid="button-create-scene">
-              + 新增場景
+              {tr("+ 新增場景")}
             </button>
           </div>
         </div>
@@ -227,32 +228,32 @@ export default function SceneLibraryPage() {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="🔍 搜尋場景（名稱／描述）"
+              placeholder={tr("🔍 搜尋場景（名稱／描述）")}
               className="w-full md:w-80 px-3 py-2 rounded-lg border border-[#cbd5e1] bg-white text-sm focus:outline-none focus:border-indigo-500"
               data-testid="input-scene-search"
             />
             {search && (
               <span className="ml-3 text-xs text-[#64748b]">
-                找到 {visibleScenes.length} / {scenes.length}
+                {tr("找到 {0} / {1}", { 0: visibleScenes.length, 1: scenes.length })}
               </span>
             )}
           </div>
         )}
 
         {scenesQuery.isLoading ? (
-          <p className="text-center text-[#94a3b8] py-8">載入中…</p>
+          <p className="text-center text-[#94a3b8] py-8">{tr("載入中…")}</p>
         ) : scenes.length === 0 ? (
           <div className="bg-white border border-dashed border-[#cbd5e1] rounded-2xl p-12 text-center">
-            <p className="text-[#64748b]">場景庫還沒有任何場景</p>
+            <p className="text-[#64748b]">{tr("場景庫還沒有任何場景")}</p>
             <button onClick={() => setShowCreate(true)} className="mt-3 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm">
-              建立第一個場景
+              {tr("建立第一個場景")}
             </button>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             {visibleScenes.length === 0 ? (
               <div className="col-span-full text-center text-sm text-[#64748b] py-12 bg-white rounded-2xl border border-dashed border-[#cbd5e1]">
-                沒有符合「{search}」的場景
+                {tr("沒有符合「{0}」的場景", { 0: search })}
               </div>
             ) : (
               visibleScenes.map(s => <SceneCard key={s.id} scene={s} />)

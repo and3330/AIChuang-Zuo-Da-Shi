@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useUser } from "@/hooks/use-user";
 import { apiRequest } from "@/lib/queryClient";
@@ -20,61 +21,61 @@ interface LocalMessage {
 
 const FAQ_DATA: { keywords: string[]; answer: string }[] = [
   {
-    keywords: ["積分", "credit", "點數", "餘額"],
-    answer: "積分是平台的虛擬貨幣。完成信箱驗證的新用戶可獲得 10 積分。首次以 US$9.9 開通會員可得 200 積分（一次性，沒有月費），開通後可在「帳戶」頁加購積分（1 積分 = 1 新台幣）。",
+    keywords: ["積分", "credit", "點數", "餘額", "credits", "points", "balance"],
+    answer: tr("積分是平台的虛擬貨幣。完成信箱驗證的新用戶可獲得 10 積分。首次以 US$9.9 開通會員可得 200 積分（一次性，沒有月費），開通後可在「帳戶」頁加購積分（1 積分 = 1 新台幣）。"),
   },
   {
-    keywords: ["價格", "費用", "多少錢", "收費", "計費"],
-    answer: "圖片生成：5 積分/張（去除浮水印 +1 積分）。\n影片生成：依解析度計算，720P 8 積分/秒，1080P 15 積分/秒，時長 4-12 秒可選。",
+    keywords: ["價格", "費用", "多少錢", "收費", "計費", "price", "pricing", "cost", "how much", "fee"],
+    answer: tr("圖片生成：5 積分/張（去除浮水印 +1 積分）。\n影片生成：依解析度計算，720P 8 積分/秒，1080P 15 積分/秒，時長 4-12 秒可選。"),
   },
   {
-    keywords: ["儲值", "充值", "加值", "購買", "付款", "支付"],
-    answer: "請前往「帳戶管理」頁面，選擇儲值金額後使用信用卡付款即可。我們支援 Visa、Mastercard 等主流信用卡。",
+    keywords: ["儲值", "充值", "加值", "購買", "付款", "支付", "top up", "top-up", "buy", "purchase", "pay", "payment"],
+    answer: tr("請前往「帳戶管理」頁面，選擇儲值金額後使用信用卡付款即可。我們支援 Visa、Mastercard 等主流信用卡。"),
   },
   {
-    keywords: ["註冊", "開戶", "帳號"],
-    answer: "您可以使用電子郵件註冊（需驗證碼），或直接使用 Google 帳號快速登入。新用戶註冊即送 10 積分！",
+    keywords: ["註冊", "開戶", "帳號", "sign up", "register", "account"],
+    answer: tr("您可以使用電子郵件註冊（需驗證碼），或直接使用 Google 帳號快速登入。新用戶註冊即送 10 積分！"),
   },
   {
-    keywords: ["圖片", "生圖", "文字生圖", "圖生圖", "圖片編輯"],
-    answer: "我們支援：\n• 文字生圖：輸入描述即可生成圖片\n• 圖片編輯：上傳圖片 + 描述修改內容\n• 批次生成：一次生成多張圖片\n• 多圖融合：上傳多張參考圖片融合生成",
+    keywords: ["圖片", "生圖", "文字生圖", "圖生圖", "圖片編輯", "image", "picture", "photo", "text to image", "edit"],
+    answer: tr("我們支援：\n• 文字生圖：輸入描述即可生成圖片\n• 圖片編輯：上傳圖片 + 描述修改內容\n• 批次生成：一次生成多張圖片\n• 多圖融合：上傳多張參考圖片融合生成"),
   },
   {
-    keywords: ["影片", "生影片", "視頻", "video"],
-    answer: "支援文字生影片和圖片生影片，可選擇：\n• 比例：16:9（橫向）、9:16（直向）、1:1（方形）\n• 解析度：720P 或 1080P\n• 時長：4-12 秒",
+    keywords: ["影片", "生影片", "視頻", "video", "animate", "clip", "movie"],
+    answer: tr("支援文字生影片和圖片生影片，可選擇：\n• 比例：16:9（橫向）、9:16（直向）、1:1（方形）\n• 解析度：720P 或 1080P\n• 時長：4-12 秒"),
   },
   {
-    keywords: ["浮水印", "水印", "去水印"],
-    answer: "生成的圖片預設帶有浮水印。去除浮水印需額外支付 5 積分/張。在生成時可以勾選「去除浮水印」選項。",
+    keywords: ["浮水印", "水印", "去水印", "watermark"],
+    answer: tr("生成的圖片預設帶有浮水印。去除浮水印需額外支付 5 積分/張。在生成時可以勾選「去除浮水印」選項。"),
   },
   {
-    keywords: ["下載", "儲存", "保存"],
-    answer: "生成完成後，點擊「下載」按鈕即可保存到您的裝置。所有生成內容都會永久儲存在您的帳戶中，隨時可以回來下載。",
+    keywords: ["下載", "儲存", "保存", "download", "save"],
+    answer: tr("生成完成後，點擊「下載」按鈕即可保存到您的裝置。所有生成內容都會永久儲存在您的帳戶中，隨時可以回來下載。"),
   },
   {
-    keywords: ["失敗", "錯誤", "不能用", "出問題", "bug"],
-    answer: "生成失敗可能的原因：\n• 積分不足\n• 提示詞包含敏感內容被系統攔截\n• 網路連線問題\n如問題持續，請直接在這裡留言給客服，我們會盡快回覆！",
+    keywords: ["失敗", "錯誤", "不能用", "出問題", "bug", "fail", "failed", "error", "not working", "problem"],
+    answer: tr("生成失敗可能的原因：\n• 積分不足\n• 提示詞包含敏感內容被系統攔截\n• 網路連線問題\n如問題持續，請直接在這裡留言給客服，我們會盡快回覆！"),
   },
   {
-    keywords: ["退款", "退費", "退回"],
-    answer: "如因系統問題導致生成失敗，積分會自動退回。如有其他退款需求，請直接在這裡留言給客服，我們會盡快回覆！",
+    keywords: ["退款", "退費", "退回", "refund"],
+    answer: tr("如因系統問題導致生成失敗，積分會自動退回。如有其他退款需求，請直接在這裡留言給客服，我們會盡快回覆！"),
   },
   {
-    keywords: ["聯繫", "客服", "聯絡", "email", "信箱"],
-    answer: "請直接在這裡留言給客服，我們會盡快回覆！",
+    keywords: ["聯繫", "客服", "聯絡", "email", "信箱", "contact", "support", "help"],
+    answer: tr("請直接在這裡留言給客服，我們會盡快回覆！"),
   },
   {
-    keywords: ["安全", "隱私", "個資"],
-    answer: "我們重視您的隱私安全。所有密碼均經過加密處理，個人資料僅用於服務提供。詳細資訊請參閱我們的隱私政策頁面。",
+    keywords: ["安全", "隱私", "個資", "security", "privacy", "personal data"],
+    answer: tr("我們重視您的隱私安全。所有密碼均經過加密處理，個人資料僅用於服務提供。詳細資訊請參閱我們的隱私政策頁面。"),
   },
 ];
 
 const QUICK_QUESTIONS = [
-  "積分怎麼用？",
-  "圖片和影片怎麼收費？",
-  "怎麼儲值？",
-  "支援哪些生成功能？",
-  "怎麼聯繫客服？",
+  tr("積分怎麼用？"),
+  tr("圖片和影片怎麼收費？"),
+  tr("怎麼儲值？"),
+  tr("支援哪些生成功能？"),
+  tr("怎麼聯繫客服？"),
 ];
 
 function findFaqAnswer(input: string): string | null {
@@ -101,7 +102,7 @@ export default function ChatWidget() {
 
   const welcomeMsg: LocalMessage = {
     id: "welcome",
-    text: "您好！我是 AI 創意工坊的客服小幫手 🤖\n有什麼問題可以問我，或直接留言給客服，我們會盡快回覆！",
+    text: tr("您好！我是 AI 創意工坊的客服小幫手 🤖\n有什麼問題可以問我，或直接留言給客服，我們會盡快回覆！"),
     isBot: true,
     timestamp: new Date(),
   };
@@ -221,8 +222,8 @@ export default function ChatWidget() {
                 🤖
               </div>
               <div>
-                <div className="font-semibold text-sm">客服小幫手</div>
-                <div className="text-xs text-white/80">AI 創意工坊 · 線上客服</div>
+                <div className="font-semibold text-sm">{tr("客服小幫手")}</div>
+                <div className="text-xs text-white/80">{tr("AI 創意工坊 · 線上客服")}</div>
               </div>
             </div>
             <button
@@ -265,7 +266,7 @@ export default function ChatWidget() {
 
             {showQuickQuestions && messages.length <= 1 && !isTyping && (
               <div className="space-y-2 mt-2">
-                <p className="text-xs text-gray-400 font-medium px-1">常見問題</p>
+                <p className="text-xs text-gray-400 font-medium px-1">{tr("常見問題")}</p>
                 <div className="flex flex-wrap gap-1.5">
                   {QUICK_QUESTIONS.map((q) => (
                     <button
@@ -285,7 +286,7 @@ export default function ChatWidget() {
 
           {!user && (
             <div className="px-3 py-2 bg-yellow-50 border-t border-yellow-200 text-center">
-              <p className="text-xs text-yellow-700">請先登入後即可留言給客服</p>
+              <p className="text-xs text-yellow-700">{tr("請先登入後即可留言給客服")}</p>
             </div>
           )}
 
@@ -298,7 +299,7 @@ export default function ChatWidget() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={user ? "輸入您的問題或留言..." : "請先登入後留言"}
+              placeholder={user ? tr("輸入您的問題或留言...") : tr("請先登入後留言")}
               className="flex-1 px-3 py-2 text-sm bg-gray-100 rounded-full border-0 outline-none focus:ring-2 focus:ring-purple-300 focus:bg-white transition-all"
               disabled={!user}
             />

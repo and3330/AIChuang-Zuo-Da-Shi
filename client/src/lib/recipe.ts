@@ -15,11 +15,12 @@ export type RecipeItem = {
 export type Recipe = Partial<Record<RecipeSlot, RecipeItem>>;
 
 export const RECIPE_SLOTS: Array<{ id: RecipeSlot; label: string; emptyHint: string }> = [
-  { id: "portrait", label: "人像", emptyHint: "決定臉與髮型" },
-  { id: "costume", label: "服裝", emptyHint: "決定穿搭" },
-  { id: "pose", label: "姿勢", emptyHint: "決定身體姿態" },
+  { id: "portrait", label: tr("人像"), emptyHint: tr("決定臉與髮型") },
+  { id: "costume", label: tr("服裝"), emptyHint: tr("決定穿搭") },
+  { id: "pose", label: tr("姿勢"), emptyHint: tr("決定身體姿態") },
 ];
 
+import { tr } from "@/lib/i18n";
 import { inGoldZone } from "@/lib/zone";
 
 /** The gold zone keeps its own recipe so its picks never show up on the ordinary pages. */
@@ -50,8 +51,8 @@ export function recipeCount(recipe: Recipe): number {
 /** One-paragraph description of the recipe, for copying into any prompt box. */
 export function recipeText(recipe: Recipe): string {
   const parts: string[] = [];
-  if (recipe.portrait) parts.push(`人物：${recipe.portrait.usage}`);
-  if (recipe.costume) parts.push(`服裝：${recipe.costume.usage}`);
-  if (recipe.pose) parts.push(`姿勢：${recipe.pose.usage}`);
+  if (recipe.portrait) parts.push(tr("人物：{0}", { 0: recipe.portrait.usage }));
+  if (recipe.costume) parts.push(tr("服裝：{0}", { 0: recipe.costume.usage }));
+  if (recipe.pose) parts.push(tr("姿勢：{0}", { 0: recipe.pose.usage }));
   return parts.join("。") + (parts.length ? "。" : "");
 }
