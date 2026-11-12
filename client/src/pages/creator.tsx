@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useState } from "react";
 import { Link, useLocation, useParams } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,18 +39,18 @@ export default function CreatorPage() {
   const { data: mine } = useQuery<Mine>({ queryKey: ["/api/showcase/mine"], enabled: !!profile?.isSelf });
 
   useSeo({
-    title: `${username} 的作品 | AI 創意工坊作品牆`,
-    description: profile?.bio || `${username} 在 AI 創意工坊公開分享的 AI 作品。`,
-    keywords: "AI 創作者,AI 作品,作品牆",
+    title: tr("{0} 的作品 | AI 創意工坊作品牆", { 0: username }),
+    description: profile?.bio || tr("{0} 在 AI 創意工坊公開分享的 AI 作品。", { 0: username }),
+    keywords: tr("AI 創作者,AI 作品,作品牆"),
   });
 
-  if (isLoading) return <div className="min-h-screen"><ShowcaseHeader /><p className="text-sm text-slate-400 text-center py-16">載入中…</p></div>;
+  if (isLoading) return <div className="min-h-screen"><ShowcaseHeader /><p className="text-sm text-slate-400 text-center py-16">{tr("載入中…")}</p></div>;
   if (error || !profile) {
     return (
       <div className="min-h-screen"><ShowcaseHeader />
         <div className="max-w-md mx-auto text-center py-16 px-4">
-          <p className="text-sm text-slate-500">找不到這位創作者。</p>
-          <Link href="/wall"><span className="inline-block mt-4 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium cursor-pointer">回作品牆</span></Link>
+          <p className="text-sm text-slate-500">{tr("找不到這位創作者。")}</p>
+          <Link href="/wall"><span className="inline-block mt-4 px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-medium cursor-pointer">{tr("回作品牆")}</span></Link>
         </div>
       </div>
     );
@@ -61,7 +62,7 @@ export default function CreatorPage() {
     try {
       await apiRequest(profile.isFollowing ? "DELETE" : "POST", `${profileKey}/follow`);
       queryClient.invalidateQueries({ queryKey: [profileKey] });
-    } catch (e) { toast({ title: "沒有完成", description: errorText(e), variant: "destructive" }); }
+    } catch (e) { toast({ title: tr("沒有完成"), description: errorText(e), variant: "destructive" }); }
     finally { setBusy(false); }
   };
   const saveBio = async () => {
@@ -70,8 +71,8 @@ export default function CreatorPage() {
       await apiRequest("PATCH", "/api/showcase/profile", { bio: bioDraft.trim() });
       queryClient.invalidateQueries({ queryKey: [profileKey] });
       setEditing(false);
-      toast({ title: "自我介紹已更新" });
-    } catch (e) { toast({ title: "沒有儲存", description: errorText(e), variant: "destructive" }); }
+      toast({ title: tr("自我介紹已更新") });
+    } catch (e) { toast({ title: tr("沒有儲存"), description: errorText(e), variant: "destructive" }); }
     finally { setBusy(false); }
   };
 
@@ -95,32 +96,32 @@ export default function CreatorPage() {
               <h1 className="text-xl font-bold text-slate-900 break-all">{profile.username}</h1>
               {editing ? (
                 <div className="mt-2">
-                  <textarea value={bioDraft} onChange={e => setBioDraft(e.target.value)} maxLength={160} rows={3} placeholder="介紹一下你自己和你的創作風格（最多 160 字）"
+                  <textarea value={bioDraft} onChange={e => setBioDraft(e.target.value)} maxLength={160} rows={3} placeholder={tr("介紹一下你自己和你的創作風格（最多 160 字）")}
                     className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm" data-testid="input-bio" />
                   <div className="flex gap-2 mt-2">
-                    <button onClick={saveBio} disabled={busy} className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-save-bio">儲存</button>
-                    <button onClick={() => setEditing(false)} className="h-9 px-4 rounded-lg border border-slate-200 text-sm text-slate-600">取消</button>
+                    <button onClick={saveBio} disabled={busy} className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-save-bio">{tr("儲存")}</button>
+                    <button onClick={() => setEditing(false)} className="h-9 px-4 rounded-lg border border-slate-200 text-sm text-slate-600">{tr("取消")}</button>
                   </div>
                 </div>
               ) : (
-                <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap break-words">{profile.bio || (profile.isSelf ? "還沒有自我介紹。" : "這位創作者還沒有寫自我介紹。")}</p>
+                <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap break-words">{profile.bio || (profile.isSelf ? tr("還沒有自我介紹。") : tr("這位創作者還沒有寫自我介紹。"))}</p>
               )}
             </div>
             <div className="flex items-center gap-2">
               {profile.isSelf ? (
-                !editing && <button onClick={() => { setBioDraft(profile.bio); setEditing(true); }} className="h-10 px-4 rounded-full border border-slate-200 text-sm text-slate-700 hover:border-indigo-300" data-testid="button-edit-bio">編輯自我介紹</button>
+                !editing && <button onClick={() => { setBioDraft(profile.bio); setEditing(true); }} className="h-10 px-4 rounded-full border border-slate-200 text-sm text-slate-700 hover:border-indigo-300" data-testid="button-edit-bio">{tr("編輯自我介紹")}</button>
               ) : (
                 <button onClick={toggleFollow} disabled={busy} className={`h-10 px-6 rounded-full text-sm font-semibold ${profile.isFollowing ? "border border-slate-200 text-slate-600" : "bg-slate-900 text-white"}`} data-testid="button-follow">
-                  {profile.isFollowing ? "追蹤中" : "追蹤"}
+                  {profile.isFollowing ? tr("追蹤中") : tr("追蹤")}
                 </button>
               )}
             </div>
           </div>
           <div className="grid grid-cols-4 gap-2 mt-5 max-w-md">
-            {stat(profile.counts.posts, "作品")}
-            {stat(profile.counts.likes, "獲讚")}
-            {stat(profile.counts.followers, "粉絲")}
-            {stat(profile.counts.following, "追蹤中")}
+            {stat(profile.counts.posts, tr("作品"))}
+            {stat(profile.counts.likes, tr("獲讚"))}
+            {stat(profile.counts.followers, tr("粉絲"))}
+            {stat(profile.counts.following, tr("追蹤中"))}
           </div>
         </section>
 
@@ -129,19 +130,19 @@ export default function CreatorPage() {
             {(["public", "mine"] as const).map(t => (
               <button key={t} onClick={() => setTab(t)}
                 className={`px-4 py-2 rounded-full text-sm font-medium border ${tab === t ? "bg-slate-900 text-white border-slate-900" : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"}`} data-testid={`creator-tab-${t}`}>
-                {t === "public" ? "公開作品" : `我的投稿${waiting ? `（${waiting} 件審核中或未通過）` : ""}`}
+                {t === "public" ? tr("公開作品") : (waiting ? tr("我的投稿（{0} 件審核中或未通過）", { 0: waiting }) : tr("我的投稿"))}
               </button>
             ))}
-            <Link href="/vault"><span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-600 text-white text-sm font-semibold cursor-pointer"><i className="fas fa-upload text-xs" />公開更多作品</span></Link>
+            <Link href="/vault"><span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-indigo-600 text-white text-sm font-semibold cursor-pointer"><i className="fas fa-upload text-xs" />{tr("公開更多作品")}</span></Link>
           </div>
         )}
 
         {profile.isSelf && tab === "mine" ? (
           minePosts.length === 0
-            ? <p className="text-sm text-slate-400 text-center py-12">你還沒有投稿。到作品庫打開一件作品，按「公開到作品牆」。</p>
+            ? <p className="text-sm text-slate-400 text-center py-12">{tr("你還沒有投稿。到作品庫打開一件作品，按「公開到作品牆」。")}</p>
             : <PostGrid posts={minePosts} showStatus />
         ) : items.length === 0 ? (
-          <p className="text-sm text-slate-400 text-center py-12">還沒有公開作品。</p>
+          <p className="text-sm text-slate-400 text-center py-12">{tr("還沒有公開作品。")}</p>
         ) : (
           <>
             <PostGrid posts={items} />

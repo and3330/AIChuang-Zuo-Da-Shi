@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
@@ -12,19 +13,19 @@ import { IMAGE_COST, SIGNUP_CREDITS } from "@shared/pricing";
 // 想先做別的可以按「我想先做別的」，換成選單。做完、選了別的或按「略過」都會記錄，之後不再出現。
 
 const STEPS: Array<{ icon: string; title: string; desc: string }> = [
-  { icon: "fa-user-plus", title: "上傳照片，建立你的角色", desc: "準備 6 到 10 張自己的清楚照片。第一次會免費幫你生成角色四視圖。" },
-  { icon: "fa-shirt", title: "選一套服裝", desc: "從上千套穿搭裡點一套，也可以按「隨機」。" },
-  { icon: "fa-person-walking", title: "選一個姿勢", desc: "不選也可以，AI 會幫你安排。" },
-  { icon: "fa-images", title: "生成你的第一組寫真", desc: "AI 先免費規劃鏡頭，確認後才扣積分。" },
+  { icon: "fa-user-plus", title: tr("上傳照片，建立你的角色"), desc: tr("準備 6 到 10 張自己的清楚照片。第一次會免費幫你生成角色四視圖。") },
+  { icon: "fa-shirt", title: tr("選一套服裝"), desc: tr("從上千套穿搭裡點一套，也可以按「隨機」。") },
+  { icon: "fa-person-walking", title: tr("選一個姿勢"), desc: tr("不選也可以，AI 會幫你安排。") },
+  { icon: "fa-images", title: tr("生成你的第一組寫真"), desc: tr("AI 先免費規劃鏡頭，確認後才扣積分。") },
 ];
 
 const OTHERS: Array<{ href: string; icon: string; title: string; desc: string }> = [
-  { href: "/character-library", icon: "fa-user-plus", title: "先建立我的角色", desc: "上傳照片建立角色，第一個角色免費生成四視圖，之後每個功能都能用。" },
-  { href: "/photoset?mode=scene", icon: "fa-panorama", title: "照片同款", desc: "放一張喜歡的照片，換成你的角色和服裝。" },
-  { href: "/product", icon: "fa-bag-shopping", title: "商品帶貨圖", desc: "給一件商品，用你的角色生成帶貨照與貼文文案。" },
-  { href: "/create/image", icon: "fa-image", title: "圖片生成", desc: "用一句話畫一張圖，或請 AI 修改你的照片。" },
-  { href: "/wall", icon: "fa-globe", title: "先看看別人的作品", desc: "作品牆上的作品可以看提示詞、做同款。" },
-  { href: "/library", icon: "fa-images", title: "先逛素材圖庫", desc: "人像、服裝、姿勢，免費瀏覽。" },
+  { href: "/character-library", icon: "fa-user-plus", title: tr("先建立我的角色"), desc: tr("上傳照片建立角色，第一個角色免費生成四視圖，之後每個功能都能用。") },
+  { href: "/photoset?mode=scene", icon: "fa-panorama", title: tr("照片同款"), desc: tr("放一張喜歡的照片，換成你的角色和服裝。") },
+  { href: "/product", icon: "fa-bag-shopping", title: tr("商品帶貨圖"), desc: tr("給一件商品，用你的角色生成帶貨照與貼文文案。") },
+  { href: "/create/image", icon: "fa-image", title: tr("圖片生成"), desc: tr("用一句話畫一張圖，或請 AI 修改你的照片。") },
+  { href: "/wall", icon: "fa-globe", title: tr("先看看別人的作品"), desc: tr("作品牆上的作品可以看提示詞、做同款。") },
+  { href: "/library", icon: "fa-images", title: tr("先逛素材圖庫"), desc: tr("人像、服裝、姿勢，免費瀏覽。") },
 ];
 
 export function Onboarding() {
@@ -54,9 +55,9 @@ export function Onboarding() {
           <div className="absolute inset-0 tech-grid" />
           <div className="absolute -top-16 -right-8 w-48 h-48 rounded-full bg-sky-400/30 blur-3xl" />
           <div className="relative">
-            <h2 className="text-xl font-bold">{showOthers ? "想先做什麼？" : `歡迎，${user.username}`}</h2>
+            <h2 className="text-xl font-bold">{showOthers ? tr("想先做什麼？") : tr("歡迎，{name}", { name: user.username })}</h2>
             <p className="text-sm text-indigo-200 mt-1">
-              {showOthers ? "選一個，直接帶你過去。" : "跟著四個步驟，做出你的第一組社群寫真。"}
+              {showOthers ? tr("選一個，直接帶你過去。") : tr("跟著四個步驟，做出你的第一組社群寫真。")}
             </p>
           </div>
         </div>
@@ -67,9 +68,9 @@ export function Onboarding() {
               <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 flex items-center gap-3">
                 <i className="fas fa-gift text-2xl text-amber-500" />
                 <div>
-                  <p className="text-sm font-bold text-slate-900">送你 {credits} 積分</p>
+                  <p className="text-sm font-bold text-slate-900">{tr("送你 {n} 積分", { n: credits })}</p>
                   <p className="text-xs text-slate-600">
-                    {shots > 0 ? `一張寫真 ${IMAGE_COST} 積分，剛好可以做 ${shots} 張。不用綁卡。` : `完成信箱驗證會送 ${SIGNUP_CREDITS} 積分，一張寫真 ${IMAGE_COST} 積分。`}
+                    {shots > 0 ? tr("一張寫真 {cost} 積分，剛好可以做 {shots} 張。不用綁卡。", { cost: IMAGE_COST, shots }) : tr("完成信箱驗證會送 {n} 積分，一張寫真 {cost} 積分。", { n: SIGNUP_CREDITS, cost: IMAGE_COST })}
                   </p>
                 </div>
               </div>
@@ -87,11 +88,11 @@ export function Onboarding() {
               </ol>
 
               <button onClick={() => finish("/photoset?mode=kit")} className="mt-5 w-full h-12 rounded-xl bg-indigo-600 text-white text-sm font-semibold" data-testid="onboarding-start">
-                開始做我的第一組寫真<i className="fas fa-arrow-right ml-2 text-xs" />
+                {tr("開始做我的第一組寫真")}<i className="fas fa-arrow-right ml-2 text-xs" />
               </button>
               <div className="flex items-center justify-between mt-2">
-                <button onClick={() => setShowOthers(true)} className="h-11 px-2 text-sm text-indigo-600" data-testid="onboarding-others">我想先做別的</button>
-                <button onClick={() => finish()} className="h-11 px-2 text-sm text-slate-400" data-testid="onboarding-skip">略過</button>
+                <button onClick={() => setShowOthers(true)} className="h-11 px-2 text-sm text-indigo-600" data-testid="onboarding-others">{tr("我想先做別的")}</button>
+                <button onClick={() => finish()} className="h-11 px-2 text-sm text-slate-400" data-testid="onboarding-skip">{tr("略過")}</button>
               </div>
             </>
           ) : (
@@ -109,8 +110,8 @@ export function Onboarding() {
                   </button>
                 ))}
               </div>
-              <p className="text-[11px] text-slate-400 mt-3">不管先做哪一個，第一次建立角色的四視圖都是免費的。</p>
-              <button onClick={() => setShowOthers(false)} className="mt-1 h-11 px-2 text-sm text-slate-500">← 回到寫真步驟</button>
+              <p className="text-[11px] text-slate-400 mt-3">{tr("不管先做哪一個，第一次建立角色的四視圖都是免費的。")}</p>
+              <button onClick={() => setShowOthers(false)} className="mt-1 h-11 px-2 text-sm text-slate-500">{tr("← 回到寫真步驟")}</button>
             </>
           )}
         </div>

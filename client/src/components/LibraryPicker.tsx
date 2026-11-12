@@ -1,3 +1,4 @@
+import { tr, trAsset, assetQuery } from "@/lib/i18n";
 import { inGoldZone } from "@/lib/zone";
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -29,7 +30,7 @@ export function LibraryPicker({ library, max = 1, initial = [], onConfirm, onClo
   const [shown, setShown] = useState<Record<string, string>>({});
   const [picked, setPicked] = useState<RecipeItem[]>(initial);
   const multi = max > 1;
-  const label = LIBRARIES.find(l => l.id === library)?.label ?? "素材";
+  const label = LIBRARIES.find(l => l.id === library)?.label ?? tr("素材");
 
   useEffect(() => {
     const t = setTimeout(() => { setQuery(search.trim()); setPage(1); }, 300);
@@ -38,7 +39,7 @@ export function LibraryPicker({ library, max = 1, initial = [], onConfirm, onClo
 
   const params = new URLSearchParams({ library, page: String(page), pageSize: String(PAGE_SIZE) });
   if (category) params.set("category", category);
-  if (query) params.set("q", query);
+  if (query) params.set("q", assetQuery(query));
   if (inGoldZone()) params.set("zone", "gold");
   const { data, isLoading, error } = useQuery<GroupResponse>({ queryKey: [`/api/library/groups?${params.toString()}`] });
   const groups = data?.groups ?? [];
@@ -59,18 +60,18 @@ export function LibraryPicker({ library, max = 1, initial = [], onConfirm, onClo
         <div className="px-4 pt-4 pb-3 border-b border-slate-100 space-y-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h3 className="text-base font-bold text-slate-900">從素材圖庫選{label}</h3>
-              <p className="text-xs text-slate-500">{multi ? `最多選 ${max} 個，每個${label}會各出一張。` : "點一下圖片就選好。"}</p>
+              <h3 className="text-base font-bold text-slate-900">{tr("從素材圖庫選{0}", { 0: label })}</h3>
+              <p className="text-xs text-slate-500">{multi ? tr("最多選 {0} 個，每個{1}會各出一張。", { 0: max, 1: label }) : tr("點一下圖片就選好。")}</p>
             </div>
-            <button onClick={onClose} className="w-9 h-9 rounded-full text-slate-400 hover:bg-slate-100" aria-label="關閉"><i className="fas fa-xmark" /></button>
+            <button onClick={onClose} className="w-9 h-9 rounded-full text-slate-400 hover:bg-slate-100" aria-label={tr("關閉")}><i className="fas fa-xmark" /></button>
           </div>
-          <input value={search} onChange={e => setSearch(e.target.value.slice(0, 60))} placeholder="搜尋名稱或標籤，例如：坐姿、風衣、短髮"
+          <input value={search} onChange={e => setSearch(e.target.value.slice(0, 60))} placeholder={tr("搜尋名稱或標籤，例如：坐姿、風衣、短髮")}
             className="w-full h-10 px-3 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-testid="input-picker-search" />
           <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-4 px-4">
-            <button onClick={() => { setCategory(""); setPage(1); }} className={chip(category === "")}>全部</button>
+            <button onClick={() => { setCategory(""); setPage(1); }} className={chip(category === "")}>{tr("全部")}</button>
             {(data?.categories ?? []).map(c => (
               <button key={c.category} onClick={() => { setCategory(c.category); setPage(1); }} className={chip(category === c.category)}>
-                {c.category} <span className="opacity-70 ml-1">{c.n}</span>
+                {trAsset(c.category)} <span className="opacity-70 ml-1">{c.n}</span>
               </button>
             ))}
           </div>
@@ -78,11 +79,11 @@ export function LibraryPicker({ library, max = 1, initial = [], onConfirm, onClo
 
         <div className="flex-1 overflow-y-auto p-4">
           {isLoading ? (
-            <p className="text-sm text-slate-400 text-center py-16">載入中…</p>
+            <p className="text-sm text-slate-400 text-center py-16">{tr("載入中…")}</p>
           ) : error ? (
-            <p className="text-sm text-red-500 text-center py-16">圖庫讀取失敗，請稍後再試。</p>
+            <p className="text-sm text-red-500 text-center py-16">{tr("圖庫讀取失敗，請稍後再試。")}</p>
           ) : groups.length === 0 ? (
-            <p className="text-sm text-slate-400 text-center py-16">{query || category ? "沒有符合條件的素材。" : "這個圖庫還沒有圖片。"}</p>
+            <p className="text-sm text-slate-400 text-center py-16">{query || category ? tr("沒有符合條件的素材。") : tr("這個圖庫還沒有圖片。")}</p>
           ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
               {groups.map(g => {
@@ -97,7 +98,7 @@ export function LibraryPicker({ library, max = 1, initial = [], onConfirm, onClo
                       style={{ aspectRatio: library === "portrait" ? "1 / 1" : "2 / 3" }} data-testid={`picker-item-${cur.id}`}>
                       {cur.thumbUrl || cur.imageUrl
                         ? <img src={cur.thumbUrl || cur.imageUrl || ""} alt={item.name} loading="lazy" className="w-full h-full object-contain" />
-                        : <span className="absolute inset-0 flex items-center justify-center text-[10px] text-slate-400">尚未生成</span>}
+                        : <span className="absolute inset-0 flex items-center justify-center text-[10px] text-slate-400">{tr("尚未生成")}</span>}
                       {order >= 0 && (
                         <span className="absolute top-1.5 right-1.5 min-w-6 h-6 px-1 rounded-full bg-indigo-600 text-white text-xs font-bold flex items-center justify-center">
                           {multi ? order + 1 : <i className="fas fa-check text-[10px]" />}
@@ -120,18 +121,18 @@ export function LibraryPicker({ library, max = 1, initial = [], onConfirm, onClo
           )}
           {pages > 1 && (
             <div className="flex items-center justify-center gap-3 mt-5">
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="px-3 h-9 rounded-lg border border-slate-200 text-sm disabled:opacity-40">上一頁</button>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page <= 1} className="px-3 h-9 rounded-lg border border-slate-200 text-sm disabled:opacity-40">{tr("上一頁")}</button>
               <span className="text-sm text-slate-600">{page} / {pages}</span>
-              <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page >= pages} className="px-3 h-9 rounded-lg border border-slate-200 text-sm disabled:opacity-40">下一頁</button>
+              <button onClick={() => setPage(p => Math.min(pages, p + 1))} disabled={page >= pages} className="px-3 h-9 rounded-lg border border-slate-200 text-sm disabled:opacity-40">{tr("下一頁")}</button>
             </div>
           )}
         </div>
 
         {multi && (
           <div className="px-4 py-3 border-t border-slate-100 flex items-center gap-3 pb-[calc(12px+env(safe-area-inset-bottom))]">
-            <span className="text-sm text-slate-600 flex-1">已選 <b className="text-indigo-700">{picked.length}</b>／{max}</span>
-            <button onClick={() => setPicked([])} disabled={picked.length === 0} className="px-3 h-10 rounded-xl text-sm text-slate-500 disabled:opacity-40">清除</button>
-            <button onClick={() => onConfirm(picked)} className="px-6 h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold" data-testid="button-picker-confirm">確認</button>
+            <span className="text-sm text-slate-600 flex-1">{tr("已選")} <b className="text-indigo-700">{picked.length}</b>／{max}</span>
+            <button onClick={() => setPicked([])} disabled={picked.length === 0} className="px-3 h-10 rounded-xl text-sm text-slate-500 disabled:opacity-40">{tr("清除")}</button>
+            <button onClick={() => onConfirm(picked)} className="px-6 h-10 rounded-xl bg-indigo-600 text-white text-sm font-semibold" data-testid="button-picker-confirm">{tr("確認")}</button>
           </div>
         )}
       </div>

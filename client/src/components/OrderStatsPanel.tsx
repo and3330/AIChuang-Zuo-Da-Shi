@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useMemo, useState } from "react";
 
 // 後台「訂單」分頁上方的統計：依日、週、月、季彙總。
@@ -13,7 +14,7 @@ export type OrderRow = {
 };
 type Period = "day" | "week" | "month" | "quarter";
 const PERIODS: Array<{ id: Period; label: string }> = [
-  { id: "day", label: "日" }, { id: "week", label: "週" }, { id: "month", label: "月" }, { id: "quarter", label: "季" },
+  { id: "day", label: tr("日") }, { id: "week", label: tr("週") }, { id: "month", label: tr("月") }, { id: "quarter", label: tr("季") },
 ];
 const ROWS_SHOWN: Record<Period, number> = { day: 31, week: 16, month: 12, quarter: 8 };
 
@@ -26,7 +27,7 @@ function periodOf(date: Date, period: Period): { key: string; label: string } {
   if (period === "month") { const k = `${date.getFullYear()}-${pad(date.getMonth() + 1)}`; return { key: k, label: k }; }
   if (period === "quarter") {
     const q = Math.floor(date.getMonth() / 3) + 1;
-    return { key: `${date.getFullYear()}-Q${q}`, label: `${date.getFullYear()} 第 ${q} 季` };
+    return { key: `${date.getFullYear()}-Q${q}`, label: tr("{0} 第 {1} 季", { 0: date.getFullYear(), 1: q }) };
   }
   const monday = new Date(date.getFullYear(), date.getMonth(), date.getDate() - ((date.getDay() + 6) % 7));
   const sunday = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 6);
@@ -69,30 +70,30 @@ export function OrderStatsPanel({ orders }: { orders: OrderRow[] }) {
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-5 mb-6" data-testid="order-stats">
       <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-        <h3 className="text-lg font-semibold flex items-center gap-2"><i className="fas fa-chart-column text-green-500"></i>訂單統計</h3>
-        <div className="flex gap-1" role="tablist" aria-label="統計區間">
+        <h3 className="text-lg font-semibold flex items-center gap-2"><i className="fas fa-chart-column text-green-500"></i>{tr("訂單統計")}</h3>
+        <div className="flex gap-1" role="tablist" aria-label={tr("統計區間")}>
           {PERIODS.map(p => (
             <button key={p.id} role="tab" aria-selected={period === p.id} onClick={() => setPeriod(p.id)}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium border ${period === p.id ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-600 border-gray-200 hover:bg-gray-50"}`} data-testid={`order-stats-${p.id}`}>
-              {p.label}統計
+              {p.label}{tr("統計")}
             </button>
           ))}
         </div>
       </div>
 
       {shown.length === 0 ? (
-        <p className="text-sm text-gray-400 text-center py-8">還沒有訂單。</p>
+        <p className="text-sm text-gray-400 text-center py-8">{tr("還沒有訂單。")}</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-gray-500 border-b border-gray-200">
-                <th className="py-2 pr-3 font-medium">期間</th>
-                <th className="py-2 px-3 font-medium text-right">付款筆數</th>
-                <th className="py-2 px-3 font-medium text-right">售出積分</th>
-                <th className="py-2 px-3 font-medium text-right">實收 NT$</th>
-                <th className="py-2 px-3 font-medium text-right">實收 US$</th>
-                <th className="py-2 pl-3 font-medium text-right">手動加值積分</th>
+                <th className="py-2 pr-3 font-medium">{tr("期間")}</th>
+                <th className="py-2 px-3 font-medium text-right">{tr("付款筆數")}</th>
+                <th className="py-2 px-3 font-medium text-right">{tr("售出積分")}</th>
+                <th className="py-2 px-3 font-medium text-right">{tr("實收 NT$")}</th>
+                <th className="py-2 px-3 font-medium text-right">{tr("實收 US$")}</th>
+                <th className="py-2 pl-3 font-medium text-right">{tr("手動加值積分")}</th>
               </tr>
             </thead>
             <tbody className="tabular-nums">
@@ -102,14 +103,14 @@ export function OrderStatsPanel({ orders }: { orders: OrderRow[] }) {
                   <td className="py-2 px-3 text-right">{num(b.orders)}</td>
                   <td className="py-2 px-3 text-right">{num(b.credits)}</td>
                   <td className="py-2 px-3 text-right">{money(b.twd, "NT$")}</td>
-                  <td className="py-2 px-3 text-right">{money(b.usd, "US$")}{b.unpriced > 0 && <span className="ml-1 text-[11px] text-amber-600" title="這幾筆是改版前的訂單，沒有記錄金額">（{b.unpriced} 筆無金額）</span>}</td>
+                  <td className="py-2 px-3 text-right">{money(b.usd, "US$")}{b.unpriced > 0 && <span className="ml-1 text-[11px] text-amber-600" title={tr("這幾筆是改版前的訂單，沒有記錄金額")}>{tr("（{0} 筆無金額）", { 0: b.unpriced })}</span>}</td>
                   <td className="py-2 pl-3 text-right text-gray-500">{num(b.manual)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot className="tabular-nums font-semibold">
               <tr>
-                <td className="py-2 pr-3">以上合計</td>
+                <td className="py-2 pr-3">{tr("以上合計")}</td>
                 <td className="py-2 px-3 text-right">{num(total.orders)}</td>
                 <td className="py-2 px-3 text-right">{num(total.credits)}</td>
                 <td className="py-2 px-3 text-right">{money(total.twd, "NT$")}</td>
@@ -121,7 +122,7 @@ export function OrderStatsPanel({ orders }: { orders: OrderRow[] }) {
         </div>
       )}
       <p className="text-[11px] text-gray-400 mt-3">
-        顯示最近 {ROWS_SHOWN[period]} 個{PERIODS.find(p => p.id === period)?.label}。實收金額是 Stripe 收到的金額（未扣手續費），這次改版之後的訂單才有記錄；手動加值是管理員加的積分，不算營收。
+        {tr("顯示最近")} {ROWS_SHOWN[period]} {tr("個")}{PERIODS.find(p => p.id === period)?.label}{tr("。實收金額是 Stripe 收到的金額（未扣手續費），這次改版之後的訂單才有記錄；手動加值是管理員加的積分，不算營收。")}
       </p>
     </div>
   );

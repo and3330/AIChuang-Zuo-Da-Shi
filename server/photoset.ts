@@ -97,6 +97,8 @@ export const planRequestSchema = z.object({
   customPrompt: z.string().trim().max(1000).optional(),
   /** Target aspect ratio label, only used to steer composition. */
   aspectRatio: z.string().max(10).optional(),
+  /** Interface language of the person asking. Anything but "zh" makes the planner write its whole answer in that language. */
+  lang: z.enum(["zh", "en"]).optional(),
 });
 
 type PlanRequest = z.infer<typeof planRequestSchema>;
@@ -333,6 +335,14 @@ ${SHOT_RULES}
 shots 陣列必須剛好 ${req.count} 個元素。`;
 }
 
+/** Appended to the planner prompt when the visitor's interface is not Chinese. */
+const OUTPUT_LANGUAGE: Record<string, string> = {
+  en: `
+
+【輸出語言（優先於上面所有關於語言與字數的規定）】
+這位使用者使用英文介面。所有文字欄位都必須用自然、道地的英文撰寫：analysis、每個鏡頭的 title 與 prompt，以及（如果有的話）caption、hashtags、subtitle。不要出現任何中文。每個 prompt 改為 40–90 個英文單字，title 改為 2–5 個英文單字，caption 改為 40–90 個英文單字，每句 subtitle 改為 4–10 個英文單字。欄位名稱維持不變。`,
+};
+
 /** Pull the first JSON object out of the model's text and validate it. */
 export function parsePlan(value: unknown, count: number): PhotosetPlan {
   let parsed: any = value;
@@ -555,7 +565,7 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
       }],
       tool_choice: { type: "auto" },
       messages: [
-        { role: "user", content: [...imageBlocks, { type: "text", text: `${promptText}\n\n請優先以 submit_photoset_plan 工具回傳結構化結果；若無法協助這次內容，請直接說明，不要產生替代鏡頭。` }] },
+        { role: "user", content: [...imageBlocks, { type: "text", text: `${promptText}${OUTPUT_LANGUAGE[body.lang ?? "zh"] ?? ""}\n\n請優先以 submit_photoset_plan 工具回傳結構化結果；若無法協助這次內容，請直接說明，不要產生替代鏡頭。` }] },
       ],
     });
 
