@@ -14,3 +14,9 @@ The approved scope is non-explicit prompt integration and planning-format fixes,
 **Why:** After clarification, the user explicitly chose “修正 Prompt 整合與格式錯誤” under this limited scope.
 
 **How to apply:** Keep provider refusals distinct from malformed or truncated output. Never fabricate a replacement plan or retry with weaker safeguards to overcome a refusal.
+
+Classify content refusal from the provider's explicit refusal signal, not isolated apology or inability words in prose.
+
+**Why:** The user reported a rejection after adding the ordinary direction “更多的背景是海灘，然後陽光灑下來” and approved fixing possible text-classification false positives. The original response was unavailable, so its exact cause remains unconfirmed.
+
+**How to apply:** Unstructured replies still fail closed without a generated plan; preserve explicit refusals and record only diagnostic metadata, not reference images or prompt text.

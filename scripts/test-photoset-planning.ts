@@ -26,9 +26,25 @@ const toolMessage: Pick<Anthropic.Message, "content" | "stop_reason"> = {
 };
 assert.deepEqual(readPlannerMessage(toolMessage, 2).shots, shots);
 assert.deepEqual(readPlannerMessage(message(json), 2).shots, shots);
-for (const m of [message("I cannot assist with that request."), message("抱歉，無法協助這次內容。"), message(json, "refusal")]) {
+for (const m of [message(json, "refusal"), message("I cannot assist with that request.", "refusal"), message("抱歉，無法協助這次內容。", "refusal"), { ...toolMessage, stop_reason: "refusal" as const }]) {
   assert.throws(() => readPlannerMessage(m, 2), e => e instanceof PhotosetPlanError && e.status === 422);
 }
+// Apologies and limitations alone must not be labelled as a safety refusal.
+// Even an actual prose refusal without a provider flag cannot become a plan.
+for (const text of [
+  "抱歉，無法提供目前海灘的天氣資料。",
+  "I cannot determine the exact beach location from this image.",
+  "Sorry, the response is incomplete.",
+  "I cannot assist with that request.",
+  "抱歉，無法協助這次內容。",
+]) {
+  assert.throws(() => readPlannerMessage(message(text), 2), e => e instanceof PhotosetPlanError && e.status === 502);
+}
+assert.deepEqual(readPlannerMessage(message(`抱歉，無法提供即時天氣，以下為海灘陽光規劃：${json}`), 2).shots, shots);
+assert.deepEqual(readPlannerMessage({
+  ...toolMessage,
+  content: [...message("Sorry, I cannot identify the exact beach.").content, ...toolMessage.content],
+}, 2).shots, shots);
 assert.throws(() => readPlannerMessage(message(json, "max_tokens"), 2), /截斷/);
 assert.throws(() => readPlannerMessage(message("Not a JSON plan."), 2), e => e instanceof PhotosetPlanError && e.status === 502);
 
@@ -42,6 +58,8 @@ const input = {
 const parsed = planRequestSchema.parse(input);
 const extras = userExtras(parsed);
 for (const text of [input.characterDescription, input.direction, input.customPrompt]) assert.ok(extras.includes(text));
+const beachPrompt = "更多的背景是海灘，然後陽光灑下來";
+assert.ok(userExtras(planRequestSchema.parse({ ...input, customPrompt: beachPrompt })).includes(beachPrompt));
 // Long shooting controls cannot silently consume the user's prompt allowance.
 assert.equal(planRequestSchema.parse({ ...input, direction: "設".repeat(4000), customPrompt: "補".repeat(1000) }).customPrompt?.length, 1000);
 assert.equal(planRequestSchema.safeParse({ ...input, customPrompt: "補".repeat(1001) }).success, false);

@@ -412,6 +412,7 @@ export class PhotosetPlanError extends Error {
 /** Distinguish refusal and truncated output from an actual JSON format error. */
 export function readPlannerMessage(message: Pick<Anthropic.Message, "content" | "stop_reason">, count: number): PhotosetPlan {
   if (message.stop_reason === "refusal") {
+    console.warn("Photoset planner explicitly refused the request", { stopReason: message.stop_reason });
     throw new PhotosetPlanError(422, "AI 無法處理這次內容，請調整圖片或描述後再試。");
   }
   if (message.stop_reason === "max_tokens") {
@@ -422,12 +423,16 @@ export function readPlannerMessage(message: Pick<Anthropic.Message, "content" | 
   const text = message.content
     .filter((block): block is Anthropic.TextBlock => block.type === "text")
     .map(block => block.text).join("\n");
-  if (!tool && !text.includes("{") && /(?:sorry|cannot|can't|unable to|抱歉|無法協助|不能協助|无法帮助|無法提供)/i.test(text)) {
-    throw new PhotosetPlanError(422, "AI 無法處理這次內容，請調整圖片或描述後再試。");
-  }
+  // Ordinary limitations or apologies are not a reliable content-safety signal.
+  // Only the provider's explicit refusal above is classified as a 422.
+  // Text without a valid plan still fails validation; never generate a fallback.
   try {
     return parsePlan(tool ? tool.input : text, count);
   } catch (e) {
+    console.warn("Photoset planner returned no valid plan", {
+      stopReason: message.stop_reason,
+      hasPlanTool: Boolean(tool),
+    });
     throw new PhotosetPlanError(502, e instanceof Error ? e.message : "AI 規劃格式錯誤，請再試一次。");
   }
 }
