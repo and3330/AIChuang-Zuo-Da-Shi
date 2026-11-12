@@ -10,6 +10,9 @@ Preferred communication style: Simple, everyday language (Chinese preferred).
 
 ## System Architecture
 
+### Current AI planning provider
+AI shot planning, prompt suggestions/refinement, story/script generation/import, motion prompt rewriting and character-photo description now use AtlasCloud Doubao Seed Character (`bytedance/doubao-seed-character-260628`) through `server/atlasSeed.ts`, using the existing `ATLASCLOUD_API_KEY`. Image inputs and function tools use `/v1/chat/completions`; a real synthetic-image + two-shot tool-call test passed. The Anthropic SDK remains only for shared message types/error classes, not Claude inference. Legacy `/api/claude/...` routes remain for client compatibility. Older Claude/Replit Anthropic references below are historical. Image generation remains Seedream 5.5; video providers are unchanged. No automatic Claude fallback, and explicit content refusals remain blocked.
+
 ### UI/UX
 The platform features a React-based frontend with shadcn/ui and Tailwind CSS for a modern and responsive user experience. The Drama Studio specifically utilizes a ComicFlow-inspired visual node editor with a light theme, offering two view modes (node flow and grid) for intuitive scene arrangement. Navigation headers consistently display credit balances and cost indicators.
 

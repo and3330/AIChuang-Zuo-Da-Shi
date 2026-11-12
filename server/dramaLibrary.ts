@@ -27,7 +27,7 @@ import {
 } from "@shared/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "./db";
-import Anthropic from "@anthropic-ai/sdk";
+import { ATLAS_SEED_MODEL, createAtlasSeedClient } from "./atlasSeed";
 import sharp from "sharp";
 import archiver from "archiver";
 import mammoth from "mammoth";
@@ -97,12 +97,9 @@ export function registerDramaLibraryRoutes(
         } catch { /* skip a photo that cannot be read */ }
       }
       if (images.length === 0) return;
-      const anthropic = new Anthropic({
-        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-      });
+      const anthropic = createAtlasSeedClient();
       const resp = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: ATLAS_SEED_MODEL,
         max_tokens: 400,
         messages: [{
           role: "user",
@@ -417,12 +414,9 @@ export function registerDramaLibraryRoutes(
         });
       }
 
-      if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) return res.status(500).json({ error: "Claude API Key 未設定（AI_INTEGRATIONS_ANTHROPIC_API_KEY）" });
+      if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
 
-      const anthropic = new Anthropic({
-        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-      });
+      const anthropic = createAtlasSeedClient();
 
       const prompt = `你是抖音/TikTok 直式短劇（漫劇）的資深編劇與分鏡導演。請把以下故事原文改寫為可拍的短劇分鏡腳本。
 
@@ -460,7 +454,7 @@ export function registerDramaLibraryRoutes(
 ${rawText}`;
 
       const claudeResp = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: ATLAS_SEED_MODEL,
         max_tokens: 8000,
         messages: [{ role: "user", content: prompt + outputLanguageNote(req) }],
       });
@@ -554,12 +548,9 @@ ${rawText}`;
       if (sceneIdx < 0 || sceneIdx >= scenes.length) return res.status(400).json({ error: "幕索引超出範圍" });
       const scene = scenes[sceneIdx];
 
-      if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) return res.status(500).json({ error: "Claude API Key 未設定（AI_INTEGRATIONS_ANTHROPIC_API_KEY）" });
+      if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
 
-      const anthropic = new Anthropic({
-        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-      });
+      const anthropic = createAtlasSeedClient();
 
       // Always pass prev/next scene context to Claude so rewriter understands
       // the episode timeline. Chain Mode adds extra "must bridge" requirements.
@@ -573,7 +564,7 @@ ${rawText}`;
       const prompt = motionPromptRequest({ scene, prev: prevScene, next: nextScene, chain: sceneChainOn, hasLastFrame });
 
       const claudeResp = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: ATLAS_SEED_MODEL,
         max_tokens: 400,
         messages: [{ role: "user", content: prompt }],
       });

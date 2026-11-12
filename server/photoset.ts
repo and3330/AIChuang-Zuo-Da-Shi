@@ -40,15 +40,14 @@
 
 import type { Express, Request, Response, NextFunction } from "express";
 import Anthropic from "@anthropic-ai/sdk";
+import { ATLAS_SEED_MODEL, createAtlasSeedClient } from "./atlasSeed";
 import sharp from "sharp";
 import { z } from "zod";
 import type { ObjectStorageService } from "./objectStorage";
 import { assertAllowedRemoteUrl, fetchImageWithLimits } from "./ssrfGuard";
 import { PHOTO_LOOKS, poseById, type Pose } from "@shared/photosetOptions";
 
-/** Same Claude model the rest of the app uses through the Replit Anthropic
- *  integration. Override with PHOTOSET_PLANNER_MODEL to try a stronger one. */
-const PLANNER_MODEL = process.env.PHOTOSET_PLANNER_MODEL || "claude-haiku-4-5";
+const PLANNER_MODEL = ATLAS_SEED_MODEL;
 
 export const PHOTOSET_MIN_SHOTS = 2;
 export const PHOTOSET_MAX_SHOTS = 10;
@@ -512,8 +511,8 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
       };
     }
 
-    if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) {
-      throw new PhotosetPlanError(500, "規劃用的 AI 服務尚未設定。");
+    if (!process.env.ATLASCLOUD_API_KEY) {
+      throw new PhotosetPlanError(500, "規劃用的 AtlasCloud AI 服務尚未設定。");
     }
 
     const withProduct = body.mode === "product" || body.mode === "ugc";
@@ -535,10 +534,7 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
         ? buildCharacterShootPrompt(body, refsToLook.length, poses)
         : buildCharacterPrompt(body, refsToLook.length, poses);
 
-    const anthropic = new Anthropic({
-      apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-      baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-    });
+    const anthropic = createAtlasSeedClient();
 
     const message = await anthropic.messages.create({
       model: PLANNER_MODEL,

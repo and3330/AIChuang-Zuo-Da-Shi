@@ -4,7 +4,7 @@ import { createServer, type Server } from "http";
 import { randomBytes, randomInt } from "crypto";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
-import Anthropic from "@anthropic-ai/sdk";
+import { ATLAS_SEED_MODEL, createAtlasSeedClient } from "./atlasSeed";
 import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene, type DramaScene } from "@shared/schema";
 import { sendVerificationEmail } from "./verificationEmail";
@@ -31,10 +31,7 @@ import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIs
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
-const anthropic = new Anthropic({
-  apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-  baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-});
+const anthropic = createAtlasSeedClient();
 
 function translateApiError(rawError: string): string {
   const lower = rawError.toLowerCase();
@@ -2375,14 +2372,14 @@ ${completedScenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[節奏角色�
 }`;
 
       const message = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: ATLAS_SEED_MODEL,
         max_tokens: 2048,
         messages: [{ role: "user", content: prompt }],
       });
 
       const text = message.content[0].type === "text" ? message.content[0].text : "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return res.status(500).json({ error: "Claude 回應格式錯誤" });
+      if (!jsonMatch) return res.status(500).json({ error: "Seed AI 回應格式錯誤" });
 
       const parsed = JSON.parse(jsonMatch[0]);
       // Map Claude's 0-based completed-scene indices back to ACTUAL scene indices in the full array
@@ -2474,7 +2471,7 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[敘事角色：${getNar
 }`;
 
       const message = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: ATLAS_SEED_MODEL,
         max_tokens: 2048,
         messages: [{ role: "user", content: prompt }],
       });
@@ -2483,7 +2480,7 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[敘事角色：${getNar
 
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
-        return res.status(500).json({ error: "Claude 回應格式錯誤" });
+        return res.status(500).json({ error: "Seed AI 回應格式錯誤" });
       }
 
       const parsed = JSON.parse(jsonMatch[0]);
@@ -2495,7 +2492,7 @@ ${scenes.map((s, i) => `第 ${i + 1} 幕《${s.title}》[敘事角色：${getNar
       res.json({ scenes: fixedScenes });
     } catch (error) {
       console.error("Claude enhance story prompts error:", error);
-      res.status(500).json({ error: "Claude 提示詞優化失敗，請稍後再試" });
+      res.status(500).json({ error: "Seed AI 提示詞優化失敗，請稍後再試" });
     }
   });
 
@@ -2553,7 +2550,7 @@ Requirements:
       }
 
       const message = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: ATLAS_SEED_MODEL,
         max_tokens: 512,
         messages: [
           { role: "user", content: `${systemPrompt}\n\n原始提示詞：${prompt.trim()}${outputLanguageNote(req)}` }
@@ -2863,14 +2860,14 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 }`;
 
       const message = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: ATLAS_SEED_MODEL,
         max_tokens: 2048,
         messages: [{ role: "user", content: prompt + outputLanguageNote(req) }],
       });
 
       const text = message.content[0].type === "text" ? message.content[0].text : "";
       const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) return res.status(500).json({ error: "Claude 回應格式錯誤" });
+      if (!jsonMatch) return res.status(500).json({ error: "Seed AI 回應格式錯誤" });
 
       const parsed = JSON.parse(jsonMatch[0]);
       const rawScenes: Array<{ title: string; description: string }> = parsed.scenes || [];
@@ -3236,7 +3233,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 }`;
 
       const message = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: ATLAS_SEED_MODEL,
         max_tokens: 4096,
         messages: [{ role: "user", content: prompt + outputLanguageNote(req) }],
       });

@@ -323,7 +323,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
     onSuccess: (data: any) => {
       const enhanced: Array<{ index: number; enhanced_prompt: string }> = data.scenes || [];
       if (enhanced.length === 0) {
-        toast({ title: tr("Claude 優化失敗"), description: tr("未收到有效的提示詞"), variant: "destructive" });
+        toast({ title: tr("Seed 優化失敗"), description: tr("未收到有效的提示詞"), variant: "destructive" });
         return;
       }
       setStoryScenes(prev => prev.map((scene, idx) => {
@@ -331,10 +331,10 @@ export default function Home({ section = "image" }: { section?: "image" | "video
         if (found) return { ...scene, description: found.enhanced_prompt };
         return scene;
       }));
-      toast({ title: tr("✨ 提示詞優化完成"), description: tr("Claude 已為 {0} 幕場景生成專業英文提示詞", { 0: enhanced.length }) });
+      toast({ title: tr("✨ 提示詞優化完成"), description: tr("Seed 已為 {0} 幕場景生成專業英文提示詞", { 0: enhanced.length }) });
     },
     onError: (error: any) => {
-      toast({ title: tr("Claude 優化失敗"), description: error?.message || tr("請稍後再試"), variant: "destructive" });
+      toast({ title: tr("Seed 優化失敗"), description: error?.message || tr("請稍後再試"), variant: "destructive" });
     },
   });
 
@@ -362,7 +362,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
         });
         return updated;
       });
-      toast({ title: tr("✨ 故事大綱已生成"), description: tr("Claude 已自動生成 {0} 幕起承轉合的場景大綱", { 0: scenes.length }) });
+      toast({ title: tr("✨ 故事大綱已生成"), description: tr("Seed 已自動生成 {0} 幕起承轉合的場景大綱", { 0: scenes.length }) });
     },
     onError: (error: any) => {
       toast({ title: tr("大綱生成失敗"), description: error?.message || tr("請稍後再試"), variant: "destructive" });
@@ -383,7 +383,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
     onSuccess: (data: any) => {
       if (data.enhanced) {
         setVideoPrompt(data.enhanced);
-        toast({ title: tr("✨ AI 優化完成"), description: tr("提示詞已豐富化，可再用 Claude 轉英文") });
+        toast({ title: tr("✨ AI 優化完成"), description: tr("提示詞已豐富化，可再用 Seed 轉英文") });
       }
     },
     onError: (error: any) => {
@@ -405,11 +405,11 @@ export default function Home({ section = "image" }: { section?: "image" | "video
     onSuccess: (data: any) => {
       if (data.enhanced) {
         setVideoPrompt(data.enhanced);
-        toast({ title: tr("✨ Claude 優化完成"), description: tr("已轉換為專業英文影片提示詞") });
+        toast({ title: tr("✨ Seed 優化完成"), description: tr("已轉換為專業英文影片提示詞") });
       }
     },
     onError: (error: any) => {
-      toast({ title: tr("Claude 優化失敗"), description: error?.message || tr("請稍後再試"), variant: "destructive" });
+      toast({ title: tr("Seed 優化失敗"), description: error?.message || tr("請稍後再試"), variant: "destructive" });
     },
   });
 
@@ -1603,7 +1603,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                         {enhanceVideoPromptClaudeMutation.isPending ? (
                           <><i className="fas fa-spinner fa-spin text-xs"></i> {tr("優化中...")}</>
                         ) : (
-                          <><i className="fas fa-robot text-xs"></i> {tr("②Claude優化")}</>
+                          <><i className="fas fa-robot text-xs"></i> {tr("②Seed優化")}</>
                         )}
                       </button>
                     </div>
@@ -1614,7 +1614,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                     onChange={(e) => setVideoPrompt(e.target.value)}
                     className="w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                   />
-                  <p className="text-xs text-gray-400 mt-1">{tr("詳細描述您想要的影片畫面和動態效果 ・先①AI優化讓描述更豐富，再②Claude優化轉為英文專業格式")}</p>
+                  <p className="text-xs text-gray-400 mt-1">{tr("詳細描述您想要的影片畫面和動態效果 ・先①AI優化讓描述更豐富，再②Seed優化轉為英文專業格式")}</p>
                 </div>
 
                 <div className="border border-purple-200 bg-purple-50/40 rounded-xl p-4 space-y-2" data-testid="t2v-model-picker">
@@ -1889,7 +1889,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                             {enhanceVideoPromptClaudeMutation.isPending ? (
                               <><i className="fas fa-spinner fa-spin text-xs"></i> {tr("優化中...")}</>
                             ) : (
-                              <><i className="fas fa-robot text-xs"></i> {tr("②Claude優化")}</>
+                              <><i className="fas fa-robot text-xs"></i> {tr("②Seed優化")}</>
                             )}
                           </button>
                         </div>
@@ -1900,7 +1900,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                         onChange={(e) => setVideoPrompt(e.target.value)}
                         className="w-full min-h-[100px] px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
                       />
-                      <p className="text-xs text-gray-400 mt-1">{tr("描述您希望圖片如何變成動態影片 ・先①AI優化讓描述更豐富，再②Claude優化轉為英文專業格式")}</p>
+                      <p className="text-xs text-gray-400 mt-1">{tr("描述您希望圖片如何變成動態影片 ・先①AI優化讓描述更豐富，再②Seed優化轉為英文專業格式")}</p>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
@@ -2246,11 +2246,11 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                 <div>
                   <Label className="text-sm font-medium text-gray-700 mb-1.5 block">
                     {tr("故事內容（選填）")}
-                    <InfoTooltip text={tr("貼上已寫好的故事全文，Claude 會根據內容自動生成更精準的場景描述與圖片提示詞")} />
+                    <InfoTooltip text={tr("貼上已寫好的故事全文，Seed 會根據內容自動生成更精準的場景描述與圖片提示詞")} />
                   </Label>
                   <Textarea
                     rows={4}
-                    placeholder={tr("貼上你已經寫好的故事內容（例如劇本、腳本、故事大綱），Claude 優化提示詞時會參考此內容...")}
+                    placeholder={tr("貼上你已經寫好的故事內容（例如劇本、腳本、故事大綱），Seed 優化提示詞時會參考此內容...")}
                     value={storyContent}
                     onChange={e => setStoryContent(e.target.value)}
                     className="resize-y text-sm border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500"
@@ -2458,7 +2458,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                         {tr("AI 中文大綱")}
                         <span className="text-gray-300">→</span>
                         <span className="w-4 h-4 rounded-full bg-violet-100 text-violet-700 text-[9px] font-bold flex items-center justify-center">2</span>
-                        {tr("Claude 加強")}
+                        {tr("Seed 加強")}
                       </span>
                       <button
                         type="button"
@@ -2493,16 +2493,16 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                           claudeEnhanceMutation.mutate();
                         }}
                         disabled={claudeEnhanceMutation.isPending || claudeOutlineMutation.isPending}
-                        title={tr("第二步：Claude 將中文大綱加強為專業英文提示詞，保留起承轉合節奏")}
+                        title={tr("第二步：Seed 將中文大綱加強為專業英文提示詞，保留起承轉合節奏")}
                         className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-violet-50 text-violet-700 border border-violet-200 hover:bg-violet-100 hover:border-violet-300 transition-all disabled:opacity-60 disabled:cursor-not-allowed"
                       >
                         {claudeEnhanceMutation.isPending ? (
                           <>
                             <div className="w-3 h-3 border border-violet-600 border-t-transparent rounded-full animate-spin" />
-                            {tr("Claude 生成中...")}
+                            {tr("Seed 生成中...")}
                           </>
                         ) : (
-                          <><span className="text-violet-400 mr-0.5">②</span> {tr("Claude 加強提示詞")}</>
+                          <><span className="text-violet-400 mr-0.5">②</span> {tr("Seed 加強提示詞")}</>
                         )}
                       </button>
                     </div>
@@ -3722,7 +3722,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-sm font-medium text-gray-700">{tr("AI 自動生成所有分鏡提示詞")}</p>
-                              <p className="text-xs text-gray-500">{tr("Claude 依起承轉合節奏，為每幕生成對應的動畫提示詞")}</p>
+                              <p className="text-xs text-gray-500">{tr("Seed 依起承轉合節奏，為每幕生成對應的動畫提示詞")}</p>
                             </div>
                             <button
                               onClick={() => generateAnimPromptsMutation.mutate()}
