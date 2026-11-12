@@ -1,3 +1,4 @@
+import { appearanceNote } from "@shared/photosetPrompt";
 import { tr, getLang } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import { Link } from "wouter";
@@ -159,6 +160,7 @@ export default function ProductPage() {
         productName: productName.trim() || undefined,
         sellingPoints: sellingPoints.trim() || undefined,
         characterName: character?.name,
+        characterDescription: character?.description || undefined,
         direction: `${template.direction}${extra.trim() ? ` ${extra.trim()}` : ""}`,
         look: template.look,
         aspectRatio: ratioId,
@@ -179,7 +181,7 @@ export default function ProductPage() {
         type: "image-to-image",
         originalImageUrl: first,
         additionalImageUrls: rest.length > 0 ? rest : undefined,
-        prompts: shots.map(s => `${s.prompt.trim()}${note}${photoLookSuffix(template.look)}`),
+        prompts: shots.map(s => `${s.prompt.trim()}${appearanceNote(character?.description)}${note}${photoLookSuffix(template.look)}`),
         watermark,
         size: imageSizeFor(ratioId, "2k"),
       });

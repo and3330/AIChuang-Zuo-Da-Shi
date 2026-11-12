@@ -1,3 +1,4 @@
+import { appearanceNote } from "@shared/photosetPrompt";
 import { tr, getLang } from "@/lib/i18n";
 import { useRef, useState } from "react";
 import { Link } from "wouter";
@@ -194,6 +195,7 @@ export default function UgcPage() {
         productName: productName.trim() || undefined,
         sellingPoints: sellingPoints.trim() || undefined,
         characterName: character?.name,
+        characterDescription: character?.description || undefined,
         direction: extra.trim() || undefined,
         look: "phone",
         aspectRatio: "9:16",
@@ -213,7 +215,7 @@ export default function UgcPage() {
         type: "image-to-image",
         originalImageUrl: first,
         additionalImageUrls: rest.length > 0 ? rest : undefined,
-        prompts: shots.map(s => `${s.prompt.trim()}${note}${photoLookSuffix("phone")}`),
+        prompts: shots.map(s => `${s.prompt.trim()}${appearanceNote(character?.description)}${note}${photoLookSuffix("phone")}`),
         watermark: false,
         size: imageSizeFor("9:16", "1.5k"),
       });
