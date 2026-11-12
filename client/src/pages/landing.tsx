@@ -99,9 +99,9 @@ export default function LandingPage() {
   ];
 
   return (
-    <div ref={root} className="lp min-h-screen bg-[#07060d] text-white overflow-x-hidden">
+    <div ref={root} className="lp min-h-screen bg-[#fff7fb] text-slate-900 overflow-x-hidden">
       {/* ── 導覽 ── */}
-      <nav className="fixed top-0 inset-x-0 z-50 border-b border-white/10 bg-[#07060d]/75 backdrop-blur-md" aria-label="主要導覽">
+      <nav className="fixed top-0 inset-x-0 z-50 border-b border-fuchsia-200/70 bg-white/80 backdrop-blur-md" aria-label="主要導覽">
         <div className="max-w-7xl mx-auto h-16 px-4 sm:px-6 lg:px-8 flex items-center gap-6">
           <Link href="/">
             <span className="flex items-center gap-2.5 cursor-pointer">
@@ -109,14 +109,14 @@ export default function LandingPage() {
               <span className="text-lg font-bold tracking-tight">AI 創意工坊</span>
             </span>
           </Link>
-          <div className="hidden md:flex items-center gap-6 text-sm text-slate-300">
-            <a href="#how" className="hover:text-white transition-colors">怎麼做</a>
-            <a href="#results" className="hover:text-white transition-colors">成果</a>
-            <Link href="/wall"><span className="hover:text-white transition-colors cursor-pointer">作品牆</span></Link>
-            <a href="#pricing" className="hover:text-white transition-colors">定價</a>
+          <div className="hidden md:flex items-center gap-6 text-sm text-slate-600">
+            <a href="#how" className="hover:text-fuchsia-700 transition-colors">怎麼做</a>
+            <a href="#results" className="hover:text-fuchsia-700 transition-colors">成果</a>
+            <Link href="/wall"><span className="hover:text-fuchsia-700 transition-colors cursor-pointer">作品牆</span></Link>
+            <a href="#pricing" className="hover:text-fuchsia-700 transition-colors">定價</a>
           </div>
           <span className="flex-1" />
-          <Link href="/login"><span className="hidden sm:inline text-sm text-slate-300 hover:text-white cursor-pointer transition-colors" data-testid="landing-login">登入</span></Link>
+          <Link href="/login"><span className="hidden sm:inline text-sm text-slate-600 hover:text-fuchsia-700 cursor-pointer transition-colors" data-testid="landing-login">登入</span></Link>
           <Cta testid="landing-nav-cta">免費開始</Cta>
         </div>
       </nav>
@@ -128,12 +128,12 @@ export default function LandingPage() {
           <div className="lp-aurora lp-aurora-b" />
           <div className="lp-aurora lp-aurora-c" />
           <div className="absolute inset-0 lp-grid" />
-          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#07060d] to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-[#fff7fb] to-transparent" />
         </div>
 
         <div className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-14 lg:py-20 grid lg:grid-cols-[1.05fr_0.95fr] gap-12 items-center">
           <div>
-            <p className="lp-rise inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-white/15 bg-white/5 text-xs sm:text-sm text-slate-200">
+            <p className="lp-rise inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full border border-fuchsia-200 bg-white/70 text-xs sm:text-sm text-slate-700">
               <span className="w-2 h-2 rounded-full bg-emerald-400 lp-pulse" aria-hidden="true" />
               AI 寫真工作室
             </p>
@@ -141,21 +141,21 @@ export default function LandingPage() {
               一鍵生成，<br />
               <span className="lp-gradient-text">人人都是網美。</span>
             </h1>
-            <p className="lp-rise lp-delay-2 mt-6 max-w-xl text-base sm:text-xl text-slate-300 leading-relaxed">
+            <p className="lp-rise lp-delay-2 mt-6 max-w-xl text-base sm:text-xl text-slate-600 leading-relaxed">
               沒時間出門拍照也沒關係。上傳一張照片，選服裝、選姿勢，一次生成整組寫真，直接貼到 IG、Threads、小紅書經營你的社群。
             </p>
             <div className="lp-rise lp-delay-3 mt-9 flex flex-wrap items-center gap-4">
               <Cta big testid="landing-hero-cta">免費做第一組寫真</Cta>
               <Link href="/wall">
-                <span className="inline-flex items-center gap-2 h-14 px-7 rounded-full border border-white/20 text-base font-semibold text-white hover:bg-white/10 transition-colors cursor-pointer" data-testid="landing-hero-wall">
+                <span className="inline-flex items-center gap-2 h-14 px-7 rounded-full border border-fuchsia-300 text-base font-semibold text-slate-900 hover:bg-fuchsia-50 transition-colors cursor-pointer" data-testid="landing-hero-wall">
                   <i className="fas fa-globe text-sm" aria-hidden="true" />看看大家的作品
                 </span>
               </Link>
             </div>
-            <ul className="lp-rise lp-delay-4 mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-400">
-              <li><i className="fas fa-gift text-fuchsia-400 mr-2" aria-hidden="true" />註冊送 {SIGNUP_CREDITS} 積分，剛好做 {Math.floor(SIGNUP_CREDITS / IMAGE_COST)} 張</li>
-              <li><i className="fas fa-credit-card text-fuchsia-400 mr-2" aria-hidden="true" />不用綁卡</li>
-              <li><i className="fas fa-rotate-left text-fuchsia-400 mr-2" aria-hidden="true" />生成失敗自動退積分</li>
+            <ul className="lp-rise lp-delay-4 mt-8 flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
+              <li><i className="fas fa-gift text-fuchsia-600 mr-2" aria-hidden="true" />註冊送 {SIGNUP_CREDITS} 積分，剛好做 {Math.floor(SIGNUP_CREDITS / IMAGE_COST)} 張</li>
+              <li><i className="fas fa-credit-card text-fuchsia-600 mr-2" aria-hidden="true" />不用綁卡</li>
+              <li><i className="fas fa-rotate-left text-fuchsia-600 mr-2" aria-hidden="true" />生成失敗自動退積分</li>
             </ul>
           </div>
 
@@ -165,7 +165,7 @@ export default function LandingPage() {
               {HERO_COLUMNS.map((col, c) => (
                 <div key={c} className={`flex flex-col gap-3 sm:gap-4 ${c === 1 ? "lp-col-down" : "lp-col-up"}`}>
                   {[...col, ...col].map((n, i) => (
-                    <img key={i} src={SHOTS[n].src} alt="" loading={i < 2 ? "eager" : "lazy"} className="w-full rounded-2xl object-cover bg-white/5" />
+                    <img key={i} src={SHOTS[n].src} alt="" loading={i < 2 ? "eager" : "lazy"} className="w-full rounded-2xl object-cover bg-white/70" />
                   ))}
                 </div>
               ))}
@@ -178,21 +178,21 @@ export default function LandingPage() {
       <section id="how" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 scroll-mt-16" aria-labelledby="lp-steps">
         <div className="max-w-7xl mx-auto">
           <div className="lp-reveal max-w-3xl">
-            <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-400">怎麼做</p>
+            <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-600">怎麼做</p>
             <h2 id="lp-steps" className="mt-3 text-4xl sm:text-6xl font-black tracking-tight leading-tight">選三樣，<br className="sm:hidden" />就有一整組。</h2>
-            <p className="mt-5 text-lg text-slate-400">全部用點的。{LIBRARY_TOTAL.toLocaleString()} 個人像、服裝、姿勢素材，怎麼搭都有。</p>
+            <p className="mt-5 text-lg text-slate-600">全部用點的。{LIBRARY_TOTAL.toLocaleString()} 個人像、服裝、姿勢素材，怎麼搭都有。</p>
           </div>
           <ol className="mt-12 sm:mt-16 grid md:grid-cols-3 gap-5">
             {STEPS.map((s, i) => (
-              <li key={s.n} className="lp-reveal lp-card relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] p-8" style={{ transitionDelay: `${i * 90}ms` }}>
-                <i className={`fas ${s.icon} absolute top-7 right-8 text-5xl text-white/10`} aria-hidden="true" />
+              <li key={s.n} className="lp-reveal lp-card relative overflow-hidden rounded-3xl border border-fuchsia-200/70 bg-white/80 p-8" style={{ transitionDelay: `${i * 90}ms` }}>
+                <i className={`fas ${s.icon} absolute top-7 right-8 text-5xl text-fuchsia-600/40`} aria-hidden="true" />
                 <span className="block text-7xl font-black tracking-tighter lp-outline-text" aria-hidden="true">{s.n}</span>
                 <h3 className="mt-5 text-3xl font-black tracking-tight">{s.title}</h3>
-                <p className="mt-3 text-slate-300 leading-relaxed">{s.desc}</p>
+                <p className="mt-3 text-slate-600 leading-relaxed">{s.desc}</p>
                 {(samples?.[s.library]?.length ?? 0) >= 4 && (
                   <div className="mt-5 grid grid-cols-4 gap-2" aria-hidden="true">
                     {samples![s.library]!.slice(0, 4).map(a => (
-                      <img key={a.id} src={a.url} alt="" loading="lazy" className="w-full aspect-[3/4] object-cover rounded-xl bg-white/10" />
+                      <img key={a.id} src={a.url} alt="" loading="lazy" className="w-full aspect-[3/4] object-cover rounded-xl bg-fuchsia-50" />
                     ))}
                   </div>
                 )}
@@ -209,10 +209,10 @@ export default function LandingPage() {
           <div className="mt-10 grid md:grid-cols-3 gap-8">
             {REASONS.map((r, i) => (
               <div key={r.title} className="lp-reveal flex gap-4" style={{ transitionDelay: `${i * 80}ms` }}>
-                <span className="shrink-0 w-12 h-12 rounded-2xl lp-cta flex items-center justify-center"><i className={`fas ${r.icon}`} aria-hidden="true" /></span>
+                <span className="shrink-0 w-12 h-12 rounded-2xl lp-cta text-white flex items-center justify-center"><i className={`fas ${r.icon}`} aria-hidden="true" /></span>
                 <div>
                   <h3 className="text-xl font-bold">{r.title}</h3>
-                  <p className="mt-1.5 text-slate-400 leading-relaxed">{r.desc}</p>
+                  <p className="mt-1.5 text-slate-600 leading-relaxed">{r.desc}</p>
                 </div>
               </div>
             ))}
@@ -221,28 +221,28 @@ export default function LandingPage() {
       </section>
 
       {/* ── 數字 ── */}
-      <section className="relative border-y border-white/10 bg-white/[0.03]" aria-label="平台數字">
+      <section className="relative border-y border-fuchsia-200/70 bg-white/60" aria-label="平台數字">
         <dl className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-2 md:grid-cols-4">
           {stats.map(([value, label], i) => (
-            <div key={label} className={`lp-reveal py-9 md:py-12 text-center ${i % 2 === 1 ? "border-l border-white/10" : ""} ${i >= 2 ? "border-t md:border-t-0 border-white/10" : ""} ${i === 2 ? "md:border-l" : ""}`}>
+            <div key={label} className={`lp-reveal py-9 md:py-12 text-center ${i % 2 === 1 ? "border-l border-fuchsia-200/70" : ""} ${i >= 2 ? "border-t md:border-t-0 border-fuchsia-200/70" : ""} ${i === 2 ? "md:border-l" : ""}`}>
               <dd className="text-3xl sm:text-5xl font-black tracking-tight tabular-nums">{value}</dd>
-              <dt className="mt-2 text-sm text-slate-400">{label}</dt>
+              <dt className="mt-2 text-sm text-slate-600">{label}</dt>
             </div>
           ))}
         </dl>
       </section>
 
       {/* ── 成果：站內實際生成的寫真 ── */}
-      <section id="results" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-white/10 scroll-mt-16" aria-labelledby="lp-results">
+      <section id="results" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-fuchsia-200/70 scroll-mt-16" aria-labelledby="lp-results">
         <div className="max-w-7xl mx-auto">
           <div className="lp-reveal max-w-3xl">
-            <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-400">成果</p>
+            <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-600">成果</p>
             <h2 id="lp-results" className="mt-3 text-4xl sm:text-6xl font-black tracking-tight leading-tight">一出來，<br className="sm:hidden" />就是能發的照片。</h2>
-            <p className="mt-5 text-lg text-slate-400">下面每一張都是在這裡生成的，沒有另外修圖。街拍、咖啡廳、自拍視角，下載就能貼上社群。</p>
+            <p className="mt-5 text-lg text-slate-600">下面每一張都是在這裡生成的，沒有另外修圖。街拍、咖啡廳、自拍視角，下載就能貼上社群。</p>
           </div>
           <div className="mt-12 sm:mt-16 grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
             {SHOTS.map((shot, i) => (
-              <figure key={shot.src} className={`lp-reveal group relative overflow-hidden rounded-2xl bg-white/5 aspect-[3/4] ${i === 0 ? "col-span-2 md:col-span-1" : ""}`} style={{ transitionDelay: `${i * 70}ms` }}>
+              <figure key={shot.src} className={`lp-reveal group relative overflow-hidden rounded-2xl bg-white/70 aspect-[3/4] ${i === 0 ? "col-span-2 md:col-span-1" : ""}`} style={{ transitionDelay: `${i * 70}ms` }}>
                 <img src={shot.src} alt={shot.alt} loading="lazy" className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" />
                 <figcaption className="absolute inset-x-0 bottom-0 p-3 pt-8 bg-gradient-to-t from-black/75 to-transparent text-xs font-medium text-white">{shot.label}</figcaption>
               </figure>
@@ -253,15 +253,15 @@ export default function LandingPage() {
       </section>
 
       {/* ── 其他功能 ── */}
-      <section className="relative py-24 sm:py-28 px-4 sm:px-6 lg:px-8 border-t border-white/10" aria-labelledby="lp-more">
+      <section className="relative py-24 sm:py-28 px-4 sm:px-6 lg:px-8 border-t border-fuchsia-200/70" aria-labelledby="lp-more">
         <div className="max-w-7xl mx-auto">
           <h2 id="lp-more" className="lp-reveal text-3xl sm:text-5xl font-black tracking-tight">寫真之外，還能做這些。</h2>
           <div className="mt-10 grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {MORE.map((f, i) => (
-              <article key={f.title} className="lp-reveal lp-card rounded-3xl border border-white/10 bg-white/[0.04] p-7" style={{ transitionDelay: `${i * 60}ms` }}>
-                <i className={`fas ${f.icon} text-2xl text-fuchsia-400`} aria-hidden="true" />
+              <article key={f.title} className="lp-reveal lp-card rounded-3xl border border-fuchsia-200/70 bg-white/80 p-7" style={{ transitionDelay: `${i * 60}ms` }}>
+                <i className={`fas ${f.icon} text-2xl text-fuchsia-600`} aria-hidden="true" />
                 <h3 className="mt-4 text-xl font-bold">{f.title}</h3>
-                <p className="mt-2 text-sm text-slate-400 leading-relaxed">{f.desc}</p>
+                <p className="mt-2 text-sm text-slate-600 leading-relaxed">{f.desc}</p>
               </article>
             ))}
           </div>
@@ -270,23 +270,23 @@ export default function LandingPage() {
 
       {/* ── 作品牆：有作品才顯示 ── */}
       {hasWorks && (
-        <section className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-white/10" aria-labelledby="lp-wall" data-testid="landing-wall">
+        <section className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-fuchsia-200/70" aria-labelledby="lp-wall" data-testid="landing-wall">
           <div className="max-w-7xl mx-auto">
             <div className="lp-reveal flex items-end justify-between gap-6 flex-wrap">
               <div>
-                <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-400">作品牆</p>
+                <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-600">作品牆</p>
                 <h2 id="lp-wall" className="mt-3 text-4xl sm:text-6xl font-black tracking-tight">大家正在做這些。</h2>
               </div>
-              <Link href="/wall"><span className="inline-flex items-center gap-2 h-12 px-6 rounded-full border border-white/20 text-sm font-semibold hover:bg-white/10 transition-colors cursor-pointer">看全部作品<i className="fas fa-arrow-right text-xs" aria-hidden="true" /></span></Link>
+              <Link href="/wall"><span className="inline-flex items-center gap-2 h-12 px-6 rounded-full border border-fuchsia-300 text-sm font-semibold hover:bg-fuchsia-50 transition-colors cursor-pointer">看全部作品<i className="fas fa-arrow-right text-xs" aria-hidden="true" /></span></Link>
             </div>
             <div className="mt-12 columns-2 md:columns-3 lg:columns-4 gap-4">
               {works.slice(0, 12).map((p, i) => (
                 <Link key={p.id} href={`/wall/${p.id}`}>
-                  <span className="lp-reveal group relative block mb-4 break-inside-avoid overflow-hidden rounded-2xl bg-white/5 cursor-pointer" style={{ transitionDelay: `${(i % 4) * 60}ms` }}>
+                  <span className="lp-reveal group relative block mb-4 break-inside-avoid overflow-hidden rounded-2xl bg-white/70 cursor-pointer" style={{ transitionDelay: `${(i % 4) * 60}ms` }}>
                     <img src={p.mediaUrl} alt={p.title || `${p.author.username} 的作品`} loading="lazy" className="w-full block transition-transform duration-500 group-hover:scale-105" />
                     <span className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent text-xs text-white flex items-center gap-2 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity duration-300">
                       <span className="flex-1 min-w-0 truncate">{p.title || p.author.username}</span>
-                      <span><i className="fas fa-heart text-rose-400 mr-1" aria-hidden="true" />{p.likeCount}</span>
+                      <span><i className="fas fa-heart text-rose-500 mr-1" aria-hidden="true" />{p.likeCount}</span>
                     </span>
                   </span>
                 </Link>
@@ -297,58 +297,58 @@ export default function LandingPage() {
       )}
 
       {/* ── 定價 ── */}
-      <section id="pricing" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-white/10 scroll-mt-16">
+      <section id="pricing" className="relative py-24 sm:py-32 px-4 sm:px-6 lg:px-8 border-t border-fuchsia-200/70 scroll-mt-16">
         <div className="max-w-7xl mx-auto">
           <div className="lp-reveal max-w-3xl">
-            <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-400">定價</p>
+            <p className="text-sm font-semibold tracking-[0.2em] text-fuchsia-600">定價</p>
             <h2 className="mt-3 text-4xl sm:text-6xl font-black tracking-tight">用多少，付多少。</h2>
-            <p className="mt-5 text-lg text-slate-400">沒有月費，不會自動續扣，積分沒有使用期限。先用免費的 {SIGNUP_CREDITS} 積分試試看。</p>
+            <p className="mt-5 text-lg text-slate-600">沒有月費，不會自動續扣，積分沒有使用期限。先用免費的 {SIGNUP_CREDITS} 積分試試看。</p>
           </div>
 
           <div className="mt-12 sm:mt-16 grid lg:grid-cols-3 gap-5 items-stretch">
-            <div className="lp-reveal rounded-3xl border border-white/10 bg-white/[0.04] p-8 flex flex-col">
-              <p className="text-sm font-semibold text-slate-400">小試身手</p>
+            <div className="lp-reveal rounded-3xl border border-fuchsia-200/70 bg-white/80 p-8 flex flex-col">
+              <p className="text-sm font-semibold text-slate-600">小試身手</p>
               <p className="mt-3 text-5xl font-black tracking-tight">US${TRIAL.priceUsd}</p>
-              <ul className="mt-6 space-y-3 text-slate-300 flex-1">
-                <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />{TRIAL.credits} 積分，約 {Math.floor(TRIAL.credits / IMAGE_COST)} 張寫真</li>
-                <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />只付一次</li>
-                <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />每個帳號限購一次</li>
+              <ul className="mt-6 space-y-3 text-slate-600 flex-1">
+                <li><i className="fas fa-check text-emerald-600 mr-3" aria-hidden="true" />{TRIAL.credits} 積分，約 {Math.floor(TRIAL.credits / IMAGE_COST)} 張寫真</li>
+                <li><i className="fas fa-check text-emerald-600 mr-3" aria-hidden="true" />只付一次</li>
+                <li><i className="fas fa-check text-emerald-600 mr-3" aria-hidden="true" />每個帳號限購一次</li>
               </ul>
             </div>
 
             <div className="lp-reveal relative rounded-3xl p-[1.5px] lp-border-glow" style={{ transitionDelay: "80ms" }}>
-              <div className="h-full rounded-[calc(1.5rem-1.5px)] bg-[#0d0a1a] p-8 flex flex-col">
-                <span className="absolute -top-3 left-8 px-3 py-1 rounded-full lp-cta text-xs font-bold">最划算</span>
-                <p className="text-sm font-semibold text-fuchsia-300">正式會員</p>
+              <div className="h-full rounded-[calc(1.5rem-1.5px)] bg-white p-8 flex flex-col">
+                <span className="absolute -top-3 left-8 px-3 py-1 rounded-full lp-cta text-white text-xs font-bold">最划算</span>
+                <p className="text-sm font-semibold text-fuchsia-600">正式會員</p>
                 <p className="mt-3 text-6xl font-black tracking-tight">US${MEMBERSHIP.priceUsd}</p>
-                <ul className="mt-6 space-y-3 text-slate-200 flex-1">
-                  <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />{MEMBERSHIP.credits} 積分，約 {Math.floor(MEMBERSHIP.credits / IMAGE_COST)} 張寫真</li>
-                  <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />開通後可以加購儲值包</li>
-                  <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />只付一次，沒有月費</li>
+                <ul className="mt-6 space-y-3 text-slate-700 flex-1">
+                  <li><i className="fas fa-check text-emerald-600 mr-3" aria-hidden="true" />{MEMBERSHIP.credits} 積分，約 {Math.floor(MEMBERSHIP.credits / IMAGE_COST)} 張寫真</li>
+                  <li><i className="fas fa-check text-emerald-600 mr-3" aria-hidden="true" />開通後可以加購儲值包</li>
+                  <li><i className="fas fa-check text-emerald-600 mr-3" aria-hidden="true" />只付一次，沒有月費</li>
                 </ul>
                 <div className="mt-8"><Cta big testid="landing-pricing-cta">先免費試用</Cta></div>
               </div>
             </div>
 
-            <div className="lp-reveal rounded-3xl border border-white/10 bg-white/[0.04] p-8 flex flex-col" style={{ transitionDelay: "160ms" }}>
-              <p className="text-sm font-semibold text-slate-400">會員儲值包</p>
-              <p className="mt-3 text-5xl font-black tracking-tight">NT${TOPUP_PACKS[0].twd}<span className="text-xl font-bold text-slate-400"> 起</span></p>
-              <ul className="mt-6 space-y-3 text-slate-300 flex-1">
-                <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />1 積分 = NT$1</li>
-                <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />金額越大加贈越多，最高加贈 {TOP_BONUS}%</li>
-                <li><i className="fas fa-check text-emerald-400 mr-3" aria-hidden="true" />積分沒有使用期限</li>
+            <div className="lp-reveal rounded-3xl border border-fuchsia-200/70 bg-white/80 p-8 flex flex-col" style={{ transitionDelay: "160ms" }}>
+              <p className="text-sm font-semibold text-slate-600">會員儲值包</p>
+              <p className="mt-3 text-5xl font-black tracking-tight">NT${TOPUP_PACKS[0].twd}<span className="text-xl font-bold text-slate-600"> 起</span></p>
+              <ul className="mt-6 space-y-3 text-slate-600 flex-1">
+                <li><i className="fas fa-check text-emerald-600 mr-3" aria-hidden="true" />1 積分 = NT$1</li>
+                <li><i className="fas fa-check text-emerald-600 mr-3" aria-hidden="true" />金額越大加贈越多，最高加贈 {TOP_BONUS}%</li>
+                <li><i className="fas fa-check text-emerald-600 mr-3" aria-hidden="true" />積分沒有使用期限</li>
               </ul>
             </div>
           </div>
 
-          <dl className="lp-reveal mt-6 grid sm:grid-cols-3 rounded-3xl border border-white/10 bg-white/[0.03] divide-y sm:divide-y-0 sm:divide-x divide-white/10">
+          <dl className="lp-reveal mt-6 grid sm:grid-cols-3 rounded-3xl border border-fuchsia-200/70 bg-white/60 divide-y sm:divide-y-0 sm:divide-x divide-fuchsia-200/70">
             {[
               ["寫真與圖片", `${IMAGE_COST} 積分／張`, `去浮水印 +${WATERMARK_REMOVAL_COST} 積分`],
               ["影片 720p", `${VIDEO_COST_PER_SECOND["720p"]} 積分／秒`, "4 到 12 秒"],
               ["影片 1080p", `${VIDEO_COST_PER_SECOND["1080p"]} 積分／秒`, "4 到 12 秒"],
             ].map(([label, price, note]) => (
               <div key={label} className="p-6">
-                <dt className="text-sm text-slate-400">{label}</dt>
+                <dt className="text-sm text-slate-600">{label}</dt>
                 <dd className="mt-1 text-2xl font-black tracking-tight">{price}</dd>
                 <dd className="text-xs text-slate-500 mt-1">{note}</dd>
               </div>
@@ -358,23 +358,23 @@ export default function LandingPage() {
       </section>
 
       {/* ── 最後一次行動呼籲 ── */}
-      <section className="relative py-28 sm:py-40 px-4 sm:px-6 lg:px-8 overflow-hidden border-t border-white/10">
+      <section className="relative py-28 sm:py-40 px-4 sm:px-6 lg:px-8 overflow-hidden border-t border-fuchsia-200/70">
         <div className="absolute inset-0" aria-hidden="true">
           <div className="lp-aurora lp-aurora-d" />
         </div>
         <div className="lp-reveal relative max-w-4xl mx-auto text-center">
           <h2 className="font-black tracking-tight leading-[1.05] text-[clamp(2.4rem,7vw,5rem)]">你的第一組寫真，<br /><span className="lp-gradient-text">現在就可以開始。</span></h2>
-          <p className="mt-6 text-lg text-slate-300">註冊送 {SIGNUP_CREDITS} 積分，剛好做 {Math.floor(SIGNUP_CREDITS / IMAGE_COST)} 張，不用綁卡。</p>
+          <p className="mt-6 text-lg text-slate-600">註冊送 {SIGNUP_CREDITS} 積分，剛好做 {Math.floor(SIGNUP_CREDITS / IMAGE_COST)} 張，不用綁卡。</p>
           <div className="mt-10"><Cta big testid="landing-final-cta">免費做第一組寫真</Cta></div>
         </div>
       </section>
 
       {/* ── 頁尾 ── */}
-      <footer className="border-t border-white/10 px-4 sm:px-6 lg:px-8 py-12 pb-28 sm:pb-12">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-8 md:items-end md:justify-between text-sm text-slate-400">
+      <footer className="border-t border-fuchsia-200/70 px-4 sm:px-6 lg:px-8 py-12 pb-28 sm:pb-12">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-8 md:items-end md:justify-between text-sm text-slate-600">
           <div>
-            <p className="flex items-center gap-2.5 text-white font-bold text-base">
-              <span className="w-8 h-8 rounded-xl lp-cta flex items-center justify-center"><i className="fas fa-wand-magic-sparkles text-xs" aria-hidden="true" /></span>
+            <p className="flex items-center gap-2.5 text-slate-900 font-bold text-base">
+              <span className="w-8 h-8 rounded-xl lp-cta text-white flex items-center justify-center"><i className="fas fa-wand-magic-sparkles text-xs" aria-hidden="true" /></span>
               AI 創意工坊
             </p>
             <p className="mt-3">極電行銷整合</p>
@@ -382,23 +382,23 @@ export default function LandingPage() {
           </div>
           <div className="flex flex-col gap-2 md:items-end">
             <p className="flex flex-wrap gap-x-5 gap-y-1">
-              <a href="mailto:Service@cms-edu.com" className="hover:text-white transition-colors">Service@cms-edu.com</a>
-              <a href="https://line.me/R/ti/p/@558icnoi" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">LINE @558icnoi</a>
-              <a href="https://www.facebook.com/profile.php?id=61569836876332" target="_blank" rel="noopener noreferrer" className="hover:text-white transition-colors">Facebook 粉絲專頁</a>
+              <a href="mailto:Service@cms-edu.com" className="hover:text-fuchsia-700 transition-colors">Service@cms-edu.com</a>
+              <a href="https://line.me/R/ti/p/@558icnoi" target="_blank" rel="noopener noreferrer" className="hover:text-fuchsia-700 transition-colors">LINE @558icnoi</a>
+              <a href="https://www.facebook.com/profile.php?id=61569836876332" target="_blank" rel="noopener noreferrer" className="hover:text-fuchsia-700 transition-colors">Facebook 粉絲專頁</a>
             </p>
             <p className="flex gap-5">
-              <Link href="/wall"><span className="hover:text-white transition-colors cursor-pointer">作品牆</span></Link>
-              <a href="/privacy" className="hover:text-white transition-colors">隱私政策</a>
-              <a href="/terms" className="hover:text-white transition-colors">服務條款</a>
+              <Link href="/wall"><span className="hover:text-fuchsia-700 transition-colors cursor-pointer">作品牆</span></Link>
+              <a href="/privacy" className="hover:text-fuchsia-700 transition-colors">隱私政策</a>
+              <a href="/terms" className="hover:text-fuchsia-700 transition-colors">服務條款</a>
             </p>
           </div>
         </div>
       </footer>
 
       {/* ── 手機：固定在底部的開始按鈕 ── */}
-      <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 p-3 pb-[calc(12px+env(safe-area-inset-bottom))] bg-[#07060d]/90 backdrop-blur-md border-t border-white/10">
+      <div className="sm:hidden fixed bottom-0 inset-x-0 z-40 p-3 pb-[calc(12px+env(safe-area-inset-bottom))] bg-white/90 backdrop-blur-md border-t border-fuchsia-200/70">
         <Link href="/login">
-          <span className="lp-cta flex items-center justify-center gap-2 h-12 rounded-full text-base font-bold cursor-pointer" data-testid="landing-sticky-cta">
+          <span className="lp-cta flex items-center justify-center gap-2 h-12 rounded-full text-base font-bold text-white cursor-pointer" data-testid="landing-sticky-cta">
             免費做寫真・送 {SIGNUP_CREDITS} 積分<i className="fas fa-arrow-right text-xs" aria-hidden="true" />
           </span>
         </Link>
