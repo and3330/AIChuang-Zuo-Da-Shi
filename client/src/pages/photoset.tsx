@@ -14,7 +14,7 @@ import { SensitiveGate } from "@/components/SensitiveGate";
 import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type FourViewUrls, type ImageGeneration, type SceneLibraryItem } from "@shared/schema";
 import { IMAGE_RATIOS, IMAGE_TIERS, imageSizeFor, type ImageRatioId, type ImageTierId } from "@shared/imageSizes";
 import type { LibraryId } from "@shared/libraryCatalog";
-import { composePhotosetImagePrompt } from "@shared/photosetPrompt";
+import { composePhotosetImagePrompt, appearanceNote } from "@shared/photosetPrompt";
 import { loadRecipe, type Recipe, type RecipeItem } from "@/lib/recipe";
 import { IMAGE_COST, MEMBERSHIP, TRIAL, WATERMARK_REMOVAL_COST, imageCost } from "@shared/pricing";
 import { inGoldZone } from "@/lib/zone";
@@ -473,6 +473,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         prompts: validShots.map(s => composePhotosetImagePrompt({
           prompt: s.prompt,
           customPrompt: plan?.customPrompt,
+          appearance: appearanceNote(character?.description),
           outfitText,
           referenceNote: note,
           poseNote: s.poseRef ? poseRefNote(poseImageNumber) : "",

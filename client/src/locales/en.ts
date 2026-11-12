@@ -2479,4 +2479,11 @@ export const en: Record<string, string> = {
   "待確認正面圖": "Front view to confirm",
   "確認正面圖像不像，再生成其餘三張": "Check the front view, then generate the other three",
   "AI 讀到的外貌描述（建立角色時會一起用上）": "Appearance read by AI (used when the character is created)",
+  "AI 正在判讀照片（還有 {0} 張），請稍候…": "AI is reading your photos ({0} left). One moment…",
+  "AI 判讀中（還有 {0} 張）…": "AI is reading ({0} left)…",
+  "照片都上傳好了：AI 判讀全部照片（{0} 張）": "All photos uploaded: read them all with AI ({0})",
+  "有 {0} 張判讀失敗，再判讀一次": "{0} could not be read. Try again",
+  "全部照片都判讀好了": "All photos have been read",
+  "先把要用的照片全部上傳，再按這裡。之後再加照片，要再按一次。": "Upload every photo you want to use first, then press this. If you add photos later, press it again.",
+  "先判讀全部照片，才能建立角色": "Read all photos first to create the character",
 };
