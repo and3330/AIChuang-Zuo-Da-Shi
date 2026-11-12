@@ -41,6 +41,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { ATLAS_SEED_MODEL, createAtlasSeedClient } from "./atlasSeed";
+import { mergePhotosetSupplement } from "@shared/photosetPrompt";
 import sharp from "sharp";
 import { z } from "zod";
 import type { ObjectStorageService } from "./objectStorage";
@@ -570,8 +571,14 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
       ],
     });
 
+    // Merge only after a valid, non-refused plan. Never turn a refusal into shots.
+    const plan = readPlannerMessage(message, body.count);
     return {
-      ...readPlannerMessage(message, body.count),
+      ...plan,
+      shots: plan.shots.map(shot => ({
+        ...shot,
+        prompt: mergePhotosetSupplement(shot.prompt, body.customPrompt),
+      })),
       ...(body.customPrompt ? { customPrompt: body.customPrompt } : {}),
     };
   }

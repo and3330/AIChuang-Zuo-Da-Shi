@@ -9,6 +9,12 @@ Photo-set planning should combine the selected portrait, outfit and pose with sc
 
 **How to apply:** Preserve an accessible supplemental input across the photo-set flows, and do not silently discard its text when composing other settings.
 
+Supplemental directions must be explicitly carried into the final image-generation prompt for every shot, not merely passed to the planner or displayed as “已納入規劃”.
+
+**Why:** The user reported that the displayed supplemental directions were missing from the submitted generation Prompt. Relying on the planner to repeat them is not a delivery guarantee.
+
+**How to apply:** Preserve the exact directions from the accepted plan through final prompt composition, including edited or newly added shots, without duplicating text already present.
+
 The approved scope is non-explicit prompt integration and planning-format fixes, not removal of safety protections in the gold zone.
 
 **Why:** After clarification, the user explicitly chose “修正 Prompt 整合與格式錯誤” under this limited scope.

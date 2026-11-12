@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import type Anthropic from "@anthropic-ai/sdk";
 import { parsePlan, planRequestSchema, readPlannerMessage, userExtras, PhotosetPlanError } from "../server/photoset";
+import { mergePhotosetSupplement, composePhotosetImagePrompt } from "../shared/photosetPrompt";
 
 const shots = [
   { title: "窗邊半身", prompt: '白色襯衫、柔和窗光，背景有標記「{studio}」與 "portrait"。' },
@@ -60,6 +61,26 @@ const extras = userExtras(parsed);
 for (const text of [input.characterDescription, input.direction, input.customPrompt]) assert.ok(extras.includes(text));
 const beachPrompt = "更多的背景是海灘，然後陽光灑下來";
 assert.ok(userExtras(planRequestSchema.parse({ ...input, customPrompt: beachPrompt })).includes(beachPrompt));
+// The exact supplement must reach every image prompt, even when the AI omits it.
+const plannedShots = shots.map(shot => ({ ...shot, prompt: mergePhotosetSupplement(shot.prompt, beachPrompt) }));
+for (const shot of plannedShots) assert.ok(shot.prompt.includes(beachPrompt));
+const extrasForGeneration = {
+  customPrompt: beachPrompt, outfitText: "（服裝：白色襯衫）",
+  referenceNote: "（沿用人物參考）", poseNote: "（姿勢參考圖3）", lookSuffix: "（自然寫實）",
+};
+for (const shot of [...shots, ...plannedShots]) {
+  const sentPrompt = composePhotosetImagePrompt({ prompt: shot.prompt, ...extrasForGeneration });
+  assert.equal(sentPrompt.split(beachPrompt).length - 1, 1);
+  for (const extra of [extrasForGeneration.outfitText, extrasForGeneration.referenceNote, extrasForGeneration.poseNote, extrasForGeneration.lookSuffix]) {
+    assert.ok(sentPrompt.includes(extra));
+  }
+}
+// Edits and newly added shots still receive the saved planning supplement.
+assert.ok(composePhotosetImagePrompt({ prompt: "新加的側面鏡頭", ...extrasForGeneration }).includes(beachPrompt));
+assert.equal(mergePhotosetSupplement("  原鏡頭  ", "  "), "原鏡頭");
+assert.equal(mergePhotosetSupplement(`海灘，${beachPrompt}`, beachPrompt), `海灘，${beachPrompt}`);
+assert.equal(mergePhotosetSupplement(mergePhotosetSupplement("原鏡頭", beachPrompt), beachPrompt),
+  mergePhotosetSupplement("原鏡頭", beachPrompt));
 // Long shooting controls cannot silently consume the user's prompt allowance.
 assert.equal(planRequestSchema.parse({ ...input, direction: "設".repeat(4000), customPrompt: "補".repeat(1000) }).customPrompt?.length, 1000);
 assert.equal(planRequestSchema.safeParse({ ...input, customPrompt: "補".repeat(1001) }).success, false);
