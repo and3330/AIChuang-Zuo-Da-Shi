@@ -16,18 +16,19 @@ import { Onboarding } from "@/components/Onboarding";
 // 範本牆在手機與平板是一排可以左右滑的卡片（固定寬度），寬螢幕才排成一列五格；
 // 卡片的標題疊在圖片下緣，卡片本身不佔太多高度，往下還看得到自由創作。
 //
-// 範本卡有實拍圖的用圖（client/public/landing），沒有的先用漸層加圖示。
+// 範本卡的封面圖與小動畫都是靜態檔（client/public/landing/*.webp、*.mp4）：動畫是用封面圖生成一次的 4 秒無聲循環，
+// 壓成小檔放進專案，不會在使用者瀏覽時才生成。沒有圖的範本用漸層加圖示。
 
 type Stats = { totalGenerations: number; totalCreditsUsed: number; credits: number };
 type Action = { href: string; label: string; icon: string };
-type Template = { href: string; title: string; desc: string; tag: string; icon: string; image?: string; tile: string };
+type Template = { href: string; title: string; desc: string; tag: string; icon: string; image?: string; video?: string; tile: string };
 
 const TEMPLATES: Template[] = [
-  { href: "/photoset?mode=kit", title: "寫真套圖", desc: "選服裝和姿勢，一次生成整組可以貼的寫真。", tag: "寫真", icon: "fa-camera-retro", image: "/landing/cafe-selfie.webp", tile: "from-indigo-500 to-blue-600" },
-  { href: "/photoset?mode=scene", title: "照片同款", desc: "放一張喜歡的照片，換成你的角色和服裝。", tag: "寫真", icon: "fa-panorama", image: "/landing/street-walk.webp", tile: "from-indigo-500 to-sky-500" },
-  { href: "/ugc", title: "UGC 實拍", desc: "給一件商品，AI 寫腳本，用你的角色拍成帶貨短片。", tag: "影片", icon: "fa-mobile-screen", image: "/landing/tpl-ugc.webp", tile: "from-fuchsia-500 to-indigo-600" },
-  { href: "/create/video", title: "讓照片動起來", desc: "上傳一張圖，變成 4 到 12 秒的短影片。", tag: "影片", icon: "fa-clapperboard", image: "/landing/autumn-selfie.webp", tile: "from-violet-500 to-indigo-600" },
-  { href: "/drama", title: "一句話做短劇", desc: "從一句劇情，到分鏡、出圖、動畫與整集短劇。", tag: "漫劇", icon: "fa-film", image: "/landing/tpl-drama.webp", tile: "from-blue-500 to-sky-500" },
+  { href: "/photoset?mode=kit", title: "寫真套圖", desc: "選服裝和姿勢，一次生成整組可以貼的寫真。", tag: "寫真", icon: "fa-camera-retro", image: "/landing/cafe-selfie.webp", video: "/landing/cafe-selfie.mp4", tile: "from-indigo-500 to-blue-600" },
+  { href: "/photoset?mode=scene", title: "照片同款", desc: "放一張喜歡的照片，換成你的角色和服裝。", tag: "寫真", icon: "fa-panorama", image: "/landing/street-walk.webp", video: "/landing/street-walk.mp4", tile: "from-indigo-500 to-sky-500" },
+  { href: "/ugc", title: "UGC 實拍", desc: "給一件商品，AI 寫腳本，用你的角色拍成帶貨短片。", tag: "影片", icon: "fa-mobile-screen", image: "/landing/tpl-ugc.webp", video: "/landing/tpl-ugc.mp4", tile: "from-fuchsia-500 to-indigo-600" },
+  { href: "/create/video", title: "讓照片動起來", desc: "上傳一張圖，變成 4 到 12 秒的短影片。", tag: "影片", icon: "fa-clapperboard", image: "/landing/autumn-selfie.webp", video: "/landing/autumn-selfie.mp4", tile: "from-violet-500 to-indigo-600" },
+  { href: "/drama", title: "一句話做短劇", desc: "從一句劇情，到分鏡、出圖、動畫與整集短劇。", tag: "漫劇", icon: "fa-film", image: "/landing/tpl-drama.webp", video: "/landing/tpl-drama.mp4", tile: "from-blue-500 to-sky-500" },
 ];
 
 const FREE: Array<Action & { desc: string; meta: string }> = [
@@ -58,6 +59,12 @@ function TemplateCard({ t }: { t: Template }) {
           {t.image
             ? <img src={t.image} alt="" loading="lazy" className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
             : <span className={`w-full h-full flex items-center justify-center bg-gradient-to-br ${t.tile} text-white text-4xl`}><i className={`fas ${t.icon}`} aria-hidden="true" /></span>}
+          {/* A short silent loop made once from the cover and shipped as a static file; the cover stays underneath
+              as the poster and is all that shows when the visitor prefers reduced motion. */}
+          {t.video && (
+            <video src={t.video} poster={t.image} muted loop playsInline autoPlay preload="metadata" aria-hidden="true" tabIndex={-1}
+              className="absolute inset-0 w-full h-full object-cover motion-reduce:hidden" />
+          )}
           <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/55 text-white text-[10px] font-semibold">{t.tag}</span>
           <span className="absolute inset-x-0 bottom-0 pt-10 pb-2.5 px-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent">
             <span className="block text-sm font-bold text-white leading-tight">{t.title}</span>
