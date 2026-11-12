@@ -158,7 +158,7 @@ export default function AccountPage() {
               </button>
               {showModeration && (
                 <div className="mt-2 flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
-                  <span id="mode-label" className="text-sm text-slate-700">是否開啟 NSFW 模式</span>
+                  <span id="mode-label" className="text-sm text-slate-700">開啟敏感內容</span>
                   <button role="switch" aria-checked={modeOn} aria-labelledby="mode-label" onClick={toggleMode} disabled={saving}
                     className={`relative shrink-0 w-12 h-7 rounded-full transition-colors disabled:opacity-50 ${modeOn ? "bg-amber-400" : "bg-slate-300"}`} data-testid="switch-mode">
                     <span className={`absolute top-0.5 left-0.5 w-6 h-6 rounded-full bg-white shadow transition-transform ${modeOn ? "translate-x-5" : ""}`} />
