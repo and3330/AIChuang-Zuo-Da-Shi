@@ -4023,6 +4023,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         if (sc.sceneLocationId) wantedSceneIds.add(sc.sceneLocationId);
       }
       const charLibCache = new Map<string, string>(); // charId → base64
+      const charLibNotes = new Map<string, string>(); // charId → name and saved appearance description
       const sceneLibCache = new Map<string, string>();
       for (const id of Array.from(wantedCharIds)) {
         try {
@@ -4032,7 +4033,11 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
           const url = fv.front || fv.threeQuarter || ch.refImageUrls?.[0];
           if (!url) continue;
           const b64 = await loadAnyImageAsBase64(url, objectStorage);
-          if (b64) charLibCache.set(id, b64);
+          if (b64) {
+            charLibCache.set(id, b64);
+            const looks = (ch.description ?? "").replace(/\s+/g, " ").trim().slice(0, 300);
+            charLibNotes.set(id, looks ? `角色「${ch.name}」，外貌：${looks}` : `角色「${ch.name}」`);
+          }
         } catch (e: any) {
           console.warn(`[Drama] failed to load library char ${id}:`, e.message);
         }
@@ -4067,9 +4072,10 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
           // Per-scene global library refs (override / supplement project-level chars)
           const libraryCharRefs: string[] = [];
+          const libraryCharNotes: string[] = [];
           for (const id of (scenes[i].characterIds ?? [])) {
             const b64 = charLibCache.get(id);
-            if (b64) libraryCharRefs.push(b64);
+            if (b64) { libraryCharRefs.push(b64); libraryCharNotes.push(charLibNotes.get(id) ?? ""); }
           }
           let libraryLocationRef: string | undefined;
           if (scenes[i].sceneLocationId) {
@@ -4119,6 +4125,12 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
               const end = idx + charBList.length - 1;
               labelParts.push(`第 ${idx}${charBList.length > 1 ? `-${end}` : ""} 張圖為角色 B 外貌，保持角色一致`);
               idx += charBList.length;
+            }
+            // Library characters sit between the project characters and the scene reference in allRefs.
+            // Each is named with its saved appearance description so it stays the same person.
+            for (const noteText of libraryCharNotes) {
+              labelParts.push(`第 ${idx} 張圖為${noteText || "角色"}，保持這個角色的臉部五官、髮型與身形一致`);
+              idx += 1;
             }
             if (sceneRefList.length > 0) {
               labelParts.push(`第 ${idx} 張圖為場景構圖參考`);

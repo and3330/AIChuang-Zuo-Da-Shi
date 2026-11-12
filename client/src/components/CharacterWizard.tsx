@@ -16,7 +16,8 @@ import { FrontConfirm } from "@/components/FrontConfirm";
 // 能不能完整做出來取決於照片品質：畫面上會提醒，短邊小於 LOW_RES_SIDE 像素的照片會標「解析度低」。
 // 照片依上傳順序成為角色圖庫，可以點「設為第一張」調整。照片越多、角度越完整，生成越像本人。
 // 建立前必須確認照片是本人或已取得同意 —— 這個功能不能拿來做別人的角色。
-// 每張照片上傳後由 AI 判讀（/api/character-library/photo-tags）：角度、品質與幾個外貌標籤顯示在照片下方，
+// 照片全部上傳後，按「AI 判讀全部照片」才逐張判讀（/api/character-library/photo-tags，同時 3 張）；
+// 全部判讀完才能按建立，之後再加的照片要再按一次。判讀結果：角度、品質與幾個外貌標籤顯示在照片下方，
 // 另外每張寫一段完整的外貌描述（可展開看）；建立時全部送給伺服器，綜合成角色描述，生成時跟照片一起交給圖片模型。
 // 不適合的照片會標出原因。使用者沒有自己指定第一張時，會自動把最清楚的臉部正面照排到第一張。
 // 判讀失敗不影響建立，只是那張照片沒有標籤。
@@ -77,6 +78,8 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
   const [consent, setConsent] = useState(false);
   // AI reading of each photo, by its path. `null` while it is being read; missing when it failed.
   const [tags, setTags] = useState<Record<string, PhotoTags | null>>({});
+  // Photos whose reading failed; they can be read again and do not block creating.
+  const [readFailed, setReadFailed] = useState<string[]>([]);
   // Once the person picks or removes the first photo themselves, the order is theirs.
   const manualFirst = useRef(false);
   // Set after the character is created with its front view started: the window moves on to the likeness check.
@@ -93,7 +96,13 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
   const minPhotos = freeFourView ? FIRST_CHARACTER_MIN_PHOTOS : 1;
   const missing = Math.max(0, minPhotos - photos.length);
   const lowResCount = photos.filter(u => lowRes.includes(u)).length;
-  const ready = missing === 0 && name.trim().length > 0 && consent && !shortOfCredits;
+  // Photos are read only when the person presses "AI 判讀全部照片", after uploading all of them.
+  // Creating waits until every photo has been read, so every photo's description goes into the
+  // character. A photo whose reading failed does not block: it is simply left out.
+  const reading = photos.filter(url => tags[url] === null).length;
+  const unread = photos.filter(url => tags[url] === undefined && !readFailed.includes(url)).length;
+  const failedCount = photos.filter(url => readFailed.includes(url)).length;
+  const ready = missing === 0 && name.trim().length > 0 && consent && !shortOfCredits && reading === 0 && unread === 0;
 
   const onFiles = async (list: FileList | null) => {
     const files = Array.from(list ?? []);
@@ -114,7 +123,6 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
         const [path, side] = await Promise.all([uploadToObjectStorage(file), shortSide(file)]);
         if (side > 0 && side < LOW_RES_SIDE) setLowRes(prev => [...prev, path]);
         setPhotos(prev => (prev.length < WIZARD_MAX_PHOTOS ? [...prev, path] : prev));
-        readPhoto(path);
       } catch {
         failed += 1;
       } finally {
@@ -124,12 +132,23 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
     if (failed > 0) toast({ title: tr("{0} 張上傳失敗", { 0: failed }), description: tr("請再試一次。"), variant: "destructive" });
   };
 
-  const readPhoto = (path: string) => {
+  const readPhoto = (path: string): Promise<void> => {
     setTags(prev => ({ ...prev, [path]: null }));
-    apiRequest("POST", "/api/character-library/photo-tags", { url: path, lang: getLang() })
+    setReadFailed(prev => prev.filter(u => u !== path));
+    return apiRequest("POST", "/api/character-library/photo-tags", { url: path, lang: getLang() })
       .then(r => r.json())
       .then((t: PhotoTags) => setTags(prev => ({ ...prev, [path]: t })))
-      .catch(() => setTags(prev => { const next = { ...prev }; delete next[path]; return next; }));
+      .catch(() => {
+        setTags(prev => { const next = { ...prev }; delete next[path]; return next; });
+        setReadFailed(prev => [...prev, path]);
+      });
+  };
+
+  /** Reads every photo that has not been read yet, three at a time. */
+  const readAll = async () => {
+    const queue = photos.filter(url => tags[url] === undefined || readFailed.includes(url));
+    const worker = async () => { for (let url = queue.shift(); url; url = queue.shift()) await readPhoto(url); };
+    await Promise.all([worker(), worker(), worker()]);
   };
 
   // Put the clearest front-face photo first, as long as the person has not chosen the order themselves
@@ -260,6 +279,25 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
           {TIPS.map(tip => <li key={tip} className="text-[11px] text-slate-500"><i className="fas fa-check text-emerald-500 mr-1.5" />{tip}</li>)}
         </ul>
 
+        {photos.length > 0 && (
+          <div className="mt-3" data-testid="wizard-read-all">
+            <button onClick={() => void readAll()} disabled={reading > 0 || uploading > 0 || (unread === 0 && failedCount === 0)}
+              className="w-full h-10 rounded-xl border-2 border-indigo-500 text-indigo-600 text-sm font-semibold hover:bg-indigo-50 disabled:opacity-50 disabled:hover:bg-transparent"
+              data-testid="button-wizard-read-all">
+              {reading > 0
+                ? <><i className="fas fa-spinner fa-spin mr-1.5" />{tr("AI 判讀中（還有 {0} 張）…", { 0: reading })}</>
+                : unread > 0
+                  ? <><i className="fas fa-wand-magic-sparkles mr-1.5" />{tr("照片都上傳好了：AI 判讀全部照片（{0} 張）", { 0: unread + failedCount })}</>
+                  : failedCount > 0
+                    ? tr("有 {0} 張判讀失敗，再判讀一次", { 0: failedCount })
+                    : <><i className="fas fa-check mr-1.5" />{tr("全部照片都判讀好了")}</>}
+            </button>
+            {unread > 0 && reading === 0 && (
+              <p className="text-[11px] text-slate-500 mt-1 text-center">{tr("先把要用的照片全部上傳，再按這裡。之後再加照片，要再按一次。")}</p>
+            )}
+          </div>
+        )}
+
         <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900" data-testid="wizard-quality-note">
           <i className="fas fa-triangle-exclamation mr-1.5" />{tr("角色能不能完整做出來，要看照片品質。模糊、太暗、臉被遮住、開了濾鏡，或全部都是同一個角度的照片，做出來可能不像、也可能缺少側面或全身。")}
           {lowResCount > 0 && <span className="block mt-1 font-semibold" data-testid="wizard-lowres-note">{tr("有 {0} 張照片解析度偏低，建議換成更清楚的。", { 0: lowResCount })}</span>}
@@ -282,7 +320,7 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
 
         <button onClick={() => createMutation.mutate()} disabled={!ready || createMutation.isPending || uploading > 0}
           className="mt-4 w-full h-11 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40" data-testid="button-wizard-create">
-          {createMutation.isPending ? tr("建立中…") : freeFourView ? tr("下一步：先生成正面圖確認（首次免費）") : paidFourView ? tr("下一步：先生成正面圖確認（{0} 積分）", { 0: FOUR_VIEW_COST }) : tr("下一步：建立角色")}
+          {createMutation.isPending ? tr("建立中…") : reading > 0 ? tr("AI 正在判讀照片（還有 {0} 張），請稍候…", { 0: reading }) : unread > 0 ? tr("先判讀全部照片，才能建立角色") : freeFourView ? tr("下一步：先生成正面圖確認（首次免費）") : paidFourView ? tr("下一步：先生成正面圖確認（{0} 積分）", { 0: FOUR_VIEW_COST }) : tr("下一步：建立角色")}
         </button>
         {shortOfCredits && (
           <p className="text-xs text-red-600 mt-2 text-center" data-testid="wizard-short-credits">
