@@ -16,7 +16,8 @@ import { FrontConfirm } from "@/components/FrontConfirm";
 // 能不能完整做出來取決於照片品質：畫面上會提醒，短邊小於 LOW_RES_SIDE 像素的照片會標「解析度低」。
 // 照片依上傳順序成為角色圖庫，可以點「設為第一張」調整。照片越多、角度越完整，生成越像本人。
 // 建立前必須確認照片是本人或已取得同意 —— 這個功能不能拿來做別人的角色。
-// 每張照片上傳後由 AI 判讀（/api/character-library/photo-tags）：角度、品質與幾個標籤顯示在照片下方，
+// 每張照片上傳後由 AI 判讀（/api/character-library/photo-tags）：角度、品質與幾個外貌標籤顯示在照片下方，
+// 另外每張寫一段完整的外貌描述（可展開看）；建立時全部送給伺服器，綜合成角色描述，生成時跟照片一起交給圖片模型。
 // 不適合的照片會標出原因。使用者沒有自己指定第一張時，會自動把最清楚的臉部正面照排到第一張。
 // 判讀失敗不影響建立，只是那張照片沒有標籤。
 // 按「下一步」就建立角色並先生成正面圖，同一個視窗接著問「像不像」（components/FrontConfirm.tsx）：
@@ -152,7 +153,11 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/character-library", { name: name.trim(), refImageUrls: photos, styleHint: "realistic" });
+      const res = await apiRequest("POST", "/api/character-library", {
+        name: name.trim(), refImageUrls: photos, styleHint: "realistic",
+        // What the AI read from each photo; the server writes the character's description from all of them.
+        photoPrompts: photos.map(url => tags[url]?.prompt ?? "").filter(Boolean),
+      });
       const created = await res.json() as { id: string };
       // Start the 四視圖 right away (free the first time, FOUR_VIEW_COST after). If it cannot start, the character is still saved.
       let started = false;
@@ -235,6 +240,16 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
             </button>
           )}
         </div>
+        {photos.some(url => tags[url]?.prompt) && (
+          <details className="mt-3 rounded-xl border border-slate-200 px-3 py-2" data-testid="wizard-photo-prompts">
+            <summary className="text-xs font-semibold text-slate-700 cursor-pointer">{tr("AI 讀到的外貌描述（建立角色時會一起用上）")}</summary>
+            <ol className="mt-2 space-y-1.5">
+              {photos.map((url, i) => tags[url]?.prompt ? (
+                <li key={url} className="text-[11px] leading-relaxed text-slate-600"><span className="font-semibold text-slate-800">{tr("第 {0} 張", { 0: i + 1 })}</span>　{tags[url]!.prompt}</li>
+              ) : null)}
+            </ol>
+          </details>
+        )}
         <p className="text-xs font-semibold text-slate-700 mt-3" data-testid="wizard-count">
           {tr("已選 {0}／{1} 張", { 0: photos.length, 1: WIZARD_MAX_PHOTOS })}
           <span className="font-normal text-slate-500">
