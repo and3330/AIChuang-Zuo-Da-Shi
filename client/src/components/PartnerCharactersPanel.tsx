@@ -1,3 +1,4 @@
+import { tr, dateLocale } from "@/lib/i18n";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
@@ -20,7 +21,7 @@ type Row = {
   created_at: string | null;
 };
 
-const fmt = (d: string | null) => (d ? new Date(d).toLocaleString("zh-TW", { hour12: false }) : "—");
+const fmt = (d: string | null) => (d ? new Date(d).toLocaleString(dateLocale(), { hour12: false }) : "—");
 
 export function PartnerCharactersPanel() {
   const { toast } = useToast();
@@ -39,64 +40,64 @@ export function PartnerCharactersPanel() {
   const toggle = useMutation({
     mutationFn: async (v: { id: string; disabled: boolean; reason?: string }) =>
       (await apiRequest("POST", `/api/admin/partner-characters/${v.id}/disable`, { disabled: v.disabled, reason: v.reason })).json(),
-    onSuccess: (_d, v) => { refresh(); toast({ title: v.disabled ? "已停用" : "已重新啟用" }); },
-    onError: () => toast({ title: "更新失敗", variant: "destructive" }),
+    onSuccess: (_d, v) => { refresh(); toast({ title: v.disabled ? tr("已停用") : tr("已重新啟用") }); },
+    onError: () => toast({ title: tr("更新失敗"), variant: "destructive" }),
   });
   const toggleOwner = useMutation({
     mutationFn: async (v: { ownerRef: string; disabled: boolean; reason?: string }) =>
       (await apiRequest("POST", `/api/admin/partner-characters/disable-by-owner`, v)).json(),
-    onSuccess: (d: { affected: number }, v) => { refresh(); toast({ title: `${v.disabled ? "已停用" : "已重新啟用"} ${d.affected} 個角色` }); },
-    onError: () => toast({ title: "更新失敗", variant: "destructive" }),
+    onSuccess: (d: { affected: number }, v) => { refresh(); toast({ title: tr("{0} {1} 個角色", { 0: v.disabled ? "已停用" : "已重新啟用", 1: d.affected }) }); },
+    onError: () => toast({ title: tr("更新失敗"), variant: "destructive" }),
   });
 
-  const askReason = () => window.prompt("停用原因（選填，只有後台看得到）：", "") ?? undefined;
+  const askReason = () => window.prompt(tr("停用原因（選填，只有後台看得到）："), "") ?? undefined;
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl overflow-hidden" data-testid="partner-characters-panel">
       <div className="p-5">
         <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-          <i className="fas fa-user-shield text-purple-500"></i>對外 API 的 AI 角色
+          <i className="fas fa-user-shield text-purple-500"></i>{tr("對外 API 的 AI 角色")}
         </h3>
         <p className="text-sm text-gray-500 mt-1">
-          處理肖像下架用。停用後這個角色不能再用來生成或做四視圖，對方查詢時會看到 disabled；資料與圖片仍保留，重新啟用即可恢復。要連同圖片一起移除，請對方呼叫刪除端點。
+          {tr("處理肖像下架用。停用後這個角色不能再用來生成或做四視圖，對方查詢時會看到 disabled；資料與圖片仍保留，重新啟用即可恢復。要連同圖片一起移除，請對方呼叫刪除端點。")}
         </p>
         <form className="flex flex-col md:flex-row gap-2 mt-4" onSubmit={e => { e.preventDefault(); setApplied({ ownerRef: ownerRef.trim(), id: characterId.trim() }); }}>
-          <input value={ownerRef} onChange={e => setOwnerRef(e.target.value)} placeholder="owner_ref（工作區代號）"
+          <input value={ownerRef} onChange={e => setOwnerRef(e.target.value)} placeholder={tr("owner_ref（工作區代號）")}
             className="flex-1 h-10 px-3 rounded-lg border border-gray-300 text-sm" data-testid="input-partner-owner-ref" />
-          <input value={characterId} onChange={e => setCharacterId(e.target.value)} placeholder="角色代號（選填）"
+          <input value={characterId} onChange={e => setCharacterId(e.target.value)} placeholder={tr("角色代號（選填）")}
             className="flex-1 h-10 px-3 rounded-lg border border-gray-300 text-sm font-mono" data-testid="input-partner-character-id" />
-          <button type="submit" className="h-10 px-4 rounded-lg bg-purple-600 text-white text-sm font-medium" data-testid="button-partner-character-search">搜尋</button>
+          <button type="submit" className="h-10 px-4 rounded-lg bg-purple-600 text-white text-sm font-medium" data-testid="button-partner-character-search">{tr("搜尋")}</button>
         </form>
         {applied.ownerRef && rows.length > 0 && (
           <div className="flex flex-wrap gap-2 mt-3">
             <button disabled={toggleOwner.isPending}
-              onClick={() => { if (window.confirm(`確定停用「${applied.ownerRef}」的全部 ${rows.length} 個角色？`)) toggleOwner.mutate({ ownerRef: applied.ownerRef, disabled: true, reason: askReason() }); }}
+              onClick={() => { if (window.confirm(tr("確定停用「{0}」的全部 {1} 個角色？", { 0: applied.ownerRef, 1: rows.length }))) toggleOwner.mutate({ ownerRef: applied.ownerRef, disabled: true, reason: askReason() }); }}
               className="h-9 px-3 rounded-lg border border-red-200 bg-red-50 text-red-700 text-xs font-medium" data-testid="button-disable-owner">
-              停用這個單位的全部角色
+              {tr("停用這個單位的全部角色")}
             </button>
             <button disabled={toggleOwner.isPending} onClick={() => toggleOwner.mutate({ ownerRef: applied.ownerRef, disabled: false })}
               className="h-9 px-3 rounded-lg border border-gray-200 text-gray-600 text-xs" data-testid="button-enable-owner">
-              全部重新啟用
+              {tr("全部重新啟用")}
             </button>
           </div>
         )}
       </div>
 
       {isLoading ? (
-        <p className="px-5 pb-5 text-sm text-gray-400">讀取中…</p>
+        <p className="px-5 pb-5 text-sm text-gray-400">{tr("讀取中…")}</p>
       ) : isError ? (
-        <p className="px-5 pb-5 text-sm text-red-500">讀取失敗。資料表可能尚未建立，請先執行 npm run db:push。</p>
+        <p className="px-5 pb-5 text-sm text-red-500">{tr("讀取失敗。資料表可能尚未建立，請先執行 npm run db:push。")}</p>
       ) : rows.length === 0 ? (
-        <p className="px-5 pb-5 text-sm text-gray-400">{applied.ownerRef || applied.id ? "找不到符合的角色。" : "還沒有角色。"}</p>
+        <p className="px-5 pb-5 text-sm text-gray-400">{applied.ownerRef || applied.id ? tr("找不到符合的角色。") : tr("還沒有角色。")}</p>
       ) : (
         <div className="overflow-x-auto border-t border-gray-100">
           <table className="w-full text-sm">
             <thead className="bg-gray-50 text-xs text-gray-500">
               <tr>
-                <th className="text-left px-4 py-2 font-medium">角色</th>
+                <th className="text-left px-4 py-2 font-medium">{tr("角色")}</th>
                 <th className="text-left px-4 py-2 font-medium">owner_ref</th>
-                <th className="text-left px-4 py-2 font-medium">同意時間</th>
-                <th className="text-left px-4 py-2 font-medium">狀態</th>
+                <th className="text-left px-4 py-2 font-medium">{tr("同意時間")}</th>
+                <th className="text-left px-4 py-2 font-medium">{tr("狀態")}</th>
                 <th className="px-4 py-2"></th>
               </tr>
             </thead>
@@ -111,7 +112,7 @@ export function PartnerCharactersPanel() {
                       <div className="min-w-0">
                         <div className="font-medium text-gray-900 truncate">{r.name}</div>
                         <div className="text-[11px] font-mono text-gray-400 truncate">{r.id}</div>
-                        <div className="text-[11px] text-gray-400">參考圖 {r.reference_image_urls.length}・四視圖 {r.four_view_urls.length}</div>
+                        <div className="text-[11px] text-gray-400">{tr("參考圖 {0}・四視圖 {1}", { 0: r.reference_image_urls.length, 1: r.four_view_urls.length })}</div>
                       </div>
                     </div>
                   </td>
@@ -119,17 +120,17 @@ export function PartnerCharactersPanel() {
                   <td className="px-4 py-3 text-xs">{fmt(r.consentAt)}</td>
                   <td className="px-4 py-3 text-xs">
                     {r.disabled
-                      ? <span className="text-red-600">已停用<br />{fmt(r.disabledAt)}{r.disabledReason ? <><br /><span className="text-gray-500">{r.disabledReason}</span></> : null}</span>
-                      : <span className="text-green-600">可使用</span>}
+                      ? <span className="text-red-600">{tr("已停用")}<br />{fmt(r.disabledAt)}{r.disabledReason ? <><br /><span className="text-gray-500">{r.disabledReason}</span></> : null}</span>
+                      : <span className="text-green-600">{tr("可使用")}</span>}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {r.disabled ? (
                       <button disabled={toggle.isPending} onClick={() => toggle.mutate({ id: r.id, disabled: false })}
-                        className="text-xs text-gray-600 hover:underline" data-testid={`button-enable-${r.id}`}>重新啟用</button>
+                        className="text-xs text-gray-600 hover:underline" data-testid={`button-enable-${r.id}`}>{tr("重新啟用")}</button>
                     ) : (
                       <button disabled={toggle.isPending}
-                        onClick={() => { if (window.confirm(`確定停用「${r.name}」？停用後不能再用來生成。`)) toggle.mutate({ id: r.id, disabled: true, reason: askReason() }); }}
-                        className="text-xs text-red-600 hover:underline" data-testid={`button-disable-${r.id}`}>停用</button>
+                        onClick={() => { if (window.confirm(tr("確定停用「{0}」？停用後不能再用來生成。", { 0: r.name }))) toggle.mutate({ id: r.id, disabled: true, reason: askReason() }); }}
+                        className="text-xs text-red-600 hover:underline" data-testid={`button-disable-${r.id}`}>{tr("停用")}</button>
                     )}
                   </td>
                 </tr>
@@ -138,7 +139,7 @@ export function PartnerCharactersPanel() {
           </table>
         </div>
       )}
-      <p className="px-5 py-3 border-t border-gray-100 text-[11px] text-gray-400">最多顯示 200 筆，請用 owner_ref 或角色代號縮小範圍。</p>
+      <p className="px-5 py-3 border-t border-gray-100 text-[11px] text-gray-400">{tr("最多顯示 200 筆，請用 owner_ref 或角色代號縮小範圍。")}</p>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+import { tr, localizeLibrary, getLang, trServer } from "@/lib/i18n";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -62,7 +63,7 @@ async function uploadToObjectStorage(file: File): Promise<string> {
   const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
   const { uploadURL } = await uploadRes.json();
   const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-  if (!putRes.ok) throw new Error("上傳失敗");
+  if (!putRes.ok) throw new Error(tr("上傳失敗"));
   const pathRes = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
   const { objectPath } = await pathRes.json();
   return objectPath as string;
@@ -78,8 +79,8 @@ function errorText(e: unknown): string {
 }
 
 function checkImageFile(file: File): string | null {
-  if (!file.type.startsWith("image/")) return "請上傳 JPG、PNG 或 WEBP 圖片。";
-  if (file.size > MAX_UPLOAD_BYTES) return "請上傳 20MB 以內的圖片。";
+  if (!file.type.startsWith("image/")) return tr("請上傳 JPG、PNG 或 WEBP 圖片。");
+  if (file.size > MAX_UPLOAD_BYTES) return tr("請上傳 20MB 以內的圖片。");
   return null;
 }
 
@@ -101,14 +102,14 @@ async function randomFromLibrary(library: LibraryId): Promise<RecipeItem> {
   const PAGE = 60;
   const get = async (page: number) => {
     const res = await apiRequest("GET", `/api/library/assets?library=${library}&page=${page}&pageSize=${PAGE}`);
-    return res.json() as Promise<{ items: LibraryAsset[]; total: number }>;
+    return localizeLibrary(await res.json()) as { items: LibraryAsset[]; total: number };
   };
   const first = await get(1);
   const pages = Math.min(1000, Math.max(1, Math.ceil(first.total / PAGE)));
   const page = 1 + Math.floor(Math.random() * pages);
   const pool = (page === 1 ? first : await get(page)).items.filter(a => !!a.imageUrl);
   const pick = pool[Math.floor(Math.random() * pool.length)];
-  if (!pick) throw new Error("圖庫裡還沒有可用的素材。");
+  if (!pick) throw new Error(tr("圖庫裡還沒有可用的素材。"));
   return { id: pick.id, name: pick.name, usage: pick.usage, imageUrl: pick.imageUrl, thumbUrl: pick.thumbUrl };
 }
 
@@ -127,14 +128,14 @@ function Step({ n, title, summary, open, done, locked, onOpen, children }: {
           <span className="block text-sm font-bold text-slate-900">{title}</span>
           {!open && <span className="block text-xs text-slate-500 truncate">{summary}</span>}
         </span>
-        {!open && !locked && <span className="text-xs text-indigo-600 shrink-0">修改</span>}
+        {!open && !locked && <span className="text-xs text-indigo-600 shrink-0">{tr("修改")}</span>}
       </button>
       {open && <div className="px-4 pb-4 space-y-4">{children}</div>}
     </section>
   );
 }
 
-function NextButton({ onClick, disabled, label = "下一步" }: { onClick: () => void; disabled?: boolean; label?: string }) {
+function NextButton({ onClick, disabled, label = tr("下一步") }: { onClick: () => void; disabled?: boolean; label?: string }) {
   return (
     <button onClick={onClick} disabled={disabled} className="w-full h-11 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-next-step">
       {label}<i className="fas fa-arrow-down ml-2 text-xs" />
@@ -147,9 +148,9 @@ function LibrarySlot({ label, icon, item, onPick, onRandom, onClear, disabled, r
   label: string; icon: string; item?: RecipeItem; onPick: () => void; onRandom: () => void; onClear: () => void; disabled?: boolean; randomizing?: boolean;
 }) {
   const random = (
-    <button onClick={onRandom} disabled={disabled || randomizing} title={`隨機選一個${label}`}
+    <button onClick={onRandom} disabled={disabled || randomizing} title={tr("隨機選一個{0}", { 0: label })}
       className="shrink-0 h-12 px-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 text-fuchsia-700 text-xs font-semibold hover:bg-fuchsia-100 disabled:opacity-50" data-testid={`button-random-${label}`}>
-      <i className={`fas ${randomizing ? "fa-spinner fa-spin" : "fa-shuffle"} mr-1.5`} />隨機
+      <i className={`fas ${randomizing ? "fa-spinner fa-spin" : "fa-shuffle"} mr-1.5`} />{tr("隨機")}
     </button>
   );
   if (!item) {
@@ -157,7 +158,7 @@ function LibrarySlot({ label, icon, item, onPick, onRandom, onClear, disabled, r
       <div className="flex gap-2">
         <button onClick={onPick} disabled={disabled}
           className="flex-1 h-12 rounded-xl border border-dashed border-indigo-300 bg-indigo-50/50 text-indigo-700 text-sm font-medium flex items-center justify-center gap-2 hover:bg-indigo-50 disabled:opacity-50" data-testid={`button-pick-${label}`}>
-          <i className={`fas ${icon} text-xs`} />從素材圖庫選{label}
+          <i className={`fas ${icon} text-xs`} />{tr("從素材圖庫選{0}", { 0: label })}
         </button>
         {random}
       </div>
@@ -168,8 +169,8 @@ function LibrarySlot({ label, icon, item, onPick, onRandom, onClear, disabled, r
       <div className="flex-1 min-w-0 flex items-center gap-3 rounded-xl border border-indigo-200 bg-indigo-50/60 p-1.5 pr-2">
         <img src={item.thumbUrl || item.imageUrl || ""} alt={item.name} className="w-9 h-9 rounded-lg object-contain bg-white shrink-0" />
         <p className="min-w-0 flex-1 text-sm text-slate-900 truncate" title={item.name}>{item.name}</p>
-        <button onClick={onPick} disabled={disabled} className="text-xs text-indigo-600 hover:underline disabled:opacity-40">更換</button>
-        <button onClick={onClear} disabled={disabled} className="w-6 h-6 rounded-full text-slate-400 hover:text-red-500 disabled:opacity-40" title="移除"><i className="fas fa-xmark" /></button>
+        <button onClick={onPick} disabled={disabled} className="text-xs text-indigo-600 hover:underline disabled:opacity-40">{tr("更換")}</button>
+        <button onClick={onClear} disabled={disabled} className="w-6 h-6 rounded-full text-slate-400 hover:text-red-500 disabled:opacity-40" title={tr("移除")}><i className="fas fa-xmark" /></button>
       </div>
       {random}
     </div>
@@ -181,8 +182,8 @@ function SourceButtons({ onUpload, onVault, busy, disabled }: { onUpload: () => 
   const cls = "flex-1 h-11 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 hover:border-indigo-300 disabled:opacity-50";
   return (
     <div className="flex gap-2">
-      <button onClick={onUpload} disabled={disabled || busy} className={cls}><i className="fas fa-cloud-arrow-up mr-2 text-xs text-slate-400" />{busy ? "上傳中…" : "上傳照片"}</button>
-      <button onClick={onVault} disabled={disabled} className={cls} data-testid="button-from-vault"><i className="fas fa-photo-film mr-2 text-xs text-slate-400" />從作品選</button>
+      <button onClick={onUpload} disabled={disabled || busy} className={cls}><i className="fas fa-cloud-arrow-up mr-2 text-xs text-slate-400" />{busy ? tr("上傳中…") : tr("上傳照片")}</button>
+      <button onClick={onVault} disabled={disabled} className={cls} data-testid="button-from-vault"><i className="fas fa-photo-film mr-2 text-xs text-slate-400" />{tr("從作品選")}</button>
     </div>
   );
 }
@@ -296,23 +297,23 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const switchMode = (m: Mode) => { if (m !== mode) { setMode(m); setActive(0); setReached(0); } };
 
   const collageTiles: CollageTile[] = [
-    ...(personRefs[0] ? [{ label: "人像", name: portrait?.name ?? character?.name ?? "人物參考圖", url: personRefs[0] }] : []),
-    ...(costume?.imageUrl ? [{ label: "服裝", name: costume.name, url: costume.imageUrl }] : []),
-    ...(pose?.imageUrl ? [{ label: "姿勢", name: pose.name, url: pose.imageUrl }] : []),
-  ].map((t, i) => ({ ...t, label: `圖${i + 1}・${t.label}` }));
+    ...(personRefs[0] ? [{ label: tr("人像"), name: portrait?.name ?? character?.name ?? tr("人物參考圖"), url: personRefs[0] }] : []),
+    ...(costume?.imageUrl ? [{ label: tr("服裝"), name: costume.name, url: costume.imageUrl }] : []),
+    ...(pose?.imageUrl ? [{ label: tr("姿勢"), name: pose.name, url: pose.imageUrl }] : []),
+  ].map((t, i) => ({ ...t, label: tr("圖{0}・{1}", { 0: i + 1, 1: t.label }) }));
 
   /* ── uploads and picks ── */
 
   const handleSituationFile = async (file: File | undefined) => {
     if (!file) return;
     const problem = checkImageFile(file);
-    if (problem) { toast({ title: "無法使用這個檔案", description: problem, variant: "destructive" }); return; }
+    if (problem) { toast({ title: tr("無法使用這個檔案"), description: problem, variant: "destructive" }); return; }
     setUploading("situation");
     try {
       setSituationPath(await uploadToObjectStorage(file));
       resetPlan();
     } catch (e) {
-      toast({ title: "上傳失敗", description: errorText(e), variant: "destructive" });
+      toast({ title: tr("上傳失敗"), description: errorText(e), variant: "destructive" });
     } finally {
       setUploading("");
       if (situationInputRef.current) situationInputRef.current.value = "";
@@ -321,7 +322,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
 
   const addRef = (url: string) => {
     if (wantedRefs.length >= refCap) {
-      toast({ title: "人物參考圖已達上限", description: `這裡最多使用 ${refCap} 張。`, variant: "destructive" });
+      toast({ title: tr("人物參考圖已達上限"), description: tr("這裡最多使用 {0} 張。", { 0: refCap }), variant: "destructive" });
       return false;
     }
     setExtraRefs(prev => (prev.includes(url) ? prev : [...prev, url]));
@@ -332,18 +333,18 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const handleRefFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
     const room = refCap - wantedRefs.length;
-    if (room <= 0) { toast({ title: "人物參考圖已達上限", description: `這裡最多使用 ${refCap} 張。`, variant: "destructive" }); return; }
+    if (room <= 0) { toast({ title: tr("人物參考圖已達上限"), description: tr("這裡最多使用 {0} 張。", { 0: refCap }), variant: "destructive" }); return; }
     setUploading("refs");
     try {
       for (const file of Array.from(files).slice(0, room)) {
         const problem = checkImageFile(file);
-        if (problem) { toast({ title: `略過 ${file.name}`, description: problem, variant: "destructive" }); continue; }
+        if (problem) { toast({ title: tr("略過 {0}", { 0: file.name }), description: problem, variant: "destructive" }); continue; }
         const path = await uploadToObjectStorage(file);
         setExtraRefs(prev => [...prev, path]);
       }
       resetPlan();
     } catch (e) {
-      toast({ title: "上傳失敗", description: errorText(e), variant: "destructive" });
+      toast({ title: tr("上傳失敗"), description: errorText(e), variant: "destructive" });
     } finally {
       setUploading("");
       if (refInputRef.current) refInputRef.current.value = "";
@@ -354,17 +355,17 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
     setPlan(p => p ? { ...p, shots: p.shots.map((s, i) => (i === idx ? { ...s, ...patch } : s)) } : p);
   };
   const removeShot = (idx: number) => { setPlan(p => p ? { ...p, shots: p.shots.filter((_, i) => i !== idx) } : p); };
-  const addShot = () => { setPlan(p => p && p.shots.length < MAX_SHOTS ? { ...p, shots: [...p.shots, { title: `鏡頭 ${p.shots.length + 1}`, prompt: "" }] } : p); };
+  const addShot = () => { setPlan(p => p && p.shots.length < MAX_SHOTS ? { ...p, shots: [...p.shots, { title: tr("鏡頭 {0}", { 0: p.shots.length + 1 }), prompt: "" }] } : p); };
 
   const handlePoseRefFile = async (file: File | undefined) => {
     const idx = poseRefTarget;
     if (!file || idx === null) return;
     const problem = checkImageFile(file);
-    if (problem) { toast({ title: "無法使用這個檔案", description: problem, variant: "destructive" }); return; }
+    if (problem) { toast({ title: tr("無法使用這個檔案"), description: problem, variant: "destructive" }); return; }
     try {
       updateShot(idx, { poseRef: await uploadToObjectStorage(file) });
     } catch (e) {
-      toast({ title: "上傳失敗", description: errorText(e), variant: "destructive" });
+      toast({ title: tr("上傳失敗"), description: errorText(e), variant: "destructive" });
     } finally {
       setPoseRefTarget(null);
       if (poseRefInputRef.current) poseRefInputRef.current.value = "";
@@ -396,7 +397,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       const items = await Promise.all(libraries.map(randomFromLibrary));
       libraries.forEach((lib, i) => applyPick(lib, items[i]));
     } catch (e) {
-      toast({ title: "隨機選擇失敗", description: errorText(e), variant: "destructive" });
+      toast({ title: tr("隨機選擇失敗"), description: errorText(e), variant: "destructive" });
     } finally {
       setRandomizing("");
     }
@@ -417,12 +418,13 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
     mutationFn: async (planner: "ai" | "preset"): Promise<Plan> => {
       const scene = sceneText.trim();
       const directionParts = [
-        scene ? (hasSituation ? `情境補充：${scene}` : mode === "scene" ? `拍攝情境（整組都在這個情境裡拍攝）：${scene}` : "") : "",
-        pose ? `姿勢：第一張請使用這個姿勢——${pose.usage}；其餘各張請依情境自行安排不同的姿勢，不要重複` : "",
-        costume ? `規劃時納入服裝參考：${costume.usage}。生成時會依目前選擇的服裝調整。` : "",
+        scene ? (hasSituation ? tr("情境補充：{0}", { 0: scene }) : mode === "scene" ? tr("拍攝情境（整組都在這個情境裡拍攝）：{0}", { 0: scene }) : "") : "",
+        pose ? tr("姿勢：第一張請使用這個姿勢——{0}；其餘各張請依情境自行安排不同的姿勢，不要重複", { 0: pose.usage }) : "",
+        costume ? tr("規劃時納入服裝參考：{0}。生成時會依目前選擇的服裝調整。", { 0: costume.usage }) : "",
         isSheet ? "" : shootControlText(control, { hasSceneImage: hasSituation }),
       ].filter(Boolean);
       const res = await apiRequest("POST", "/api/photosets/plan", {
+        lang: getLang(),
         mode: hasSituation ? "scene" : "character",
         planner,
         situationImageUrl: hasSituation ? situationPath : undefined,
@@ -445,7 +447,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       setBatchId(""); setSavedUrls([]);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     },
-    onError: (e) => toast({ title: "規劃失敗", description: errorText(e), variant: "destructive" }),
+    onError: (e) => toast({ title: tr("規劃失敗"), description: errorText(e), variant: "destructive" }),
   });
 
   const generateMutation = useMutation({
@@ -459,7 +461,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
             outfit: costume ? (costumeImage ? "costume" : "prompt") : hasSituation ? outfitFrom : portrait ? "prompt" : "character",
           });
       // The outfit is added here, not in the plan, so it can be swapped without re-planning.
-      const outfitText = !isSheet && costume ? `（服裝：${costume.usage}）` : "";
+      const outfitText = !isSheet && costume ? tr("（服裝：{0}）", { 0: costume.usage }) : "";
       const [first, ...rest] = sharedImages;
       const poseImageNumber = sharedImages.length + 1;
       const hasPoseRefs = validShots.some(s => !!s.poseRef);
@@ -480,7 +482,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       setSavedUrls([]);
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
     },
-    onError: (e) => toast({ title: "生成失敗", description: errorText(e), variant: "destructive" }),
+    onError: (e) => toast({ title: tr("生成失敗"), description: errorText(e), variant: "destructive" }),
   });
 
   const { data: batch } = useQuery<BatchStatus>({
@@ -515,18 +517,18 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
 
   const saveToPackMutation = useMutation({
     mutationFn: async (urls: string[]) => {
-      if (!character) throw new Error("請先選擇角色");
+      if (!character) throw new Error(tr("請先選擇角色"));
       const fresh = urls.filter(u => !characterRefs.includes(u)).slice(0, Math.max(0, packRoom));
-      if (fresh.length === 0) throw new Error(packRoom <= 0 ? `角色圖庫已滿（${CHARACTER_PACK_MAX_IMAGES} 張）` : "這些圖已經在圖庫裡了");
+      if (fresh.length === 0) throw new Error(packRoom <= 0 ? tr("角色圖庫已滿（{0} 張）", { 0: CHARACTER_PACK_MAX_IMAGES }) : tr("這些圖已經在圖庫裡了"));
       await apiRequest("PATCH", `/api/character-library/${character.id}`, { refImageUrls: [...characterRefs, ...fresh] });
       return fresh;
     },
     onSuccess: (fresh) => {
       setSavedUrls(prev => [...prev, ...fresh]);
       queryClient.invalidateQueries({ queryKey: ["/api/character-library"] });
-      toast({ title: `已加入「${character?.name}」的圖庫`, description: `新增 ${fresh.length} 張。` });
+      toast({ title: tr("已加入「{0}」的圖庫", { 0: character?.name }), description: tr("新增 {0} 張。", { 0: fresh.length }) });
     },
-    onError: (e) => toast({ title: "加入圖庫失敗", description: errorText(e), variant: "destructive" }),
+    onError: (e) => toast({ title: tr("加入圖庫失敗"), description: errorText(e), variant: "destructive" }),
   });
 
   const canGenerate = inputsReady && validShots.length >= MIN_SHOTS && validShots.length <= MAX_SHOTS && credits >= totalCost && !busy;
@@ -542,20 +544,20 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       {portrait?.imageUrl && (
         <div className="relative w-14 h-14 rounded-lg overflow-hidden border border-fuchsia-300 bg-slate-50" title={portrait.name}>
           <img src={portrait.thumbUrl || portrait.imageUrl} alt={portrait.name} className="w-full h-full object-cover" />
-          <span className="absolute bottom-0 inset-x-0 bg-fuchsia-500/85 text-white text-[9px] text-center">圖庫人像</span>
+          <span className="absolute bottom-0 inset-x-0 bg-fuchsia-500/85 text-white text-[9px] text-center">{tr("圖庫人像")}</span>
         </div>
       )}
       {characterShown.slice(0, Math.max(0, refCap - (portrait?.imageUrl ? 1 : 0))).map((url, i) => (
         <div key={`c-${i}`} className="relative w-14 h-14 rounded-lg overflow-hidden border border-indigo-200 bg-slate-50" title={character?.name}>
-          <img src={url} alt={`角色圖 ${i + 1}`} className="w-full h-full object-cover" />
-          <span className="absolute bottom-0 inset-x-0 bg-indigo-600/80 text-white text-[9px] text-center">角色</span>
+          <img src={url} alt={tr("角色圖 {0}", { 0: i + 1 })} className="w-full h-full object-cover" />
+          <span className="absolute bottom-0 inset-x-0 bg-indigo-600/80 text-white text-[9px] text-center">{tr("角色")}</span>
         </div>
       ))}
       {extraRefs.map((url, i) => (
         <div key={`x-${i}`} className="relative w-14 h-14 rounded-lg overflow-hidden border border-slate-300 bg-slate-50">
-          <img src={url} alt={`參考圖 ${i + 1}`} className="w-full h-full object-cover" />
+          <img src={url} alt={tr("參考圖 {0}", { 0: i + 1 })} className="w-full h-full object-cover" />
           <button onClick={() => { setExtraRefs(prev => prev.filter((_, idx) => idx !== i)); resetPlan(); }} disabled={busy}
-            className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-bl-lg flex items-center justify-center" title="移除">×</button>
+            className="absolute top-0 right-0 w-5 h-5 bg-red-500 text-white text-xs rounded-bl-lg flex items-center justify-center" title={tr("移除")}>×</button>
         </div>
       ))}
     </div>
@@ -572,13 +574,13 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
     <div className="flex gap-2">
       <select value={characterId} onChange={(e) => { setCharacterId(e.target.value); if (e.target.value) setPortrait(undefined); }} disabled={busy}
         className="flex-1 min-w-0 h-11 px-3 border border-slate-200 rounded-xl text-sm bg-white" data-testid="select-photoset-character">
-        <option value="">{mode === "scene" ? "不指定角色" : "從角色庫選擇…"}</option>
+        <option value="">{mode === "scene" ? tr("不指定角色") : tr("從角色庫選擇…")}</option>
         {characters.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
       </select>
       {!isSheet && (
         <button onClick={() => setShowWizard(true)} disabled={busy}
           className="shrink-0 h-11 px-3 flex items-center gap-1.5 border border-indigo-300 bg-indigo-50 rounded-xl text-xs font-semibold text-indigo-700 hover:bg-indigo-100 whitespace-nowrap disabled:opacity-50" data-testid="button-new-character">
-          <i className="fas fa-plus text-[10px]" />新角色
+          <i className="fas fa-plus text-[10px]" />{tr("新角色")}
         </button>
       )}
     </div>
@@ -587,15 +589,15 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const sceneBody = (
     <>
       <div>
-        <p className="text-sm font-semibold text-slate-800">放一張你喜歡的照片</p>
+        <p className="text-sm font-semibold text-slate-800">{tr("放一張你喜歡的照片")}</p>
         <p className="text-xs text-slate-500 mt-1 mb-3 leading-relaxed">
-          例如你在外面拍的、或在網路上看到想要同款的照片。AI 會照它的場景、光線和風格，換成你的角色，再生成一系列不同鏡頭。下一步選角色，再下一步可以換服裝。
+          {tr("例如你在外面拍的、或在網路上看到想要同款的照片。AI 會照它的場景、光線和風格，換成你的角色，再生成一系列不同鏡頭。下一步選角色，再下一步可以換服裝。")}
         </p>
         <input ref={situationInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handleSituationFile(e.target.files?.[0])} data-testid="input-photoset-situation" />
         {situationPath && (
           <div className="relative mb-2">
-            <img src={situationPath} alt="要模仿的照片" className="w-full max-h-56 object-contain rounded-xl bg-slate-100" />
-            <button onClick={() => { setSituationPath(""); resetPlan(); }} disabled={busy} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white" title="移除"><i className="fas fa-xmark text-xs" /></button>
+            <img src={situationPath} alt={tr("要模仿的照片")} className="w-full max-h-56 object-contain rounded-xl bg-slate-100" />
+            <button onClick={() => { setSituationPath(""); resetPlan(); }} disabled={busy} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white" title={tr("移除")}><i className="fas fa-xmark text-xs" /></button>
           </div>
         )}
         <SourceButtons onUpload={() => situationInputRef.current?.click()} onVault={() => setVaultTarget({ purpose: "situation" })} busy={uploading === "situation"} disabled={busy} />
@@ -603,17 +605,17 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
           <select value="" disabled={busy}
             onChange={(e) => { const first = savedScenes.find(x => x.id === e.target.value)?.refImageUrls?.[0]; if (first) { setSituationPath(first); resetPlan(); } }}
             className="w-full mt-2 h-11 px-3 border border-slate-200 rounded-xl text-sm bg-white" data-testid="select-photoset-scene">
-            <option value="">從場景庫選一個已儲存的場景…</option>
+            <option value="">{tr("從場景庫選一個已儲存的場景…")}</option>
             {savedScenes.filter(sc => (sc.refImageUrls?.length ?? 0) > 0).map(sc => <option key={sc.id} value={sc.id}>{sc.name}</option>)}
           </select>
         )}
       </div>
       <div className="border-t border-slate-100 pt-4">
         <label className="text-xs font-semibold text-slate-600 block mb-1">
-          {situationPath ? "想調整的地方" : "沒有照片？用文字描述場景"} <span className="font-normal text-slate-400">{situationPath ? "選填" : "二選一"}</span>
+          {situationPath ? tr("想調整的地方") : tr("沒有照片？用文字描述場景")} <span className="font-normal text-slate-400">{situationPath ? tr("選填") : tr("二選一")}</span>
         </label>
         <textarea value={sceneText} onChange={e => { setSceneText(e.target.value.slice(0, 400)); if (plan) resetPlan(); }} rows={2} disabled={busy}
-          placeholder={situationPath ? "例如：改成傍晚的光線、人少一點" : "例如：午後的老咖啡店，靠窗的位置，暖色的陽光斜照進來"}
+          placeholder={situationPath ? tr("例如：改成傍晚的光線、人少一點") : tr("例如：午後的老咖啡店，靠窗的位置，暖色的陽光斜照進來")}
           className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-testid="input-scene-text" />
       </div>
     </>
@@ -622,46 +624,46 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const personBody = (
     <>
       {characterSelect}
-      {character && characterShown.length === 0 && <p className="text-xs text-red-500">這個角色還沒有圖片，請到角色庫上傳照片。</p>}
+      {character && characterShown.length === 0 && <p className="text-xs text-red-500">{tr("這個角色還沒有圖片，請到角色庫上傳照片。")}</p>}
       {mode === "kit" && (
-        <LibrarySlot label="人像" icon="fa-face-smile" item={portrait} disabled={busy} randomizing={randomizing === "portrait" || randomizing === "all"}
+        <LibrarySlot label={tr("人像")} icon="fa-face-smile" item={portrait} disabled={busy} randomizing={randomizing === "portrait" || randomizing === "all"}
           onPick={() => setPicker({ library: "portrait", purpose: "portrait" })} onRandom={() => pickRandom(["portrait"])} onClear={() => { setPortrait(undefined); resetPlan(); }} />
       )}
       {wantedRefs.length > 0 && refThumbs}
       {!isSheet && characters.length === 0 && !portrait && (
         <button onClick={() => setShowWizard(true)} disabled={busy}
           className="w-full text-left rounded-2xl border-2 border-dashed border-indigo-300 bg-indigo-50/60 p-4 hover:bg-indigo-50 disabled:opacity-50" data-testid="button-first-character">
-          <span className="block text-sm font-bold text-indigo-800"><i className="fas fa-user-plus mr-2" />先建立你的角色</span>
-          <span className="block text-xs text-slate-600 mt-1">上傳最多 10 張自己的照片，之後每一組寫真都是你。第一次建立會免費幫你生成四視圖。</span>
+          <span className="block text-sm font-bold text-indigo-800"><i className="fas fa-user-plus mr-2" />{tr("先建立你的角色")}</span>
+          <span className="block text-xs text-slate-600 mt-1">{tr("上傳最多 10 張自己的照片，之後每一組寫真都是你。第一次建立會免費幫你生成四視圖。")}</span>
         </button>
       )}
       {wantedRefs.length < refCap && (
         <p className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-fuchsia-50 border border-fuchsia-200 text-xs font-semibold text-fuchsia-700" data-testid="hint-more-refs">
-          <i className="fas fa-circle-plus" />再上傳幾張你的照片，會更像你自己
+          <i className="fas fa-circle-plus" />{tr("再上傳幾張你的照片，會更像你自己")}
         </p>
       )}
       {refUploader}
       <p className="text-[11px] text-slate-400">
-        人物參考圖 {personRefs.length}／{refCap} 張。{isSheet ? "" : `選角色會帶入它的照片（最多 ${CHARACTER_IMAGES} 張，本人照片優先）。`}臉部清楚的正面照效果最好。
+        {tr("人物參考圖 {0}／{1} 張。{2}臉部清楚的正面照效果最好。", { 0: personRefs.length, 1: refCap, 2: isSheet ? "" : tr("選角色會帶入它的照片（最多 {0} 張，本人照片優先）。", { 0: CHARACTER_IMAGES }) })}
       </p>
     </>
   );
 
   const costumeSlot = (
-    <LibrarySlot label="服裝" icon="fa-shirt" item={costume} disabled={busy} randomizing={randomizing === "costume" || randomizing === "all"}
+    <LibrarySlot label={tr("服裝")} icon="fa-shirt" item={costume} disabled={busy} randomizing={randomizing === "costume" || randomizing === "all"}
       onPick={() => setPicker({ library: "costume", purpose: "costume" })} onRandom={() => pickRandom(["costume"])} onClear={() => setCostume(undefined)} />
   );
   const poseSlot = (
     <>
-      <LibrarySlot label="姿勢" icon="fa-person-walking" item={pose} disabled={busy} randomizing={randomizing === "pose" || randomizing === "all"}
+      <LibrarySlot label={tr("姿勢")} icon="fa-person-walking" item={pose} disabled={busy} randomizing={randomizing === "pose" || randomizing === "all"}
         onPick={() => setPicker({ library: "pose", purpose: "pose" })} onRandom={() => pickRandom(["pose"])} onClear={() => { setPose(undefined); resetPlan(); }} />
-      <p className="text-[11px] text-slate-400">{pose ? "這個姿勢用在第一張，其餘由 AI 依情境安排；規劃後每張都能再換。" : "不選就全部由 AI 依情境安排姿勢。"}</p>
+      <p className="text-[11px] text-slate-400">{pose ? tr("這個姿勢用在第一張，其餘由 AI 依情境安排；規劃後每張都能再換。") : tr("不選就全部由 AI 依情境安排姿勢。")}</p>
     </>
   );
   const outfitSource = hasSituation && personRefs.length > 0 && !costume && (
     <div className="grid grid-cols-2 gap-2">
-      <button onClick={() => { setOutfitFrom("character"); resetPlan(); }} disabled={busy} className={`h-10 text-sm ${selectBtn(outfitFrom === "character")}`}>穿人物照的服裝</button>
-      <button onClick={() => { setOutfitFrom("scene"); resetPlan(); }} disabled={busy} className={`h-10 text-sm ${selectBtn(outfitFrom === "scene")}`}>穿情境照的服裝</button>
+      <button onClick={() => { setOutfitFrom("character"); resetPlan(); }} disabled={busy} className={`h-10 text-sm ${selectBtn(outfitFrom === "character")}`}>{tr("穿人物照的服裝")}</button>
+      <button onClick={() => { setOutfitFrom("scene"); resetPlan(); }} disabled={busy} className={`h-10 text-sm ${selectBtn(outfitFrom === "scene")}`}>{tr("穿情境照的服裝")}</button>
     </div>
   );
 
@@ -669,11 +671,11 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
     <>
       <div className="rounded-2xl border border-indigo-100 bg-indigo-50/50 p-3 sm:p-4">
         <label htmlFor="input-photoset-direction" className="block text-sm font-semibold text-slate-800">
-          額外 Prompt
-          <span className="ml-2 text-xs font-normal text-slate-500">選填，最多 1,000 字</span>
+          {tr("額外 Prompt")}
+          <span className="ml-2 text-xs font-normal text-slate-500">{tr("選填，最多 1,000 字")}</span>
         </label>
         <p id="photoset-direction-help" className="mt-1 mb-2 text-xs leading-relaxed text-slate-600">
-          人像、服裝、姿勢素材，場景與鏡頭控制會和這段提示一起交給 AI 規劃。修改後請重新規劃，才會套用到鏡頭。
+          {tr("人像、服裝、姿勢素材，場景與鏡頭控制會和這段提示一起交給 AI 規劃。修改後請重新規劃，才會套用到鏡頭。")}
         </p>
         <textarea
           id="input-photoset-direction"
@@ -683,7 +685,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
           maxLength={1000}
           disabled={busy}
           aria-describedby="photoset-direction-help photoset-direction-count"
-          placeholder="例如：自然的日常感、柔和側光，鏡頭之間保持造型一致"
+          placeholder={tr("例如：自然的日常感、柔和側光，鏡頭之間保持造型一致")}
           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-70"
           data-testid="input-photoset-direction"
         />
@@ -692,71 +694,71 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         </p>
       </div>
       <div>
-        <label className="text-xs font-semibold text-slate-600 block mb-1">張數</label>
+        <label className="text-xs font-semibold text-slate-600 block mb-1">{tr("張數")}</label>
         <div className="flex items-center gap-2">
-          <button onClick={() => setCount(c => Math.max(MIN_SHOTS, c - 1))} disabled={busy || count <= MIN_SHOTS} className="w-11 h-11 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-40" aria-label="減少"><i className="fas fa-minus text-xs" /></button>
+          <button onClick={() => setCount(c => Math.max(MIN_SHOTS, c - 1))} disabled={busy || count <= MIN_SHOTS} className="w-11 h-11 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-40" aria-label={tr("減少")}><i className="fas fa-minus text-xs" /></button>
           <input type="number" inputMode="numeric" min={MIN_SHOTS} max={MAX_SHOTS} value={count} disabled={busy}
             onChange={e => { const n = parseInt(e.target.value, 10); if (Number.isFinite(n)) setCount(Math.max(MIN_SHOTS, Math.min(MAX_SHOTS, n))); }}
             className="w-20 h-11 text-center border border-slate-200 rounded-xl text-base font-semibold tabular-nums" data-testid="input-photoset-count" />
-          <button onClick={() => setCount(c => Math.min(MAX_SHOTS, c + 1))} disabled={busy || count >= MAX_SHOTS} className="w-11 h-11 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-40" aria-label="增加"><i className="fas fa-plus text-xs" /></button>
-          <span className="text-xs text-slate-400">{MIN_SHOTS}–{MAX_SHOTS} 張{isSheet ? "，九宮格請選 9" : ""}</span>
+          <button onClick={() => setCount(c => Math.min(MAX_SHOTS, c + 1))} disabled={busy || count >= MAX_SHOTS} className="w-11 h-11 rounded-xl border border-slate-200 text-slate-600 disabled:opacity-40" aria-label={tr("增加")}><i className="fas fa-plus text-xs" /></button>
+          <span className="text-xs text-slate-400">{tr("{0}–{1} 張{2}", { 0: MIN_SHOTS, 1: MAX_SHOTS, 2: isSheet ? tr("，九宮格請選 9") : "" })}</span>
         </div>
       </div>
       {!isSheet && (
         <>
           <div className="grid grid-cols-2 gap-2">
             <label className="block">
-              <span className="text-xs font-semibold text-slate-600">比例</span>
+              <span className="text-xs font-semibold text-slate-600">{tr("比例")}</span>
               <select value={ratioId} onChange={e => setRatioId(e.target.value as ImageRatioId)} disabled={busy} className="mt-1 w-full h-11 px-2 border border-slate-200 rounded-xl text-sm bg-white" data-testid="select-photoset-ratio">
                 {IMAGE_RATIOS.map(r => <option key={r.id} value={r.id}>{r.label}・{r.hint}</option>)}
               </select>
             </label>
             <label className="block">
-              <span className="text-xs font-semibold text-slate-600">畫質</span>
+              <span className="text-xs font-semibold text-slate-600">{tr("畫質")}</span>
               <select value={tierId} onChange={e => setTierId(e.target.value as ImageTierId)} disabled={busy} className="mt-1 w-full h-11 px-2 border border-slate-200 rounded-xl text-sm bg-white" data-testid="select-photoset-tier">
                 {IMAGE_TIERS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
               </select>
             </label>
           </div>
           <div>
-            <label className="text-xs font-semibold text-slate-600 block mb-1">畫面質感</label>
+            <label className="text-xs font-semibold text-slate-600 block mb-1">{tr("畫面質感")}</label>
             <div className="grid grid-cols-2 gap-2">
               {PHOTO_LOOKS.map(l => <button key={l.id} onClick={() => setLookId(l.id)} disabled={busy} title={l.hint} className={`h-10 px-2 text-sm ${selectBtn(lookId === l.id)}`} data-testid={`button-photoset-look-${l.id}`}>{l.label}</button>)}
             </div>
           </div>
           <div className="border border-slate-200 rounded-2xl" data-testid="panel-shoot-control">
             <button onClick={() => setShowAdvanced(v => !v)} className="w-full h-11 px-3 flex items-center justify-between text-sm font-semibold text-slate-800">
-              <span>拍攝控制 <span className="text-xs font-normal text-slate-400">鏡頭、表情、道具・選填</span></span>
+              <span>{tr("拍攝控制")} <span className="text-xs font-normal text-slate-400">{tr("鏡頭、表情、道具・選填")}</span></span>
               <i className={`fas fa-chevron-down text-xs text-slate-400 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
             </button>
             {showAdvanced && (
               <div className="px-3 pb-3 space-y-3">
                 {!hasSituation && (
                   <div>
-                    <label className="text-xs text-slate-500 block mb-1">場景</label>
+                    <label className="text-xs text-slate-500 block mb-1">{tr("場景")}</label>
                     <div className="flex flex-wrap gap-1.5">{SETTINGS.map(o => <button key={o.id} onClick={() => setControlField({ settingId: control.settingId === o.id ? undefined : o.id })} disabled={busy} title={o.text} className={chipBtn(control.settingId === o.id)}>{o.label}</button>)}</div>
                   </div>
                 )}
                 <div>
-                  <label className="text-xs text-slate-500 block mb-1">鏡頭風格</label>
+                  <label className="text-xs text-slate-500 block mb-1">{tr("鏡頭風格")}</label>
                   <div className="flex flex-wrap gap-1.5">{SHOT_STYLES.map(o => <button key={o.id} onClick={() => setControlField({ shotStyleId: control.shotStyleId === o.id ? undefined : o.id })} disabled={busy} title={o.text} className={chipBtn(control.shotStyleId === o.id)}>{o.label}</button>)}</div>
                 </div>
                 <div>
-                  <label className="text-xs text-slate-500 block mb-1">表情</label>
+                  <label className="text-xs text-slate-500 block mb-1">{tr("表情")}</label>
                   <div className="flex flex-wrap gap-1.5">{EXPRESSIONS.map(o => <button key={o.id} onClick={() => setControlField({ expressionId: control.expressionId === o.id ? undefined : o.id })} disabled={busy} title={o.text} className={chipBtn(control.expressionId === o.id)}>{o.label}</button>)}</div>
                 </div>
                 <div>
-                  <label className="text-xs text-slate-500 block mb-1">道具（最多 {MAX_PROPS} 個）</label>
+                  <label className="text-xs text-slate-500 block mb-1">{tr("道具（最多 {0} 個）", { 0: MAX_PROPS })}</label>
                   <div className="flex flex-wrap gap-1.5">
                     {Array.from(new Set([...PROP_PRESETS, ...control.props])).map(name => (
                       <button key={name} onClick={() => toggleProp(name)} disabled={busy || (!control.props.includes(name) && control.props.length >= MAX_PROPS)} className={`${chipBtn(control.props.includes(name))} disabled:opacity-40`}>{name}</button>
                     ))}
                   </div>
                   <div className="flex gap-2 mt-2">
-                    <input value={propDraft} onChange={e => setPropDraft(e.target.value.slice(0, 20))} placeholder="自訂道具，例如：你的產品名稱" disabled={busy}
+                    <input value={propDraft} onChange={e => setPropDraft(e.target.value.slice(0, 20))} placeholder={tr("自訂道具，例如：你的產品名稱")} disabled={busy}
                       onKeyDown={e => { if (e.key === "Enter" && propDraft.trim()) { toggleProp(propDraft); setPropDraft(""); } }}
                       className="flex-1 min-w-0 h-9 px-3 border border-slate-200 rounded-lg text-sm" data-testid="input-photoset-prop" />
-                    <button onClick={() => { toggleProp(propDraft); setPropDraft(""); }} disabled={busy || !propDraft.trim() || control.props.length >= MAX_PROPS} className="px-3 h-9 rounded-lg border border-slate-200 text-xs text-slate-600 disabled:opacity-40">加入</button>
+                    <button onClick={() => { toggleProp(propDraft); setPropDraft(""); }} disabled={busy || !propDraft.trim() || control.props.length >= MAX_PROPS} className="px-3 h-9 rounded-lg border border-slate-200 text-xs text-slate-600 disabled:opacity-40">{tr("加入")}</button>
                   </div>
                 </div>
               </div>
@@ -766,8 +768,8 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       )}
       <label className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3 cursor-pointer">
         <span className="min-w-0">
-          <span className="block text-sm font-semibold text-slate-800">去除浮水印 <span className="text-xs font-normal text-fuchsia-600">+{removalHere()} 積分／張</span></span>
-          <span className="block text-[11px] text-slate-500">{isSheet ? "定裝圖會當參考圖用，建議去除，否則浮水印可能被帶進之後的圖。" : `每張 ${priceHere(true)} 積分；去除浮水印為 ${priceHere(false)} 積分。`}</span>
+          <span className="block text-sm font-semibold text-slate-800">{tr("去除浮水印")} <span className="text-xs font-normal text-fuchsia-600">{tr("+{0} 積分／張", { 0: removalHere() })}</span></span>
+          <span className="block text-[11px] text-slate-500">{isSheet ? tr("定裝圖會當參考圖用，建議去除，否則浮水印可能被帶進之後的圖。") : tr("每張 {0} 積分；去除浮水印為 {1} 積分。", { 0: priceHere(true), 1: priceHere(false) })}</span>
         </span>
         <button role="switch" aria-checked={removeWatermark} onClick={() => setRemoveWatermark(v => !v)} disabled={busy}
           className={`shrink-0 w-12 h-7 rounded-full p-0.5 transition-colors ${removeWatermark ? "bg-indigo-600" : "bg-slate-300"}`} data-testid="switch-remove-watermark">
@@ -778,33 +780,33 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   );
 
   type StepDef = { title: string; summary: string; done: boolean; body: ReactNode };
-  const personSummary = portrait ? `圖庫人像：${portrait.name}` : character ? `${character.name}（${personRefs.length} 張）` : personRefs.length > 0 ? `${personRefs.length} 張參考圖` : mode === "scene" ? "不指定，選填" : "尚未選擇";
-  const outputSummary = isSheet ? `${count} 張${removeWatermark ? "・去浮水印" : ""}` : `${count} 張・${ratio.label}・${PHOTO_LOOKS.find(l => l.id === lookId)?.label ?? ""}${removeWatermark ? "・去浮水印" : ""}`;
+  const personSummary = portrait ? tr("圖庫人像：{0}", { 0: portrait.name }) : character ? tr("{0}（{1} 張）", { 0: character.name, 1: personRefs.length }) : personRefs.length > 0 ? tr("{0} 張參考圖", { 0: personRefs.length }) : mode === "scene" ? tr("不指定，選填") : tr("尚未選擇");
+  const outputSummary = isSheet ? tr("{0} 張{1}", { 0: count, 1: removeWatermark ? "・去浮水印" : "" }) : tr("{0} 張・{1}・{2}{3}", { 0: count, 1: ratio.label, 2: PHOTO_LOOKS.find(l => l.id === lookId)?.label ?? "", 3: removeWatermark ? "・去浮水印" : "" });
   const steps: StepDef[] = isSheet
     ? [
-        { title: "角色", summary: personSummary, done: personRefs.length > 0, body: personBody },
-        { title: "張數", summary: outputSummary, done: true, body: outputBody },
+        { title: tr("角色"), summary: personSummary, done: personRefs.length > 0, body: personBody },
+        { title: tr("張數"), summary: outputSummary, done: true, body: outputBody },
       ]
     : mode === "scene"
       ? [
-          { title: "要模仿的照片", summary: situationPath ? `已放照片${sceneText.trim() ? "＋調整說明" : ""}` : sceneText.trim() || "放一張喜歡的照片（沒有照片可以用文字描述）", done: !!situationPath || sceneText.trim().length > 0, body: sceneBody },
-          { title: "角色", summary: personSummary, done: firstStepDone, body: personBody },
-          { title: "姿勢與服裝", summary: [pose ? `姿勢：${pose.name}` : "姿勢由 AI 安排", costume ? `服裝：${costume.name}` : "服裝不指定"].join("・"), done: true, body: <>{poseSlot}{costumeSlot}{outfitSource}</> },
-          { title: "張數與輸出", summary: outputSummary, done: true, body: outputBody },
+          { title: tr("要模仿的照片"), summary: situationPath ? tr("已放照片{0}", { 0: sceneText.trim() ? "＋調整說明" : "" }) : sceneText.trim() || tr("放一張喜歡的照片（沒有照片可以用文字描述）"), done: !!situationPath || sceneText.trim().length > 0, body: sceneBody },
+          { title: tr("角色"), summary: personSummary, done: firstStepDone, body: personBody },
+          { title: tr("姿勢與服裝"), summary: [pose ? tr("姿勢：{0}", { 0: pose.name }) : tr("姿勢由 AI 安排"), costume ? tr("服裝：{0}", { 0: costume.name }) : tr("服裝不指定")].join("・"), done: true, body: <>{poseSlot}{costumeSlot}{outfitSource}</> },
+          { title: tr("張數與輸出"), summary: outputSummary, done: true, body: outputBody },
         ]
       : [
-          { title: "人物", summary: personSummary, done: personRefs.length > 0, body: personBody },
-          { title: "服裝", summary: costume ? costume.name : "不指定，選填", done: true, body: costumeSlot },
-          { title: "姿勢", summary: pose ? pose.name : "由 AI 安排，選填", done: true, body: poseSlot },
-          { title: "張數與輸出", summary: outputSummary, done: true, body: outputBody },
+          { title: tr("人物"), summary: personSummary, done: personRefs.length > 0, body: personBody },
+          { title: tr("服裝"), summary: costume ? costume.name : tr("不指定，選填"), done: true, body: costumeSlot },
+          { title: tr("姿勢"), summary: pose ? pose.name : tr("由 AI 安排，選填"), done: true, body: poseSlot },
+          { title: tr("張數與輸出"), summary: outputSummary, done: true, body: outputBody },
         ];
   // A step opens once every step before it is done.
   const reachable = (i: number) => steps.slice(0, i).every(s => s.done);
   const lastStep = steps.length - 1;
 
   const MODES: Array<{ id: Mode; icon: string; title: string; desc: string }> = [
-    { id: "kit", icon: "fa-layer-group", title: "寫真套圖", desc: "選人物，配素材圖庫的服裝與姿勢。" },
-    { id: "scene", icon: "fa-panorama", title: "照片同款", desc: "放一張喜歡的照片，換成你的角色和服裝，生成同風格的一系列。" },
+    { id: "kit", icon: "fa-layer-group", title: tr("寫真套圖"), desc: tr("選人物，配素材圖庫的服裝與姿勢。") },
+    { id: "scene", icon: "fa-panorama", title: tr("照片同款"), desc: tr("放一張喜歡的照片，換成你的角色和服裝，生成同風格的一系列。") },
   ];
 
   return (
@@ -812,10 +814,10 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       <NavigationHeader />
       <div className="max-w-3xl mx-auto px-4 py-5 md:py-8">
         <div className="mb-5">
-          {isSheet && <Link href="/character-library"><span className="hidden md:inline-block text-sm text-slate-500 hover:text-slate-800 cursor-pointer mb-1">← 回角色庫</span></Link>}
-          <h1 className="hidden md:block text-2xl font-bold text-slate-900">{isSheet ? "角色九宮格" : "寫真工作室"}</h1>
+          {isSheet && <Link href="/character-library"><span className="hidden md:inline-block text-sm text-slate-500 hover:text-slate-800 cursor-pointer mb-1">{tr("← 回角色庫")}</span></Link>}
+          <h1 className="hidden md:block text-2xl font-bold text-slate-900">{isSheet ? tr("角色九宮格") : tr("寫真工作室")}</h1>
           <p className="text-sm text-slate-500 md:mt-1">
-            {isSheet ? "用角色參考圖生成正面、側面、背面、表情與姿勢的定裝圖，存回角色圖庫後，之後每次生成都更像同一個人。" : "照著步驟一步一步選，最後一次生成整組可貼上社群的寫真。"}
+            {isSheet ? tr("用角色參考圖生成正面、側面、背面、表情與姿勢的定裝圖，存回角色圖庫後，之後每次生成都更像同一個人。") : tr("照著步驟一步一步選，最後一次生成整組可貼上社群的寫真。")}
           </p>
         </div>
 
@@ -841,11 +843,11 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
           <div className="flex gap-2 mb-3">
             <button onClick={() => pickRandom(["portrait", "costume", "pose"])} disabled={busy || !!randomizing}
               className="flex-1 h-11 rounded-xl bg-fuchsia-50 border border-fuchsia-200 text-fuchsia-700 text-sm font-semibold hover:bg-fuchsia-100 disabled:opacity-50" data-testid="button-random-all">
-              <i className={`fas ${randomizing === "all" ? "fa-spinner fa-spin" : "fa-shuffle"} mr-2`} />隨機配一組
+              <i className={`fas ${randomizing === "all" ? "fa-spinner fa-spin" : "fa-shuffle"} mr-2`} />{tr("隨機配一組")}
             </button>
             <button onClick={() => setShowCollage(true)} disabled={collageTiles.length < 2}
               className="flex-1 h-11 rounded-xl bg-white border border-slate-200 text-slate-700 text-sm font-semibold hover:border-indigo-300 disabled:opacity-40" data-testid="button-open-collage">
-              <i className="fas fa-table-columns mr-2 text-slate-400" />參考圖拼圖
+              <i className="fas fa-table-columns mr-2 text-slate-400" />{tr("參考圖拼圖")}
             </button>
           </div>
         )}
@@ -857,8 +859,8 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
               {s.body}
               {i < lastStep
                 ? <NextButton onClick={() => goTo(i + 1)} disabled={!s.done || !reachable(i + 1)} />
-                : <NextButton onClick={() => goTo(steps.length)} label="設定完成" />}
-              {i === 0 && mode === "scene" && !s.done && <p className="text-[11px] text-slate-400">請放一張照片；沒有照片的話，在下面用文字描述場景。</p>}
+                : <NextButton onClick={() => goTo(steps.length)} label={tr("設定完成")} />}
+              {i === 0 && mode === "scene" && !s.done && <p className="text-[11px] text-slate-400">{tr("請放一張照片；沒有照片的話，在下面用文字描述場景。")}</p>}
             </Step>
           ))}
         </div>
@@ -867,7 +869,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         {!isSheet && (
           <div className="rounded-2xl bg-white/80 border border-slate-200 p-3 mt-3" data-testid="ref-budget">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-semibold text-slate-700">參考圖配額</span>
+              <span className="font-semibold text-slate-700">{tr("參考圖配額")}</span>
               <span className="tabular-nums text-slate-500">{usedSlots}／{REF_BUDGET.total}</span>
             </div>
             <div className="flex gap-0.5 mt-2">
@@ -878,10 +880,10 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
               })}
             </div>
             <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500 mt-2">
-              {mode === "scene" && <span><i className="fas fa-circle text-[6px] text-sky-400 mr-1 align-middle" />情境 {hasSituation ? 1 : 0}／1</span>}
-              <span><i className="fas fa-circle text-[6px] text-indigo-500 mr-1 align-middle" />人物 {personRefs.length}／{REF_BUDGET.character}</span>
-              <span><i className="fas fa-circle text-[6px] text-fuchsia-400 mr-1 align-middle" />服裝 {costumeImage ? 1 : 0}／1</span>
-              <span><i className="fas fa-circle text-[6px] text-amber-400 mr-1 align-middle" />姿勢 {anyPoseRef ? 1 : 0}／1</span>
+              {mode === "scene" && <span><i className="fas fa-circle text-[6px] text-sky-400 mr-1 align-middle" />{tr("情境 {0}／1", { 0: hasSituation ? 1 : 0 })}</span>}
+              <span><i className="fas fa-circle text-[6px] text-indigo-500 mr-1 align-middle" />{tr("人物 {0}／{1}", { 0: personRefs.length, 1: REF_BUDGET.character })}</span>
+              <span><i className="fas fa-circle text-[6px] text-fuchsia-400 mr-1 align-middle" />{tr("服裝 {0}／1", { 0: costumeImage ? 1 : 0 })}</span>
+              <span><i className="fas fa-circle text-[6px] text-amber-400 mr-1 align-middle" />{tr("姿勢 {0}／1", { 0: anyPoseRef ? 1 : 0 })}</span>
             </p>
           </div>
         )}
@@ -890,17 +892,17 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         <div className={`mt-4 space-y-2 ${reached >= steps.length || plan ? "" : "hidden"}`} data-testid="plan-section">
           {isSheet && (
             <button onClick={() => planMutation.mutate("preset")} disabled={!inputsReady || busy || !!direction.trim()} aria-describedby={direction.trim() ? "photoset-preset-help" : undefined} className="w-full h-12 rounded-xl bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40" data-testid="button-photoset-preset">
-              使用標準九宮格（立即產生）
+              {tr("使用標準九宮格（立即產生）")}
             </button>
           )}
-          {isSheet && direction.trim() && <p id="photoset-preset-help" className="text-xs text-slate-600">已填寫額外 Prompt，請使用下方 AI 規劃，標準九宮格不套用自訂描述。</p>}
+          {isSheet && direction.trim() && <p id="photoset-preset-help" className="text-xs text-slate-600">{tr("已填寫額外 Prompt，請使用下方 AI 規劃，標準九宮格不套用自訂描述。")}</p>}
           <button onClick={() => planMutation.mutate("ai")} disabled={!inputsReady || busy}
             className={`w-full h-12 rounded-xl text-sm font-semibold disabled:opacity-40 ${isSheet ? "border border-slate-300 bg-white text-slate-800" : "bg-indigo-600 text-white shadow-glow"}`} data-testid="button-photoset-plan">
-            {planMutation.isPending ? "AI 規劃中…" : plan ? "重新規劃鏡頭" : isSheet ? "請 AI 依角色規劃（免費）" : `規劃 ${count} 個鏡頭（免費）`}
+            {planMutation.isPending ? tr("AI 規劃中…") : plan ? tr("重新規劃鏡頭") : isSheet ? tr("請 AI 依角色規劃（免費）") : tr("規劃 {0} 個鏡頭（免費）", { 0: count })}
           </button>
           {!inputsReady && (
             <p className="text-[11px] text-slate-400 text-center">
-              {mode === "scene" ? (sceneText.trim() ? "只寫文字時，請再放一張人物照或選一個角色。" : "請先完成第 1 步：輸入場景或放一張照片。") : "請先完成第 1 步：選擇人物。"}
+              {mode === "scene" ? (sceneText.trim() ? tr("只寫文字時，請再放一張人物照或選一個角色。") : tr("請先完成第 1 步：輸入場景或放一張照片。")) : tr("請先完成第 1 步：選擇人物。")}
             </p>
           )}
         </div>
@@ -911,26 +913,26 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
             <div className="bg-white border border-indigo-100 rounded-3xl p-4 sm:p-5 space-y-4">
               {plan.analysis && (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3">
-                  <p className="text-xs font-semibold text-slate-600 mb-1">規劃說明</p>
+                  <p className="text-xs font-semibold text-slate-600 mb-1">{tr("規劃說明")}</p>
                   <p className="text-sm text-slate-700 leading-relaxed">{plan.analysis}</p>
                 </div>
               )}
               {plan.customPrompt && (
                 <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-3">
-                  <p className="text-xs font-semibold text-indigo-800 mb-1">已納入規劃的額外提示</p>
+                  <p className="text-xs font-semibold text-indigo-800 mb-1">{tr("已納入規劃的額外提示")}</p>
                   <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{plan.customPrompt}</p>
                 </div>
               )}
               {!isSheet && (
                 <div className="rounded-xl border border-slate-200 p-3 space-y-2">
-                  <p className="text-xs font-semibold text-slate-600">服裝 <span className="font-normal text-slate-400">可以隨時更換，不用重新規劃</span></p>
+                  <p className="text-xs font-semibold text-slate-600">{tr("服裝")} <span className="font-normal text-slate-400">{tr("可以隨時更換，不用重新規劃")}</span></p>
                   {costumeSlot}
                 </div>
               )}
 
               <div className="flex items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-900">鏡頭清單（{shots.length} 張，可修改）</p>
-                <button onClick={addShot} disabled={shots.length >= MAX_SHOTS || busy} className="text-xs text-indigo-600 hover:underline disabled:opacity-40">＋ 加一個鏡頭</button>
+                <p className="text-sm font-semibold text-slate-900">{tr("鏡頭清單（{0} 張，可修改）", { 0: shots.length })}</p>
+                <button onClick={addShot} disabled={shots.length >= MAX_SHOTS || busy} className="text-xs text-indigo-600 hover:underline disabled:opacity-40">{tr("＋ 加一個鏡頭")}</button>
               </div>
               <input ref={poseRefInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={(e) => handlePoseRefFile(e.target.files?.[0])} data-testid="input-photoset-pose-ref" />
 
@@ -941,18 +943,18 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
                       <span className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-700 text-xs font-bold flex items-center justify-center shrink-0">{idx + 1}</span>
                       <input value={shot.title} onChange={(e) => updateShot(idx, { title: e.target.value.slice(0, 30) })} disabled={busy}
                         className="flex-1 min-w-0 text-sm font-semibold text-slate-900 bg-transparent border-b border-transparent focus:border-indigo-500 focus:outline-none" />
-                      <button onClick={() => removeShot(idx)} disabled={shots.length <= MIN_SHOTS || busy} className="text-xs text-red-500 hover:underline disabled:opacity-30">移除</button>
+                      <button onClick={() => removeShot(idx)} disabled={shots.length <= MIN_SHOTS || busy} className="text-xs text-red-500 hover:underline disabled:opacity-30">{tr("移除")}</button>
                     </div>
-                    <textarea value={shot.prompt} onChange={(e) => updateShot(idx, { prompt: e.target.value })} disabled={busy} rows={3} placeholder="描述這張的景別、角度、姿勢、表情與光線"
+                    <textarea value={shot.prompt} onChange={(e) => updateShot(idx, { prompt: e.target.value })} disabled={busy} rows={3} placeholder={tr("描述這張的景別、角度、姿勢、表情與光線")}
                       className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm leading-relaxed focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-slate-50" />
                     {!isSheet && (
                       <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs">
-                        {shot.poseRef && <img src={shot.poseRef} alt="姿勢參考" className="w-9 h-11 rounded-md object-contain border border-slate-200 bg-slate-50" />}
-                        <span className="text-slate-500">{shot.poseRef ? "指定姿勢" : "姿勢：AI 依情境安排"}</span>
-                        <button onClick={() => setPicker({ library: "pose", purpose: "shotPose", idx })} disabled={busy} className="text-indigo-600 hover:underline disabled:opacity-40" data-testid={`button-shot-pose-library-${idx}`}>{shot.poseRef ? "換姿勢" : "從圖庫指定"}</button>
-                        <button onClick={() => { setPoseRefTarget(idx); poseRefInputRef.current?.click(); }} disabled={busy} className="text-indigo-600 hover:underline disabled:opacity-40">上傳</button>
-                        <button onClick={() => setVaultTarget({ purpose: "shotPose", idx })} disabled={busy} className="text-indigo-600 hover:underline disabled:opacity-40">從作品選</button>
-                        {shot.poseRef && <button onClick={() => updateShot(idx, { poseRef: undefined })} disabled={busy} className="text-slate-500 hover:underline disabled:opacity-40">交還 AI</button>}
+                        {shot.poseRef && <img src={shot.poseRef} alt={tr("姿勢參考")} className="w-9 h-11 rounded-md object-contain border border-slate-200 bg-slate-50" />}
+                        <span className="text-slate-500">{shot.poseRef ? tr("指定姿勢") : tr("姿勢：AI 依情境安排")}</span>
+                        <button onClick={() => setPicker({ library: "pose", purpose: "shotPose", idx })} disabled={busy} className="text-indigo-600 hover:underline disabled:opacity-40" data-testid={`button-shot-pose-library-${idx}`}>{shot.poseRef ? tr("換姿勢") : tr("從圖庫指定")}</button>
+                        <button onClick={() => { setPoseRefTarget(idx); poseRefInputRef.current?.click(); }} disabled={busy} className="text-indigo-600 hover:underline disabled:opacity-40">{tr("上傳")}</button>
+                        <button onClick={() => setVaultTarget({ purpose: "shotPose", idx })} disabled={busy} className="text-indigo-600 hover:underline disabled:opacity-40">{tr("從作品選")}</button>
+                        {shot.poseRef && <button onClick={() => updateShot(idx, { poseRef: undefined })} disabled={busy} className="text-slate-500 hover:underline disabled:opacity-40">{tr("交還 AI")}</button>}
                       </div>
                     )}
                   </div>
@@ -960,16 +962,16 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
               </div>
 
               <div className="flex items-center justify-between flex-wrap gap-2 pt-3 border-t border-slate-200 text-sm text-slate-600">
-                <span>{removeWatermark ? "已去除浮水印" : "含浮水印"}（可在「張數{isSheet ? "" : "與輸出"}」步驟更改）</span>
-                <span>共 <b className="text-slate-900">{validShots.length}</b> 張 × {perImage} ＝ <b className="text-indigo-700">{totalCost} 積分</b><span className="text-xs text-slate-400 ml-2">（餘額 {credits.toLocaleString()}）</span></span>
+                <span>{tr("{0}（可在「張數{1}」步驟更改）", { 0: removeWatermark ? tr("已去除浮水印") : tr("含浮水印"), 1: isSheet ? "" : tr("與輸出") })}</span>
+                <span>{tr("共")} <b className="text-slate-900">{validShots.length}</b> {tr("張 × {0} ＝", { 0: perImage })} <b className="text-indigo-700">{tr("{0} 積分", { 0: totalCost })}</b><span className="text-xs text-slate-400 ml-2">{tr("（餘額 {0}）", { 0: credits.toLocaleString() })}</span></span>
               </div>
-              {credits < totalCost && <p className="text-xs text-red-500">積分不足，請先 <Link href="/store"><span className="underline cursor-pointer">加購積分</span></Link> 或減少張數。</p>}
-              {validShots.length < MIN_SHOTS && <p className="text-xs text-red-500">至少需要 {MIN_SHOTS} 個有內容的鏡頭。</p>}
+              {credits < totalCost && <p className="text-xs text-red-500">{tr("積分不足，請先")} <Link href="/store"><span className="underline cursor-pointer">{tr("加購積分")}</span></Link> {tr("或減少張數。")}</p>}
+              {validShots.length < MIN_SHOTS && <p className="text-xs text-red-500">{tr("至少需要 {0} 個有內容的鏡頭。", { 0: MIN_SHOTS })}</p>}
 
               <button onClick={() => generateMutation.mutate()} disabled={!canGenerate} className="w-full h-12 rounded-xl bg-indigo-600 text-white text-sm font-semibold shadow-glow disabled:opacity-40 disabled:shadow-none" data-testid="button-photoset-generate">
-                {isGenerating ? `生成中… ${batch ? `${batch.completedCount + batch.failedCount}/${batch.totalCount}` : ""}` : batchDone ? `再生成一組（${totalCost} 積分）` : `生成整組（${totalCost} 積分）`}
+                {isGenerating ? tr("生成中… {0}", { 0: batch ? `${batch.completedCount + batch.failedCount}/${batch.totalCount}` : "" }) : batchDone ? tr("再生成一組（{0} 積分）", { 0: totalCost }) : tr("生成整組（{0} 積分）", { 0: totalCost })}
               </button>
-              <p className="text-[11px] text-slate-400">每張約需 1–3 分鐘，整組同時生成；失敗的張數會自動退還積分。每日圖片上限 50 張。</p>
+              <p className="text-[11px] text-slate-400">{tr("每張約需 1–3 分鐘，整組同時生成；失敗的張數會自動退還積分。每日圖片上限 50 張。")}</p>
             </div>
           )}
 
@@ -977,18 +979,18 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
             <div className="bg-white border border-indigo-100 rounded-3xl p-4 sm:p-5">
               <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">成果</p>
+                  <p className="text-sm font-semibold text-slate-900">{tr("成果")}</p>
                   <p className="text-xs text-slate-500">
-                    完成 {batch.completedCount}／{batch.totalCount}
-                    {batch.failedCount > 0 && <span className="text-red-500">，失敗 {batch.failedCount}（已退點）</span>}
+                    {tr("完成 {0}／{1}", { 0: batch.completedCount, 1: batch.totalCount })}
+                    {batch.failedCount > 0 && <span className="text-red-500">{tr("，失敗 {0}（已退點）", { 0: batch.failedCount })}</span>}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {batchDone && batch.completedCount > 0 && <Link href="/vault"><span className="px-3 h-9 flex items-center rounded-lg border border-slate-200 text-xs text-slate-600 hover:border-indigo-300 cursor-pointer">到作品庫看</span></Link>}
+                  {batchDone && batch.completedCount > 0 && <Link href="/vault"><span className="px-3 h-9 flex items-center rounded-lg border border-slate-200 text-xs text-slate-600 hover:border-indigo-300 cursor-pointer">{tr("到作品庫看")}</span></Link>}
                   {character && savableUrls.length > 0 && (
                     <button onClick={() => saveToPackMutation.mutate(savableUrls)} disabled={saveToPackMutation.isPending || savableUrls.every(isSaved) || packRoom <= 0}
                       className="px-3 h-9 rounded-lg bg-indigo-600 text-white text-xs font-semibold disabled:opacity-40" data-testid="button-photoset-save-all">
-                      {savableUrls.every(isSaved) ? "✓ 已全部加入圖庫" : `全部加入「${character.name}」圖庫`}
+                      {savableUrls.every(isSaved) ? tr("✓ 已全部加入圖庫") : tr("全部加入「{0}」圖庫", { 0: character.name })}
                     </button>
                   )}
                 </div>
@@ -1001,27 +1003,27 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
                     <div key={g.id} className="relative rounded-xl overflow-hidden bg-slate-100 border border-slate-200" style={{ aspectRatio: ratio.id.replace(":", " / ") }} data-testid={`card-result-${idx}`}>
                       {g.status === "completed" && url ? (
                         <SensitiveGate on={g.sensitive}>
-                          <img src={url} alt={`成果 ${idx + 1}`} className="w-full h-full object-cover cursor-zoom-in" onClick={() => setLightbox(url)} />
+                          <img src={url} alt={tr("成果 {0}", { 0: idx + 1 })} className="w-full h-full object-cover cursor-zoom-in" onClick={() => setLightbox(url)} />
                           <div className="absolute bottom-2 right-2 flex gap-1.5">
                             {packable && (
                               <button onClick={() => saveToPackMutation.mutate([g.bunnyImageUrl as string])} disabled={saveToPackMutation.isPending || isSaved(g.bunnyImageUrl as string) || packRoom <= 0}
-                                className="h-8 px-2 rounded-full bg-black/60 text-white text-[11px] hover:bg-black/80 disabled:opacity-70" title="加入角色圖庫">
-                                {isSaved(g.bunnyImageUrl as string) ? "✓ 已加入" : "＋圖庫"}
+                                className="h-8 px-2 rounded-full bg-black/60 text-white text-[11px] hover:bg-black/80 disabled:opacity-70" title={tr("加入角色圖庫")}>
+                                {isSaved(g.bunnyImageUrl as string) ? tr("✓ 已加入") : tr("＋圖庫")}
                               </button>
                             )}
-                            <Link href={`/edit?image=${encodeURIComponent(url)}`}><span className="h-8 px-2 rounded-full bg-black/60 text-white text-[11px] flex items-center hover:bg-black/80 cursor-pointer" title="到編輯器修改這張圖">編輯</span></Link>
-                            <a href={url} download={`photoset-${idx + 1}.jpg`} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80" title="下載"><i className="fas fa-download text-xs" /></a>
+                            <Link href={`/edit?image=${encodeURIComponent(url)}`}><span className="h-8 px-2 rounded-full bg-black/60 text-white text-[11px] flex items-center hover:bg-black/80 cursor-pointer" title={tr("到編輯器修改這張圖")}>{tr("編輯")}</span></Link>
+                            <a href={url} download={`photoset-${idx + 1}.jpg`} target="_blank" rel="noreferrer" className="w-8 h-8 rounded-full bg-black/60 text-white flex items-center justify-center hover:bg-black/80" title={tr("下載")}><i className="fas fa-download text-xs" /></a>
                           </div>
                         </SensitiveGate>
                       ) : g.status === "failed" ? (
                         <div className="absolute inset-0 flex flex-col items-center justify-center p-3 text-center">
                           <i className="fas fa-triangle-exclamation text-red-500 mb-2" />
-                          <p className="text-xs text-red-500 line-clamp-4">{g.errorMessage || "生成失敗"}</p>
+                          <p className="text-xs text-red-500 line-clamp-4">{trServer(g.errorMessage) || tr("生成失敗")}</p>
                         </div>
                       ) : (
                         <div className="absolute inset-0 flex flex-col items-center justify-center text-slate-400">
                           <i className="fas fa-spinner fa-spin mb-2" />
-                          <p className="text-xs">生成中…</p>
+                          <p className="text-xs">{tr("生成中…")}</p>
                         </div>
                       )}
                       <span className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-black/60 text-white text-[11px]">{idx + 1}</span>
@@ -1038,30 +1040,30 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       {showStoreNudge && (
         <div className="fixed inset-0 z-[70] bg-slate-900/60 flex items-end md:items-center justify-center md:p-4" onClick={() => setShowStoreNudge(false)}>
           <div className="bg-white w-full md:max-w-md rounded-t-3xl md:rounded-3xl p-5 pb-[calc(20px+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()} data-testid="dialog-store-nudge">
-            <h3 className="text-lg font-bold text-slate-900"><i className="fas fa-champagne-glasses text-fuchsia-500 mr-2" />你的寫真完成了</h3>
+            <h3 className="text-lg font-bold text-slate-900"><i className="fas fa-champagne-glasses text-fuchsia-500 mr-2" />{tr("你的寫真完成了")}</h3>
             <p className="text-sm text-slate-600 mt-2">
-              目前剩 <b className="text-slate-900">{credits.toLocaleString()}</b> 積分{credits < IMAGE_COST ? "，不夠再做一張了" : `，還能做 ${Math.floor(credits / IMAGE_COST)} 張`}。
-              {isMember ? "加購積分就能繼續做下一組。" : "換一套服裝、換一個場景，再做一組？"}
+              {tr("目前剩")}<b className="text-slate-900">{credits.toLocaleString()}</b> {tr("積分")}{credits < IMAGE_COST ? tr("，不夠再做一張了") : tr("，還能做 {0} 張", { 0: Math.floor(credits / IMAGE_COST) })}。
+              {isMember ? tr("加購積分就能繼續做下一組。") : tr("換一套服裝、換一個場景，再做一組？")}
             </p>
             {!isMember && (
               <ul className="mt-3 space-y-2">
                 {!user?.trialUsedAt && (
                   <li className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 p-3 text-sm">
-                    <span><b className="text-slate-900">小試身手</b><span className="block text-xs text-slate-500">{TRIAL.credits} 積分，約 {Math.floor(TRIAL.credits / IMAGE_COST)} 張</span></span>
+                    <span><b className="text-slate-900">{tr("小試身手")}</b><span className="block text-xs text-slate-500">{tr("{0} 積分，約 {1} 張", { 0: TRIAL.credits, 1: Math.floor(TRIAL.credits / IMAGE_COST) })}</span></span>
                     <b className="text-slate-900">US${TRIAL.priceUsd}</b>
                   </li>
                 )}
                 <li className="flex items-center justify-between gap-3 rounded-2xl border-2 border-indigo-400 bg-indigo-50 p-3 text-sm">
-                  <span><b className="text-slate-900">正式會員</b><span className="ml-2 px-1.5 py-0.5 rounded bg-fuchsia-500 text-white text-[10px] font-bold align-middle">最划算</span><span className="block text-xs text-slate-500">{MEMBERSHIP.credits} 積分，約 {Math.floor(MEMBERSHIP.credits / IMAGE_COST)} 張</span></span>
+                  <span><b className="text-slate-900">{tr("正式會員")}</b><span className="ml-2 px-1.5 py-0.5 rounded bg-fuchsia-500 text-white text-[10px] font-bold align-middle">{tr("最划算")}</span><span className="block text-xs text-slate-500">{tr("{0} 積分，約 {1} 張", { 0: MEMBERSHIP.credits, 1: Math.floor(MEMBERSHIP.credits / IMAGE_COST) })}</span></span>
                   <b className="text-slate-900">US${MEMBERSHIP.priceUsd}</b>
                 </li>
               </ul>
             )}
             <div className="grid grid-cols-2 gap-2 mt-5">
-              <button onClick={() => setShowStoreNudge(false)} className="h-11 rounded-xl border border-slate-200 text-sm text-slate-600" data-testid="button-store-nudge-later">先看作品</button>
+              <button onClick={() => setShowStoreNudge(false)} className="h-11 rounded-xl border border-slate-200 text-sm text-slate-600" data-testid="button-store-nudge-later">{tr("先看作品")}</button>
               <Link href="/store">
                 <span className="h-11 rounded-xl bg-indigo-600 text-white text-sm font-semibold flex items-center justify-center cursor-pointer" data-testid="button-store-nudge-go">
-                  前往會員商城<i className="fas fa-arrow-right ml-2 text-xs" />
+                  {tr("前往會員商城")}<i className="fas fa-arrow-right ml-2 text-xs" />
                 </span>
               </Link>
             </div>
@@ -1078,7 +1080,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       {showCollage && <ReferenceCollage tiles={collageTiles} onClose={() => setShowCollage(false)} />}
       {lightbox && (
         <div className="fixed inset-0 z-[60] bg-black/85 flex items-center justify-center p-4" onClick={() => setLightbox(null)}>
-          <img src={lightbox} alt="預覽" className="max-w-full max-h-full object-contain rounded-lg" />
+          <img src={lightbox} alt={tr("預覽")} className="max-w-full max-h-full object-contain rounded-lg" />
         </div>
       )}
     </div>

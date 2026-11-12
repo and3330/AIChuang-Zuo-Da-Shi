@@ -1,3 +1,5 @@
+import { LangSwitch } from "@/components/LangSwitch";
+import { tr } from "@/lib/i18n";
 import { useState } from "react";
 import { useEmbed } from "@/components/EmbedBar";
 import { Link, useLocation } from "wouter";
@@ -36,21 +38,21 @@ type Destination = {
 };
 
 export const DESTINATIONS: Destination[] = [
-  { href: "/", label: "創作", icon: "fa-wand-magic-sparkles", group: "main" },
-  { href: "/photoset", label: "寫真工作室", short: "寫真", icon: "fa-camera-retro", group: "main" },
-  { href: "/product", label: "商品帶貨", short: "商品", icon: "fa-bag-shopping", group: "main" },
-  { href: "/drama", label: "漫劇工作室", short: "漫劇", icon: "fa-film", group: "main" },
-  { href: "/library", label: "素材圖庫", short: "圖庫", icon: "fa-images", group: "main" },
-  { href: "/wall", label: "作品牆", icon: "fa-globe", group: "main" },
-  { href: "/vault", label: "作品庫", icon: "fa-photo-film", group: "me" },
-  { href: "/edit", label: "編輯器", icon: "fa-pen-ruler", group: "me" },
-  { href: "/store", label: "會員商城", icon: "fa-store", group: "me" },
-  { href: "/account", label: "帳戶設定", icon: "fa-user-gear", group: "me" },
-  { href: "/transactions", label: "交易記錄", icon: "fa-receipt", group: "me" },
-  { href: "/character-library", label: "角色庫", icon: "fa-user-group", group: "assets" },
-  { href: "/scene-library", label: "場景庫", icon: "fa-mountain-sun", group: "assets" },
-  { href: "/gold", label: "黃金專區", icon: "fa-crown", group: "admin", goldOnly: true },
-  { href: "/admin", label: "管理後台", icon: "fa-gear", group: "admin", adminOnly: true },
+  { href: "/", label: tr("創作"), icon: "fa-wand-magic-sparkles", group: "main" },
+  { href: "/photoset", label: tr("寫真工作室"), short: tr("寫真"), icon: "fa-camera-retro", group: "main" },
+  { href: "/product", label: tr("商品帶貨"), short: tr("商品"), icon: "fa-bag-shopping", group: "main" },
+  { href: "/drama", label: tr("漫劇工作室"), short: tr("漫劇"), icon: "fa-film", group: "main" },
+  { href: "/library", label: tr("素材圖庫"), short: tr("圖庫"), icon: "fa-images", group: "main" },
+  { href: "/wall", label: tr("作品牆"), icon: "fa-globe", group: "main" },
+  { href: "/vault", label: tr("作品庫"), icon: "fa-photo-film", group: "me" },
+  { href: "/edit", label: tr("編輯器"), icon: "fa-pen-ruler", group: "me" },
+  { href: "/store", label: tr("會員商城"), icon: "fa-store", group: "me" },
+  { href: "/account", label: tr("帳戶設定"), icon: "fa-user-gear", group: "me" },
+  { href: "/transactions", label: tr("交易記錄"), icon: "fa-receipt", group: "me" },
+  { href: "/character-library", label: tr("角色庫"), icon: "fa-user-group", group: "assets" },
+  { href: "/scene-library", label: tr("場景庫"), icon: "fa-mountain-sun", group: "assets" },
+  { href: "/gold", label: tr("黃金專區"), icon: "fa-crown", group: "admin", goldOnly: true },
+  { href: "/admin", label: tr("管理後台"), icon: "fa-gear", group: "admin", adminOnly: true },
 ];
 
 /** The main modules: desktop bar and the first four mobile tabs. */
@@ -62,18 +64,18 @@ const QUICK = ["/vault", "/edit", "/character-library", "/scene-library"];
 
 /** The gold zone: the same pages as the ordinary ones, under /gold. */
 const GOLD_PAGES = [
-  { href: "/gold/image", label: "圖片生成", icon: "fa-image" },
-  { href: "/gold/video", label: "影片生成", icon: "fa-clapperboard" },
-  { href: "/gold/photoset", label: "寫真工作室", icon: "fa-camera-retro" },
-  { href: "/gold/library", label: "素材圖庫", icon: "fa-images" },
+  { href: "/gold/image", label: tr("圖片生成"), icon: "fa-image" },
+  { href: "/gold/video", label: tr("影片生成"), icon: "fa-clapperboard" },
+  { href: "/gold/photoset", label: tr("寫真工作室"), icon: "fa-camera-retro" },
+  { href: "/gold/library", label: tr("素材圖庫"), icon: "fa-images" },
 ];
 
 /** Pages reached from another page. They show a back button on phones. */
 const SUBPAGES: Destination[] = [
-  { href: "/ugc", label: "UGC 實拍短片", icon: "fa-mobile-screen", group: "main" },
-  { href: "/create/image", label: "圖片生成", icon: "fa-image", group: "main" },
-  { href: "/create/video", label: "影片生成", icon: "fa-clapperboard", group: "main" },
-  ...GOLD_PAGES.map(g => ({ href: g.href, label: `黃金・${g.label}`, icon: g.icon, group: "admin" as Group })),
+  { href: "/ugc", label: tr("UGC 實拍短片"), icon: "fa-mobile-screen", group: "main" },
+  { href: "/create/image", label: tr("圖片生成"), icon: "fa-image", group: "main" },
+  { href: "/create/video", label: tr("影片生成"), icon: "fa-clapperboard", group: "main" },
+  ...GOLD_PAGES.map(g => ({ href: g.href, label: tr("黃金・{name}", { name: g.label }), icon: g.icon, group: "admin" as Group })),
 ];
 
 function find(href: string): Destination {
@@ -112,15 +114,15 @@ function CreditsPill({ credits }: { credits: number }) {
   // 從客戶小鎮進來的工作區：點數在小鎮，這裡不能儲值，點了回小鎮看點數。
   if (embed) return (
     <a href={`${embed.returnOrigin}/insights`} target="_blank" rel="noreferrer"
-      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold hover:border-amber-300" data-testid="pill-credits-embed" title="這是你在客戶小鎮的點數，點擊回小鎮儲值">
+      className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold hover:border-amber-300" data-testid="pill-credits-embed" title={tr("這是你在客戶小鎮的點數，點擊回小鎮儲值")}>
       <i className="fas fa-coins text-amber-500 text-xs" />
       {credits.toLocaleString()}
-      <span className="text-[11px] font-medium text-amber-600">回小鎮儲值</span>
+      <span className="text-[11px] font-medium text-amber-600">{tr("回小鎮儲值")}</span>
     </a>
   );
   return (
     <Link href="/store">
-      <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold cursor-pointer hover:border-amber-300" data-testid="pill-credits" title="積分餘額，點擊前往儲值">
+      <span className="inline-flex items-center gap-1.5 h-8 px-3 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-sm font-semibold cursor-pointer hover:border-amber-300" data-testid="pill-credits" title={tr("積分餘額，點擊前往儲值")}>
         <i className="fas fa-coins text-amber-500 text-xs" />
         {credits.toLocaleString()}
       </span>
@@ -160,14 +162,14 @@ export function NavigationHeader() {
       {/* ── 手機：標題列 ── */}
       <div className="md:hidden h-12 px-2 flex items-center gap-1.5">
         {isRootTab || !here ? (
-          <Link href="/"><span className="w-10 h-10 flex items-center justify-center cursor-pointer" aria-label="回到首頁"><Logo size="w-7 h-7 text-xs" /></span></Link>
+          <Link href="/"><span className="w-10 h-10 flex items-center justify-center cursor-pointer" aria-label={tr("回到首頁")}><Logo size="w-7 h-7 text-xs" /></span></Link>
         ) : (
           <button onClick={() => (window.history.length > 1 ? window.history.back() : (window.location.href = "/"))}
-            className="w-10 h-10 flex items-center justify-center rounded-full text-slate-700 active:bg-slate-100" aria-label="返回" data-testid="button-back">
+            className="w-10 h-10 flex items-center justify-center rounded-full text-slate-700 active:bg-slate-100" aria-label={tr("返回")} data-testid="button-back">
             <i className="fas fa-chevron-left" />
           </button>
         )}
-        <h1 className="flex-1 min-w-0 text-[17px] font-semibold text-slate-900 truncate">{here?.href === "/" ? "AI 創意工坊" : here?.label ?? "AI 創意工坊"}</h1>
+        <h1 className="flex-1 min-w-0 text-[17px] font-semibold text-slate-900 truncate">{here?.href === "/" ? tr("AI 創意工坊") : here?.label ?? tr("AI 創意工坊")}</h1>
         <CreditsPill credits={user.credits ?? 0} />
       </div>
 
@@ -176,7 +178,7 @@ export function NavigationHeader() {
         <Link href="/">
           <span className="flex items-center gap-2.5 cursor-pointer shrink-0">
             <Logo />
-            <span className="text-base font-bold text-slate-900 hidden lg:inline">AI 創意工坊</span>
+            <span className="text-base font-bold text-slate-900 hidden xl:inline whitespace-nowrap">{tr("AI 創意工坊")}</span>
           </span>
         </Link>
         <nav className="flex items-center gap-0.5 lg:gap-1 flex-1 min-w-0">
@@ -198,7 +200,7 @@ export function NavigationHeader() {
             <DropdownMenuTrigger asChild>
               <button className={navCls(assetsActive)} data-testid="nav-more">
                 <i className={`fas fa-layer-group text-xs hidden lg:inline-block ${assetsActive ? "text-indigo-600" : "text-slate-400"}`} />
-                角色與場景 <i className="fas fa-chevron-down text-[10px]" />
+                {tr("角色與場景")}<i className="fas fa-chevron-down text-[10px]" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
@@ -216,7 +218,7 @@ export function NavigationHeader() {
                 <span className="w-7 h-7 rounded-full bg-brand text-white text-xs font-semibold flex items-center justify-center">
                   {(user.username || "?").slice(0, 1).toUpperCase()}
                 </span>
-                <span className="text-sm font-medium text-slate-700">我的</span>
+                <span className="text-sm font-medium text-slate-700">{tr("我的")}</span>
                 <i className="fas fa-chevron-down text-[10px] text-slate-400" />
               </button>
             </DropdownMenuTrigger>
@@ -225,8 +227,10 @@ export function NavigationHeader() {
               <DropdownMenuSeparator />
               {inGroup("me").map(d => <MenuLink key={d.href} d={d} />)}
               <DropdownMenuSeparator />
+              <div className="px-2 py-1.5"><LangSwitch className="text-slate-600" /></div>
+              <DropdownMenuSeparator />
               <DropdownMenuItem onClick={logout} className="cursor-pointer gap-2 text-red-600 focus:text-red-600" data-testid="button-logout">
-                <i className="fas fa-arrow-right-from-bracket w-4 text-center" />登出
+                <i className="fas fa-arrow-right-from-bracket w-4 text-center" />{tr("登出")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -239,7 +243,7 @@ export function NavigationHeader() {
           <div className="max-w-7xl mx-auto h-10 px-2 md:px-6 flex items-center gap-1 overflow-x-auto whitespace-nowrap text-sm">
             <Link href="/gold">
               <span className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded-full bg-amber-400 text-amber-950 text-xs font-bold cursor-pointer shrink-0">
-                <i className="fas fa-crown text-[10px]" />黃金專區
+                <i className="fas fa-crown text-[10px]" />{tr("黃金專區")}
               </span>
             </Link>
             {GOLD_PAGES.map(g => {
@@ -280,7 +284,7 @@ export default function MobileTabBar() {
 
   return (
     <>
-      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 glass border-t border-indigo-100/70 pb-[env(safe-area-inset-bottom)]" aria-label="主要導覽" data-testid="mobile-tab-bar">
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 glass border-t border-indigo-100/70 pb-[env(safe-area-inset-bottom)]" aria-label={tr("主要導覽")} data-testid="mobile-tab-bar">
         <div className="flex items-stretch h-14">
           {tabs.map(tab => {
             const active = isActive(location, tab.href);
@@ -293,7 +297,7 @@ export default function MobileTabBar() {
           })}
           <button onClick={() => setSheetOpen(true)} className={tabCls(meActive)} aria-haspopup="dialog" data-testid="tab-me">
             <span className={iconCls(meActive)}><i className="fas fa-user text-[16px]" /></span>
-            <span className={`text-[10px] leading-none ${meActive ? "font-semibold" : "font-medium"}`}>我的</span>
+            <span className={`text-[10px] leading-none ${meActive ? "font-semibold" : "font-medium"}`}>{tr("我的")}</span>
           </button>
         </div>
       </nav>
@@ -306,10 +310,10 @@ export default function MobileTabBar() {
               <span className="w-11 h-11 rounded-full bg-brand text-white text-base font-semibold flex items-center justify-center">{(user.username || "?").slice(0, 1).toUpperCase()}</span>
               <span className="min-w-0 flex-1">
                 <span className="block text-base text-slate-900 truncate">{user.username}</span>
-                <span className="block text-xs font-normal text-slate-500">積分 {(user.credits ?? 0).toLocaleString()}</span>
+                <span className="block text-xs font-normal text-slate-500">{tr("積分 {n}", { n: (user.credits ?? 0).toLocaleString() })}</span>
               </span>
               <Link href="/store" onClick={() => setSheetOpen(false)}>
-                <span className="h-9 px-4 rounded-full bg-brand text-white text-xs font-semibold flex items-center shadow-glow">儲值</span>
+                <span className="h-9 px-4 rounded-full bg-brand text-white text-xs font-semibold flex items-center shadow-glow">{tr("儲值")}</span>
               </Link>
             </SheetTitle>
           </SheetHeader>
@@ -341,7 +345,7 @@ export default function MobileTabBar() {
             ))}
           </div>
           <button onClick={() => { setSheetOpen(false); logout(); }} className="w-full h-12 rounded-2xl bg-slate-50 text-red-600 text-[15px] font-medium active:bg-slate-100" data-testid="button-logout-mobile">
-            登出
+            {tr("登出")}
           </button>
         </SheetContent>
       </Sheet>

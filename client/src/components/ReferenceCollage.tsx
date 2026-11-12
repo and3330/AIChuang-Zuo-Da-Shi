@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -18,7 +19,7 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("圖片讀取失敗"));
+    img.onerror = () => reject(new Error(tr("圖片讀取失敗")));
     img.src = src;
   });
 }
@@ -28,7 +29,7 @@ async function renderCollage(tiles: CollageTile[]): Promise<string> {
   canvas.width = PAD * 2 + tiles.length * TILE_W + (tiles.length - 1) * GAP;
   canvas.height = PAD * 2 + HEAD_H + IMG_H;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("瀏覽器不支援");
+  if (!ctx) throw new Error(tr("瀏覽器不支援"));
   ctx.fillStyle = "#0f172a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
   const images = await Promise.all(tiles.map(t => loadImage(canvasSafeSrc(t.url))));
@@ -66,7 +67,7 @@ export function ReferenceCollage({ tiles, onClose }: { tiles: CollageTile[]; onC
       a.download = `reference-collage-${Date.now()}.png`;
       a.click();
     } catch (e) {
-      toast({ title: "無法產生拼圖", description: e instanceof Error ? e.message : "請稍後再試。", variant: "destructive" });
+      toast({ title: tr("無法產生拼圖"), description: e instanceof Error ? e.message : tr("請稍後再試。"), variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -76,12 +77,12 @@ export function ReferenceCollage({ tiles, onClose }: { tiles: CollageTile[]; onC
     <div className="fixed inset-0 z-[70] bg-slate-900/60 flex items-end md:items-center justify-center md:p-6" onClick={onClose}>
       <div className="bg-white w-full md:max-w-3xl max-h-[90vh] overflow-auto rounded-t-3xl md:rounded-3xl p-4 md:p-5 pb-[calc(16px+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()} data-testid="reference-collage">
         <div className="flex items-center justify-between gap-3 mb-3">
-          <h3 className="text-base font-bold text-slate-900">參考圖拼合卡片</h3>
+          <h3 className="text-base font-bold text-slate-900">{tr("參考圖拼合卡片")}</h3>
           <div className="flex items-center gap-2">
             <button onClick={download} disabled={busy} className="h-9 px-3 rounded-lg border border-slate-200 text-sm text-slate-700 hover:border-indigo-300 disabled:opacity-50" data-testid="button-collage-download">
-              <i className="fas fa-download mr-1.5 text-xs" />{busy ? "產生中…" : "下載拼圖"}
+              <i className="fas fa-download mr-1.5 text-xs" />{busy ? tr("產生中…") : tr("下載拼圖")}
             </button>
-            <button onClick={onClose} className="w-9 h-9 rounded-full text-slate-400 hover:bg-slate-100" aria-label="關閉"><i className="fas fa-xmark" /></button>
+            <button onClick={onClose} className="w-9 h-9 rounded-full text-slate-400 hover:bg-slate-100" aria-label={tr("關閉")}><i className="fas fa-xmark" /></button>
           </div>
         </div>
         <div className="bg-slate-900 rounded-2xl p-2 grid gap-2" style={{ gridTemplateColumns: `repeat(${tiles.length}, minmax(0, 1fr))` }}>
@@ -97,7 +98,7 @@ export function ReferenceCollage({ tiles, onClose }: { tiles: CollageTile[]; onC
             </div>
           ))}
         </div>
-        <p className="text-[11px] text-slate-400 mt-3">生成時會依這個順序把圖交給模型：先人像，再服裝，最後是姿勢。</p>
+        <p className="text-[11px] text-slate-400 mt-3">{tr("生成時會依這個順序把圖交給模型：先人像，再服裝，最後是姿勢。")}</p>
       </div>
     </div>
   );

@@ -8,6 +8,7 @@
  *   - Per-episode ZIP download (all assets)
  */
 
+import { outputLanguageNote } from "./lang";
 import { FOUR_VIEW_COST, IMAGE_COST } from "@shared/pricing";
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
@@ -461,7 +462,7 @@ ${rawText}`;
       const claudeResp = await anthropic.messages.create({
         model: "claude-haiku-4-5",
         max_tokens: 8000,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: prompt + outputLanguageNote(req) }],
       });
 
       const textBlock = claudeResp.content.find((b: any) => b.type === "text") as any;

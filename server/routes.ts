@@ -8,6 +8,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene, type DramaScene } from "@shared/schema";
 import { sendVerificationEmail } from "./verificationEmail";
+import { byLang, outputLanguageNote, requestLang } from "./lang";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt, plainImagePrompt } from "./promptEnhancer";
@@ -227,6 +228,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       await storage.createVerificationCode(email, code, expiresAt);
 
       await sendVerificationEmail({
+        lang: requestLang(req),
         to: email,
         code,
         html: `
@@ -592,6 +594,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       const code = generateVerificationCode();
       await storage.createVerificationCode(user.email, code, new Date(Date.now() + 10 * 60 * 1000));
       await sendVerificationEmail({
+        lang: requestLang(req),
         to: user.email,
         code,
         purpose: "Email ",
@@ -778,8 +781,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
               ? {
                   currency: "usd",
                   product_data: {
-                    name: "AI 創意工坊 - 小試身手",
-                    description: `${TRIAL.credits} 積分，每個帳號限購一次`,
+                    name: byLang(req, "AI 創意工坊 - 小試身手", "AI Creative Studio - Starter pack"),
+                    description: byLang(req, `${TRIAL.credits} 積分，每個帳號限購一次`, `${TRIAL.credits} credits, once per account`),
                   },
                   unit_amount: Math.round(TRIAL.priceUsd * 100),
                 }
@@ -787,8 +790,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
               ? {
                   currency: "usd",
                   product_data: {
-                    name: "AI 創意工坊 - 黃金會員",
-                    description: `一次性升級黃金會員，含 ${GOLD_MEMBERSHIP.credits} 積分`,
+                    name: byLang(req, "AI 創意工坊 - 黃金會員", "AI Creative Studio - Gold membership"),
+                    description: byLang(req, `一次性升級黃金會員，含 ${GOLD_MEMBERSHIP.credits} 積分`, `One-time upgrade to Gold membership, includes ${GOLD_MEMBERSHIP.credits} credits`),
                   },
                   unit_amount: Math.round(GOLD_MEMBERSHIP.priceUsd * 100),
                 }
@@ -796,16 +799,16 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
               ? {
                   currency: "usd",
                   product_data: {
-                    name: "AI 創意工坊 - 開通會員",
-                    description: `一次性開通會員，含 ${MEMBERSHIP.credits} 積分`,
+                    name: byLang(req, "AI 創意工坊 - 開通會員", "AI Creative Studio - Membership"),
+                    description: byLang(req, `一次性開通會員，含 ${MEMBERSHIP.credits} 積分`, `One-time membership, includes ${MEMBERSHIP.credits} credits`),
                   },
                   unit_amount: Math.round(MEMBERSHIP.priceUsd * 100),
                 }
               : {
                   currency: "twd",
                   product_data: {
-                    name: `AI 創意工坊 - ${credits} 積分`,
-                    description: `儲值 NT$${amount}，獲得 ${credits} 積分`,
+                    name: byLang(req, `AI 創意工坊 - ${credits} 積分`, `AI Creative Studio - ${credits} credits`),
+                    description: byLang(req, `儲值 NT$${amount}，獲得 ${credits} 積分`, `Top-up of NT$${amount}, ${credits} credits`),
                   },
                   unit_amount: amount * 100,
                 },
@@ -2553,7 +2556,7 @@ Requirements:
         model: "claude-haiku-4-5",
         max_tokens: 512,
         messages: [
-          { role: "user", content: `${systemPrompt}\n\n原始提示詞：${prompt.trim()}` }
+          { role: "user", content: `${systemPrompt}\n\n原始提示詞：${prompt.trim()}${outputLanguageNote(req)}` }
         ],
       });
 
@@ -2862,7 +2865,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const message = await anthropic.messages.create({
         model: "claude-haiku-4-5",
         max_tokens: 2048,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: prompt + outputLanguageNote(req) }],
       });
 
       const text = message.content[0].type === "text" ? message.content[0].text : "";
@@ -3235,7 +3238,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const message = await anthropic.messages.create({
         model: "claude-haiku-4-5",
         max_tokens: 4096,
-        messages: [{ role: "user", content: prompt }],
+        messages: [{ role: "user", content: prompt + outputLanguageNote(req) }],
       });
 
       // Combine all text blocks (model may return multiple text segments)

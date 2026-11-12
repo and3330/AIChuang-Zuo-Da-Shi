@@ -1,3 +1,4 @@
+import { tr } from "@/lib/i18n";
 import { useState, useRef, useCallback } from "react";
 import type { ReactNode } from "react";
 import Uppy from "@uppy/core";
@@ -112,13 +113,13 @@ export function UnifiedUploader({
   const validateFile = useCallback((file: File): { valid: boolean; error?: string } => {
     // Check file type
     if (!acceptedFileTypes.includes(file.type)) {
-      return { valid: false, error: `僅支援 ${formatsLabel} 檔案格式` };
+      return { valid: false, error: tr("僅支援 {0} 檔案格式", { 0: formatsLabel }) };
     }
 
     // Check file size
     if (file.size > maxFileSize) {
       const maxSizeMB = Math.round(maxFileSize / (1024 * 1024));
-      return { valid: false, error: `檔案大小必須小於 ${maxSizeMB}MB` };
+      return { valid: false, error: tr("檔案大小必須小於 {0}MB", { 0: maxSizeMB }) };
     }
 
     return { valid: true };
@@ -253,28 +254,28 @@ export function UnifiedUploader({
             {isUploading ? (
               <div className="space-y-2">
                 <p className="text-lg font-medium text-secondary">
-                  正在上傳 {selectedFile?.name}...
+                  {tr("正在上傳 {0}...", { 0: selectedFile?.name })}
                 </p>
                 <div className="max-w-xs mx-auto">
                   <Progress value={uploadProgress} className="h-2" />
                 </div>
                 <p className="text-sm text-gray-500">
-                  已完成 {Math.round(uploadProgress)}%
+                  {tr("已完成 {0}%", { 0: Math.round(uploadProgress) })}
                   {selectedFile && ` • ${formatFileSize(selectedFile.size)}`}
                 </p>
               </div>
             ) : isDragOver ? (
               <div>
-                <p className="text-lg font-medium text-primary">將圖片放到這裡</p>
-                <p className="text-sm text-blue-600 mt-1">放開以上傳</p>
+                <p className="text-lg font-medium text-primary">{tr("將圖片放到這裡")}</p>
+                <p className="text-sm text-blue-600 mt-1">{tr("放開以上傳")}</p>
               </div>
             ) : (
               <div>
                 <p className="text-lg font-medium text-secondary">
-                  {children || "拖放圖片到此處或點擊瀏覽"}
+                  {children || tr("拖放圖片到此處或點擊瀏覽")}
                 </p>
                 <p className="text-sm text-gray-500 mt-1">
-                  <span className="text-primary font-medium">點擊瀏覽</span> 或拖放檔案
+                  <span className="text-primary font-medium">{tr("點擊瀏覽")}</span> {tr("或拖放檔案")}
                 </p>
               </div>
             )}
@@ -283,7 +284,7 @@ export function UnifiedUploader({
           {/* File Constraints */}
           {!isUploading && (
             <p className="text-xs text-gray-400">
-              支援 {formatsLabel} 格式，最大 {Math.round(maxFileSize / (1024 * 1024))}MB
+              {tr("支援 {0} 格式，最大 {1}MB", { 0: formatsLabel, 1: Math.round(maxFileSize / (1024 * 1024)) })}
             </p>
           )}
         </div>
