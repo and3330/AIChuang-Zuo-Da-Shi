@@ -18,3 +18,39 @@ export function fourViewPrompt(presetPrompt: string, description?: string | null
   const style = styleHint?.trim() ? `，整體風格：${styleHint.trim()}` : "";
   return `${base}${presetPrompt}${style}（保持與第 1 張參考圖完全一致的角色外貌、髮色、五官、年齡與服裝）`;
 }
+
+// ─── 先確認正面圖 ───────────────────────────────────────────────────────────
+// 從「上傳照片建立角色」開始的四視圖分兩段：先只做正面圖，角色的 fourViewStatus 變成 "confirm"，
+// 等使用者確認「像」之後才做其餘三張。不像可以重新生成正面圖：前 FRONT_FREE_RETRIES 次免費，
+// 之後每次收一張圖的積分。已經重生幾次記在狀態字串後面（"confirm:2"），不另外開欄位。
+
+export const FRONT_FREE_RETRIES = 2;
+
+/** The front view is ready and waits for the person to say whether it looks like them. */
+export function awaitingFrontConfirm(status?: string | null): boolean {
+  return !!status && status.startsWith("confirm");
+}
+
+/** How many times the front view was regenerated while waiting for confirmation. */
+export function frontRetriesUsed(status?: string | null): number {
+  const n = Number((status ?? "").split(":")[1]);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+export function frontConfirmStatus(retriesUsed: number): string {
+  return retriesUsed > 0 ? `confirm:${retriesUsed}` : "confirm";
+}
+
+// ─── 上傳照片的 AI 判讀 ─────────────────────────────────────────────────────
+export type PhotoAngle = "front_face" | "three_quarter" | "side" | "full_body" | "back" | "other";
+export type PhotoQuality = "good" | "fair" | "poor";
+export type PhotoTags = {
+  /** What the photo shows of the person. */
+  angle: PhotoAngle;
+  /** How usable it is as a likeness reference. */
+  quality: PhotoQuality;
+  /** Why it is not "good" (blurry, face covered, filter...). Empty when good. In the interface language. */
+  issue: string;
+  /** 3 to 5 short labels, in the interface language. */
+  tags: string[];
+};

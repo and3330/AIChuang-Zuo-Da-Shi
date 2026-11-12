@@ -1,5 +1,5 @@
-import { tr } from "@/lib/i18n";
-import { useRef, useState } from "react";
+import { getLang, tr } from "@/lib/i18n";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -7,6 +7,8 @@ import { useUser } from "@/hooks/use-user";
 import { useEmbed } from "@/components/EmbedBar";
 import { Link } from "wouter";
 import { FOUR_VIEW_COST } from "@shared/pricing";
+import type { PhotoAngle, PhotoTags } from "@shared/fourViews";
+import { FrontConfirm } from "@/components/FrontConfirm";
 
 // 上傳照片建立角色：最多 WIZARD_MAX_PHOTOS 張（圖片模型一次最多吃 10 張參考圖）。
 // 第一張一定要是臉部正面照，生成時最優先參考它；其餘建議側臉、半身、全身、不同表情。
@@ -14,7 +16,11 @@ import { FOUR_VIEW_COST } from "@shared/pricing";
 // 能不能完整做出來取決於照片品質：畫面上會提醒，短邊小於 LOW_RES_SIDE 像素的照片會標「解析度低」。
 // 照片依上傳順序成為角色圖庫，可以點「設為第一張」調整。照片越多、角度越完整，生成越像本人。
 // 建立前必須確認照片是本人或已取得同意 —— 這個功能不能拿來做別人的角色。
-// 按「下一步」就建立角色、開始生成四視圖，並回到角色庫。帳號的第一次免費；
+// 每張照片上傳後由 AI 判讀（/api/character-library/photo-tags）：角度、品質與幾個標籤顯示在照片下方，
+// 不適合的照片會標出原因。使用者沒有自己指定第一張時，會自動把最清楚的臉部正面照排到第一張。
+// 判讀失敗不影響建立，只是那張照片沒有標籤。
+// 按「下一步」就建立角色並先生成正面圖，同一個視窗接著問「像不像」（components/FrontConfirm.tsx）：
+// 像了才做其餘三張，不像可以換主照片重新生成。帳號的第一次免費；
 // 第二個角色開始每次建立收 FOUR_VIEW_COST 積分（按鈕上寫明），積分不夠就不能建立，帶去會員商城。
 // 嵌入模式（客戶小鎮工作區）維持原樣：只建立角色，四視圖在角色卡片上另外按。
 
@@ -27,6 +33,16 @@ const TIPS = [
   tr("再放側臉、半身、全身、不同表情，角度越多越像"),
   tr("不要開美顏或濾鏡，髮型跟平常一樣"),
 ];
+
+const ANGLE_LABEL: Record<PhotoAngle, string> = {
+  front_face: tr("正面臉"), three_quarter: tr("半側臉"), side: tr("側臉"), full_body: tr("全身"), back: tr("背面"), other: tr("其他"),
+};
+
+/** How good a photo is as the first (main) photo: a clear front face wins. */
+function mainPhotoScore(t: PhotoTags | undefined): number {
+  if (!t || t.angle !== "front_face") return 0;
+  return t.quality === "good" ? 3 : t.quality === "fair" ? 2 : 0;
+}
 
 /** Shorter side of the image in pixels; 0 when the browser cannot read it. */
 function shortSide(file: File): Promise<number> {
@@ -58,6 +74,12 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
   const [uploading, setUploading] = useState(0);
   const [name, setName] = useState("");
   const [consent, setConsent] = useState(false);
+  // AI reading of each photo, by its path. `null` while it is being read; missing when it failed.
+  const [tags, setTags] = useState<Record<string, PhotoTags | null>>({});
+  // Once the person picks or removes the first photo themselves, the order is theirs.
+  const manualFirst = useRef(false);
+  // Set after the character is created with its front view started: the window moves on to the likeness check.
+  const [createdId, setCreatedId] = useState<string | null>(null);
   const { user } = useUser();
   const embed = !!useEmbed();
   const freeFourView = !!user && !user.freeFourViewUsedAt && !embed;
@@ -91,6 +113,7 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
         const [path, side] = await Promise.all([uploadToObjectStorage(file), shortSide(file)]);
         if (side > 0 && side < LOW_RES_SIDE) setLowRes(prev => [...prev, path]);
         setPhotos(prev => (prev.length < WIZARD_MAX_PHOTOS ? [...prev, path] : prev));
+        readPhoto(path);
       } catch {
         failed += 1;
       } finally {
@@ -100,8 +123,32 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
     if (failed > 0) toast({ title: tr("{0} 張上傳失敗", { 0: failed }), description: tr("請再試一次。"), variant: "destructive" });
   };
 
-  const remove = (i: number) => setPhotos(prev => prev.filter((_, idx) => idx !== i));
-  const makeFirst = (i: number) => setPhotos(prev => [prev[i], ...prev.filter((_, idx) => idx !== i)]);
+  const readPhoto = (path: string) => {
+    setTags(prev => ({ ...prev, [path]: null }));
+    apiRequest("POST", "/api/character-library/photo-tags", { url: path, lang: getLang() })
+      .then(r => r.json())
+      .then((t: PhotoTags) => setTags(prev => ({ ...prev, [path]: t })))
+      .catch(() => setTags(prev => { const next = { ...prev }; delete next[path]; return next; }));
+  };
+
+  // Put the clearest front-face photo first, as long as the person has not chosen the order themselves
+  // and the current first photo has been read and is worse.
+  useEffect(() => {
+    if (manualFirst.current) return;
+    setPhotos(prev => {
+      if (prev.length < 2 || !tags[prev[0]]) return prev;
+      let best = prev[0];
+      for (const url of prev) if (mainPhotoScore(tags[url] ?? undefined) > mainPhotoScore(tags[best] ?? undefined)) best = url;
+      return best === prev[0] ? prev : [best, ...prev.filter(u => u !== best)];
+    });
+  }, [tags]);
+
+  const remove = (i: number) => { if (i === 0) manualFirst.current = true; setPhotos(prev => prev.filter((_, idx) => idx !== i)); };
+  const makeFirst = (i: number) => { manualFirst.current = true; setPhotos(prev => [prev[i], ...prev.filter((_, idx) => idx !== i)]); };
+
+  const poorPhotos = photos.map((url, i) => ({ n: i + 1, t: tags[url] })).filter(x => x.t && x.t.quality === "poor");
+  const allRead = photos.length > 0 && photos.every(url => tags[url] !== null);
+  const noFrontFace = allRead && photos.some(url => tags[url]) && !photos.some(url => mainPhotoScore(tags[url] ?? undefined) > 0);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -110,7 +157,7 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
       // Start the 四視圖 right away (free the first time, FOUR_VIEW_COST after). If it cannot start, the character is still saved.
       let started = false;
       if (freeFourView || paidFourView) {
-        try { await apiRequest("POST", `/api/character-library/${created.id}/generate-four-views`, {}); started = true; }
+        try { await apiRequest("POST", `/api/character-library/${created.id}/generate-four-views`, { frontFirst: true }); started = true; }
         catch { /* the button on the character card can start it later */ }
       }
       return { ...created, started };
@@ -118,14 +165,29 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
     onSuccess: (c) => {
       queryClient.invalidateQueries({ queryKey: ["/api/character-library"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      toast(c.started
-        ? { title: tr("角色已建立，四視圖生成中"), description: tr("{0}。大約一兩分鐘後會出現在角色卡片上。", { 0: freeFourView ? tr("這次免費") : tr("已扣 {0} 積分", { 0: FOUR_VIEW_COST }) }) }
-        : { title: tr("角色已建立"), description: tr("已經放進角色庫。在角色卡片上按「生成四視圖」，之後出圖會更像本人。") });
+      if (c.started) {
+        // Stay open: the front view comes first and the person confirms the likeness.
+        toast({ title: tr("角色已建立，正在生成正面圖"), description: freeFourView ? tr("這次免費") : tr("已扣 {0} 積分", { 0: FOUR_VIEW_COST }) });
+        setCreatedId(c.id);
+        return;
+      }
+      toast({ title: tr("角色已建立"), description: tr("已經放進角色庫。在角色卡片上按「生成四視圖」，之後出圖會更像本人。") });
       onCreated?.(c.id);
       onClose();
     },
     onError: () => toast({ title: tr("建立失敗"), description: tr("請稍後再試。"), variant: "destructive" }),
   });
+
+  if (createdId) {
+    const finish = () => { onCreated?.(createdId); onClose(); };
+    return (
+      <div className="fixed inset-0 z-[60] bg-black/50 flex items-end md:items-center justify-center md:p-4" onClick={finish}>
+        <div className="bg-white w-full md:max-w-xl max-h-[92vh] overflow-auto rounded-t-3xl md:rounded-2xl p-5 pb-[calc(20px+env(safe-area-inset-bottom))]" onClick={e => e.stopPropagation()} data-testid="character-wizard">
+          <FrontConfirm characterId={createdId} onDone={finish} onLater={finish} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-[60] bg-black/50 flex items-end md:items-center justify-center md:p-4" onClick={onClose}>
@@ -141,13 +203,22 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
         <input ref={inputRef} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={e => onFiles(e.target.files)} data-testid="input-wizard-file" />
         <div className="grid grid-cols-4 sm:grid-cols-5 gap-2 mt-4" data-testid="wizard-photos">
           {photos.map((url, i) => (
-            <div key={url} className={`relative rounded-xl overflow-hidden border-2 ${i === 0 ? "border-indigo-500" : "border-slate-200"}`} style={{ aspectRatio: "3 / 4" }} data-testid={`wizard-photo-${i}`}>
+            <div key={url} data-testid={`wizard-photo-${i}`}>
+            <div className={`relative rounded-xl overflow-hidden border-2 ${i === 0 ? "border-indigo-500" : "border-slate-200"}`} style={{ aspectRatio: "3 / 4" }}>
               <img src={url} alt={i === 0 ? tr("臉部正面照") : tr("照片 {0}", { 0: i + 1 })} className="w-full h-full object-cover" />
-              {lowRes.includes(url) && <span className="absolute top-0 left-0 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-br-lg">{tr("解析度低")}</span>}
+              {lowRes.includes(url)
+                ? <span className="absolute top-0 left-0 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-br-lg">{tr("解析度低")}</span>
+                : tags[url]?.quality === "poor" && <span className="absolute top-0 left-0 bg-amber-500 text-white text-[10px] px-1.5 py-0.5 rounded-br-lg" title={tags[url]?.issue}>{tr("不建議")}</span>}
               <button onClick={() => remove(i)} className="absolute top-0 right-0 w-6 h-6 bg-red-500 text-white text-sm rounded-bl-lg flex items-center justify-center" aria-label={tr("移除照片 {0}", { 0: i + 1 })}>×</button>
               {i === 0
                 ? <span className="absolute bottom-0 inset-x-0 bg-indigo-600/90 text-white text-[10px] text-center py-0.5">{tr("第一張・臉部正面")}</span>
                 : <button onClick={() => makeFirst(i)} className="absolute bottom-0 inset-x-0 bg-black/55 text-white text-[10px] py-0.5 hover:bg-black/75">{tr("設為第一張")}</button>}
+            </div>
+              {tags[url] === null
+                ? <p className="text-[10px] text-slate-400 mt-1 leading-tight">{tr("AI 判讀中…")}</p>
+                : tags[url] && <p className="text-[10px] text-slate-500 mt-1 leading-tight line-clamp-2" data-testid={`wizard-tags-${i}`}>
+                    <span className="font-semibold text-indigo-600">{ANGLE_LABEL[tags[url]!.angle]}</span>{tags[url]!.tags.length > 0 && `・${tags[url]!.tags.join("・")}`}
+                  </p>}
             </div>
           ))}
           {Array.from({ length: uploading }, (_, i) => (
@@ -177,6 +248,10 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
         <div className="mt-3 rounded-xl bg-amber-50 border border-amber-200 px-3 py-2.5 text-[12px] leading-relaxed text-amber-900" data-testid="wizard-quality-note">
           <i className="fas fa-triangle-exclamation mr-1.5" />{tr("角色能不能完整做出來，要看照片品質。模糊、太暗、臉被遮住、開了濾鏡，或全部都是同一個角度的照片，做出來可能不像、也可能缺少側面或全身。")}
           {lowResCount > 0 && <span className="block mt-1 font-semibold" data-testid="wizard-lowres-note">{tr("有 {0} 張照片解析度偏低，建議換成更清楚的。", { 0: lowResCount })}</span>}
+          {noFrontFace && <span className="block mt-1 font-semibold" data-testid="wizard-nofront-note">{tr("AI 沒有找到清楚的臉部正面照，請補一張，做出來才會像。")}</span>}
+          {poorPhotos.map(x => (
+            <span key={x.n} className="block mt-1" data-testid="wizard-poor-note">{tr("第 {0} 張不建議使用：{1}", { 0: x.n, 1: x.t!.issue || tr("品質不佳") })}</span>
+          ))}
         </div>
 
         <label className="block mt-4">
@@ -192,7 +267,7 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
 
         <button onClick={() => createMutation.mutate()} disabled={!ready || createMutation.isPending || uploading > 0}
           className="mt-4 w-full h-11 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40" data-testid="button-wizard-create">
-          {createMutation.isPending ? tr("建立中…") : freeFourView ? tr("下一步：生成角色四視圖（首次免費）") : paidFourView ? tr("下一步：生成角色四視圖（{0} 積分）", { 0: FOUR_VIEW_COST }) : tr("下一步：建立角色")}
+          {createMutation.isPending ? tr("建立中…") : freeFourView ? tr("下一步：先生成正面圖確認（首次免費）") : paidFourView ? tr("下一步：先生成正面圖確認（{0} 積分）", { 0: FOUR_VIEW_COST }) : tr("下一步：建立角色")}
         </button>
         {shortOfCredits && (
           <p className="text-xs text-red-600 mt-2 text-center" data-testid="wizard-short-credits">
