@@ -2486,4 +2486,7 @@ export const en: Record<string, string> = {
   "全部照片都判讀好了": "All photos have been read",
   "先把要用的照片全部上傳，再按這裡。之後再加照片，要再按一次。": "Upload every photo you want to use first, then press this. If you add photos later, press it again.",
   "先判讀全部照片，才能建立角色": "Read all photos first to create the character",
+  "畫面暫時無法顯示": "This page could not be displayed",
+  "請重新載入頁面。尚未送出的輸入可能需要重新填寫。": "Please reload the page. You may need to re-enter anything you have not submitted.",
+  "重新載入頁面": "Reload page",
 };
