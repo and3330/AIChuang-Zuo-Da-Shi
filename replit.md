@@ -136,3 +136,5 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 商品帶貨圖（`/product`，`client/src/pages/product.tsx`）：上傳商品照（最多 3 張）＋選角色＋選範本（UGC 實拍、生活情境、服飾商拍、Listing 套圖、圖片廣告、美食飲品）→ `POST /api/photosets/plan`（mode `product`）回傳鏡頭與貼文文案、標籤 → 走寫真同一個批次生成端點。圖片順序 `[...角色圖, ...商品圖]`。
 - 創作中心（`create-hub.tsx`）改成「熱門範本」牆＋「自由創作」（圖片生成、影片生成）。範本卡的 `href` 帶著流程參數（例如 `/product?template=ugc`、`/photoset?mode=scene`）；沒有示意圖的範本先用漸層加圖示。
 - UGC 實拍短片（`/ugc`，`client/src/pages/ugc.tsx`）：商品＋角色 → `POST /api/photosets/plan`（mode `ugc`）寫腳本（每個鏡頭有首幀描述 `prompt`、英文動態 `motion`、字幕 `subtitle`、秒數）→ 批次生成首幀（9:16、不含浮水印）→ 每個鏡頭各自 `POST /api/video-generations` 圖生影片。不開口說話、不自動合成；字幕稿與貼文文案可複製。腳本規則取自擁有者的提示詞 Skill（短影音、影片連續性、圖生影片、鉤子公式）。
+
+- 首頁（`landing.tsx`、`.lp-*`）改成粉紫色亮色版：底色 `#fff7fb`、白色卡片、紫到粉的漸層字與按鈕；漸層底上的文字一律 `text-white`。
