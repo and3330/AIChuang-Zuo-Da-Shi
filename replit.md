@@ -138,3 +138,5 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - UGC 實拍短片（`/ugc`，`client/src/pages/ugc.tsx`）：商品＋角色 → `POST /api/photosets/plan`（mode `ugc`）寫腳本（每個鏡頭有首幀描述 `prompt`、英文動態 `motion`、字幕 `subtitle`、秒數）→ 批次生成首幀（9:16、不含浮水印）→ 每個鏡頭各自 `POST /api/video-generations` 圖生影片。不開口說話、不自動合成；字幕稿與貼文文案可複製。腳本規則取自擁有者的提示詞 Skill（短影音、影片連續性、圖生影片、鉤子公式）。
 
 - 首頁（`landing.tsx`、`.lp-*`）改成粉紫色亮色版：底色 `#fff7fb`、白色卡片、紫到粉的漸層字與按鈕；漸層底上的文字一律 `text-white`。
+
+- 創作中心範本卡加上小動畫：`client/public/landing/*.mp4`（用封面圖以 WAN 生成一次的 4 秒無聲片段，壓成寬 360 的靜態檔，多數做成正放加倒放的無縫循環）。`TEMPLATES` 的 `video` 欄位指向它，疊在封面圖上自動播放；減少動態效果時只顯示封面。
