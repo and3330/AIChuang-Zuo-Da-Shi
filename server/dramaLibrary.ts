@@ -15,7 +15,10 @@ import { storage } from "./storage";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService } from "./bunnyStorage";
 import { plainImagePrompt } from "./promptEnhancer";
-import { FOUR_VIEW_PRESETS, FOUR_VIEW_SIZE, fourViewPrompt } from "@shared/fourViews";
+import {
+  FOUR_VIEW_PRESETS, FOUR_VIEW_SIZE, fourViewPrompt, FRONT_FREE_RETRIES, frontConfirmStatus, frontRetriesUsed,
+  type FourViewKey, type PhotoTags,
+} from "@shared/fourViews";
 import { motionPromptRequest, finishMotionPrompt } from "@shared/dramaMotion";
 import {
   insertCharacterLibrarySchema,
@@ -24,8 +27,9 @@ import {
   updateSceneLibrarySchema,
   type FourViewUrls,
   users,
+  characterLibrary,
 } from "@shared/schema";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, like } from "drizzle-orm";
 import { db } from "./db";
 import { ATLAS_SEED_MODEL, createAtlasSeedClient } from "./atlasSeed";
 import sharp from "sharp";
@@ -122,13 +126,177 @@ export function registerDramaLibraryRoutes(
     }
   }
 
+  // One description call per character at a time: the create route starts it, and the
+  // four-view job waits for the same call so the front view is drawn with the description.
+  const describing = new Map<string, Promise<void>>();
+  function ensureDescription(characterId: string, urls: string[]): Promise<void> {
+    let running = describing.get(characterId);
+    if (!running) {
+      running = describeCharacterFromPhotos(characterId, urls).finally(() => describing.delete(characterId));
+      describing.set(characterId, running);
+    }
+    return running;
+  }
+
+  /** The character's description, written from the photos first when it is still empty. Waits at most 25 seconds. */
+  async function descriptionForGeneration(characterId: string, current: string | null | undefined, refUrls: string[]): Promise<string> {
+    if ((current ?? "").trim()) return current!.trim();
+    await Promise.race([ensureDescription(characterId, refUrls), new Promise(resolve => setTimeout(resolve, 25_000))]);
+    const fresh = await storage.getCharacter(characterId);
+    return (fresh?.description ?? "").trim();
+  }
+
+  /**
+   * Generates the given views one after another and stores each on Bunny CDN.
+   * `frontUrl` is the finished front view: every other view gets it as reference 1, ahead of
+   * the person's own photos, so all views wear the same outfit. When "front" is among `keys`
+   * it is made first and becomes that reference. `fileTag` makes the stored file name unique
+   * (a regenerated front view must not be served from the CDN cache of the old one).
+   */
+  async function generateViews(opts: {
+    character: { id: string; name: string; styleHint: string | null };
+    description: string;
+    keys: FourViewKey[];
+    refUrls: string[];
+    userFolder: string;
+    frontUrl?: string;
+    fileTag?: string;
+    onView?: (soFar: FourViewUrls) => Promise<void>;
+  }): Promise<{ results: FourViewUrls; succeeded: number }> {
+    const { character } = opts;
+    // A character pack can hold up to 30 images; the edit model uses 10.
+    const refBase64s = await Promise.all(opts.refUrls.slice(0, 10).map(loadAsBase64));
+    const results: FourViewUrls = {};
+    let succeeded = 0;
+    let frontViewUrl = opts.frontUrl ?? "";
+    for (const preset of FOUR_VIEW_PRESETS.filter(p => opts.keys.includes(p.key))) {
+      try {
+        const plainPrompt = fourViewPrompt(preset.promptZh, opts.description, character.styleHint);
+        const chained = preset.key !== "front" && !!frontViewUrl;
+        const fullPrompt = chained
+          ? `${plainPrompt}（第 1 張參考圖是這個角色已完成的正面定裝圖：服裝、鞋子、髮型與體型必須和它完全一樣。其餘參考圖是本人的照片，用來保持臉部五官一致。）`
+          : plainPrompt;
+        const viewImages = chained ? [frontViewUrl, ...refBase64s.slice(0, 9)] : refBase64s;
+        const imageUrl = await atlasGenerateImage({
+          prompt: fullPrompt,
+          images: (viewImages.length === 1 ? viewImages[0] : viewImages) as any,
+          size: FOUR_VIEW_SIZE,
+        });
+        if (preset.key === "front") frontViewUrl = imageUrl;
+
+        let storedUrl = imageUrl;
+        if (bunnyStorage.isConfigured()) {
+          try {
+            const safe = assertPublicHttpsUrl(imageUrl);
+            const imgResp = await fetch(safe.toString(), { redirect: "error" });
+            const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
+            const remotePath = `users/${opts.userFolder}/character-library/${character.id}_${preset.key}${opts.fileTag ?? ""}.jpg`;
+            storedUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
+          } catch (e) {
+            console.warn(`[CharLib] Bunny upload failed for ${preset.key}:`, e);
+          }
+        }
+        results[preset.key] = storedUrl;
+        succeeded++;
+        if (opts.onView) await opts.onView({ ...results });
+        console.log(`✅ Character ${character.name} 四視圖 ${preset.key} 完成`);
+      } catch (viewErr: any) {
+        console.error(`❌ Character ${character.name} ${preset.key} 失敗:`, viewErr.message);
+      }
+    }
+    return { results, succeeded };
+  }
+
+  async function refundCredits(userId: string, amount: number, description: string): Promise<void> {
+    const u = await storage.getUser(userId);
+    const balance = (u?.credits ?? 0) + amount;
+    await storage.updateUserCredits(userId, balance);
+    await storage.createCreditTransaction({ userId, type: "refund", amount, balance, description });
+  }
+
+  /** Moves a character out of "waiting for front-view confirmation" into "generating". Null when it was not waiting. */
+  async function claimFrontConfirm(id: string, userId: string) {
+    const [claimed] = await db.update(characterLibrary)
+      .set({ fourViewStatus: "generating", fourViewError: null, updatedAt: new Date() })
+      .where(and(eq(characterLibrary.id, id), eq(characterLibrary.userId, userId), like(characterLibrary.fourViewStatus, "confirm%")))
+      .returning();
+    return claimed ?? null;
+  }
+
+  // ─── AI labels for one uploaded photo (shown in the character wizard) ───────
+  // Free for the person, so it is capped per account.
+  const photoTagCalls = new Map<string, number[]>();
+  const PHOTO_TAG_LIMIT = 60;
+  const PHOTO_TAG_WINDOW_MS = 10 * 60 * 1000;
+  const PHOTO_ANGLES = ["front_face", "three_quarter", "side", "full_body", "back", "other"];
+  const PHOTO_QUALITIES = ["good", "fair", "poor"];
+
+  app.post("/api/character-library/photo-tags", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
+      const english = req.body?.lang === "en";
+      if (!url || url.length > 2000 || url.startsWith("data:")) return res.status(400).json({ error: "缺少照片。" });
+      if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) return res.status(500).json({ error: "規劃用的 AI 服務尚未設定。" });
+
+      const now = Date.now();
+      const recent = (photoTagCalls.get(userId) ?? []).filter(t => now - t < PHOTO_TAG_WINDOW_MS);
+      if (recent.length >= PHOTO_TAG_LIMIT) return res.status(429).json({ error: "照片判讀次數太多，請稍後再試。" });
+      recent.push(now);
+      photoTagCalls.set(userId, recent);
+
+      const dataUrl = await loadAsBase64(url);
+      const small = await sharp(Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"))
+        .rotate().resize({ width: 768, height: 768, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
+      const anthropic = new Anthropic({
+        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
+      });
+      const resp = await anthropic.messages.create({
+        model: "claude-haiku-4-5",
+        max_tokens: 300,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: small.toString("base64") } },
+            {
+              type: "text",
+              text: `這張照片要當作 AI 繪圖的人物參考圖，用來把這個人畫得像。請判讀這張照片適不適合，只輸出一個 JSON 物件，不要有其他文字：
+{"angle": "...", "quality": "...", "issue": "...", "tags": ["...", "..."]}
+angle 只能是：front_face（臉部正面，五官完整看得到）、three_quarter（臉轉約 45 度）、side（側臉）、full_body（全身入鏡）、back（背面）、other（看不到人或無法判斷）。同時是全身又是正面時，臉夠清楚選 front_face，臉很小選 full_body。
+quality 只能是：good（臉清楚、光線足、沒有遮擋）、fair（可以用但不理想）、poor（模糊、太暗、臉被遮住、戴墨鏡或口罩、濾鏡或美顏很重、臉太小、畫面裡不只一個人、或根本不是真人照片）。
+issue：quality 不是 good 時，用一句 15 字以內的話說明原因；good 時給空字串。
+tags：3 到 5 個簡短標籤，描述拍攝角度、光線、表情與看得到的外貌特徵（例如髮型、髮色、眼鏡）。不要猜測姓名、身分、職業、種族或年齡數字。
+issue 與 tags 請用${english ? "英文" : "繁體中文"}書寫。`,
+            },
+          ],
+        }],
+      });
+      const text = ((resp.content.find((b: any) => b.type === "text") as any)?.text || "").trim();
+      let parsed: any = null;
+      try { parsed = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch { /* handled below */ }
+      if (!parsed || typeof parsed !== "object") return res.status(502).json({ error: "照片判讀失敗，請稍後再試。" });
+      const tags: PhotoTags = {
+        angle: PHOTO_ANGLES.includes(parsed.angle) ? parsed.angle : "other",
+        quality: PHOTO_QUALITIES.includes(parsed.quality) ? parsed.quality : "fair",
+        issue: typeof parsed.issue === "string" ? parsed.issue.trim().slice(0, 80) : "",
+        tags: Array.isArray(parsed.tags) ? parsed.tags.filter((t: any) => typeof t === "string" && t.trim()).map((t: string) => t.trim().slice(0, 24)).slice(0, 5) : [],
+      };
+      if (tags.quality === "good") tags.issue = "";
+      res.json(tags);
+    } catch (e: any) {
+      console.warn("[Character] photo tags failed:", String(e?.message ?? e).slice(0, 120));
+      res.status(502).json({ error: "照片判讀失敗，請稍後再試。" });
+    }
+  });
+
   app.post("/api/character-library", requireAuth, async (req, res) => {
     try {
       const data = insertCharacterLibrarySchema.parse(req.body);
       const c = await storage.createCharacter({ ...data, userId: req.session.userId! });
       res.json(c);
       if (!(c.description ?? "").trim() && (c.refImageUrls?.length ?? 0) > 0) {
-        void describeCharacterFromPhotos(c.id, c.refImageUrls ?? []);
+        void ensureDescription(c.id, c.refImageUrls ?? []);
       }
     } catch (e: any) {
       res.status(400).json({ error: e.message });
@@ -179,6 +347,9 @@ export function registerDramaLibraryRoutes(
       if (refUrls.length === 0) {
         return res.status(400).json({ error: "請先上傳至少一張角色參考圖" });
       }
+      // The character wizard asks for the front view alone first; the other three follow
+      // after the person confirms it looks like them (see /four-views/confirm).
+      const frontFirst = req.body?.frontFirst === true;
 
       if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
 
@@ -220,66 +391,20 @@ export function registerDramaLibraryRoutes(
       // ── Async background work ────────────────────────────────────────────────
       (async () => {
         try {
-          // A character pack can hold up to 30 images; the edit model uses 10.
-          const refBase64s = await Promise.all(refUrls.slice(0, 10).map(loadAsBase64));
           const userFolder = user?.username || userId;
-          const results: FourViewUrls = {};
-          let succeeded = 0;
-
-          let frontViewUrl = "";
-          for (const preset of FOUR_VIEW_PRESETS) {
-            try {
-              const plainPrompt = fourViewPrompt(preset.promptZh, character.description, character.styleHint);
-              // The front view is made first and decides the outfit. Every later view gets it as
-              // reference 1, ahead of the person's own photos, so all four wear the same clothes;
-              // without it each view invented its own outfit.
-              const chained = preset.key !== "front" && !!frontViewUrl;
-              const fullPrompt = chained
-                ? `${plainPrompt}（第 1 張參考圖是這個角色已完成的正面定裝圖：服裝、鞋子、髮型與體型必須和它完全一樣。其餘參考圖是本人的照片，用來保持臉部五官一致。）`
-                : plainPrompt;
-              const viewImages = chained ? [frontViewUrl, ...refBase64s.slice(0, 9)] : refBase64s;
-              const requestBody: any = {
-                prompt: fullPrompt,
-                image: viewImages.length === 1 ? viewImages[0] : viewImages,
-                size: FOUR_VIEW_SIZE,
-              };
-              const imageUrl = await atlasGenerateImage({ prompt: requestBody.prompt, images: requestBody.image, size: requestBody.size });
-              if (preset.key === "front") frontViewUrl = imageUrl;
-
-              let storedUrl = imageUrl;
-              if (bunnyStorage.isConfigured()) {
-                try {
-                  const safe = assertPublicHttpsUrl(imageUrl);
-                  const imgResp = await fetch(safe.toString(), { redirect: "error" });
-                  const imgBuffer = Buffer.from(await imgResp.arrayBuffer());
-                  const remotePath = `users/${userFolder}/character-library/${character.id}_${preset.key}.jpg`;
-                  storedUrl = await bunnyStorage.uploadBuffer(imgBuffer, remotePath);
-                } catch (e) {
-                  console.warn(`[CharLib] Bunny upload failed for ${preset.key}:`, e);
-                }
-              }
-              results[preset.key] = storedUrl;
-              succeeded++;
-              await storage.updateCharacter(character.id, { fourViewUrls: { ...results } } as any);
-              console.log(`✅ Character ${character.name} 四視圖 ${preset.key} 完成`);
-            } catch (viewErr: any) {
-              console.error(`❌ Character ${character.name} ${preset.key} 失敗:`, viewErr.message);
-            }
-          }
+          const description = await descriptionForGeneration(character.id, character.description, refUrls);
+          const { results, succeeded } = await generateViews({
+            character, description, refUrls, userFolder,
+            keys: frontFirst ? ["front"] : FOUR_VIEW_PRESETS.map(p => p.key),
+            onView: soFar => storage.updateCharacter(character.id, { fourViewUrls: soFar } as any).then(() => undefined),
+          });
 
           if (succeeded === 0) {
             if (free) {
               // Nothing was charged: give the free generation back instead.
               await db.update(users).set({ freeFourViewUsedAt: null }).where(eq(users.id, userId));
             } else {
-              // refund
-              const u2 = await storage.getUser(userId);
-              const refundBal = (u2?.credits ?? 0) + FOUR_VIEW_CREDIT_COST;
-              await storage.updateUserCredits(userId, refundBal);
-              await storage.createCreditTransaction({
-                userId, type: "refund", amount: FOUR_VIEW_CREDIT_COST, balance: refundBal,
-                description: `角色「${character.name}」四視圖生成失敗退款`,
-              });
+              await refundCredits(userId, FOUR_VIEW_CREDIT_COST, `角色「${character.name}」四視圖生成失敗退款`);
             }
             await storage.updateCharacter(character.id, {
               fourViewStatus: "failed",
@@ -287,7 +412,8 @@ export function registerDramaLibraryRoutes(
             } as any);
           } else {
             await storage.updateCharacter(character.id, {
-              fourViewStatus: "completed",
+              // Front view only: wait for the person to confirm the likeness before the other three.
+              fourViewStatus: frontFirst ? frontConfirmStatus(0) : "completed",
               fourViewUrls: results,
             } as any);
           }
@@ -297,6 +423,110 @@ export function registerDramaLibraryRoutes(
             fourViewStatus: "failed",
             fourViewError: e.message,
           } as any);
+        }
+      })().catch(console.error);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Front view confirmed: generate the other three views ──────────────────
+  // Already paid for (or free) when the front view was started; nothing is charged here.
+  app.post("/api/character-library/:id/four-views/confirm", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
+      const before = await storage.getCharacter(req.params.id);
+      if (!before || before.userId !== userId) return res.status(404).json({ error: "找不到角色" });
+      const character = await claimFrontConfirm(req.params.id, userId);
+      if (!character) return res.status(409).json({ error: "這個角色目前沒有待確認的正面圖。" });
+      const front =((character.fourViewUrls ?? {}) as FourViewUrls).front;
+      const refUrls = character.refImageUrls ?? [];
+      if (!front || refUrls.length === 0) {
+        await storage.updateCharacter(character.id, { fourViewStatus: "idle" } as any);
+        return res.status(400).json({ error: "找不到正面圖，請重新生成四視圖。" });
+      }
+      const user = await storage.getUser(userId);
+      res.json({ ok: true });
+
+      (async () => {
+        const waiting = frontConfirmStatus(frontRetriesUsed(before.fourViewStatus));
+        try {
+          const description = await descriptionForGeneration(character.id, character.description, refUrls);
+          const { results, succeeded } = await generateViews({
+            character, description, refUrls, userFolder: user?.username || userId,
+            keys: ["threeQuarter", "side", "back"], frontUrl: front,
+            onView: soFar => storage.updateCharacter(character.id, { fourViewUrls: { front, ...soFar } } as any).then(() => undefined),
+          });
+          if (succeeded === 0) {
+            // Nothing new was made: stay on the confirmation step so it can be pressed again for free.
+            await storage.updateCharacter(character.id, { fourViewStatus: waiting, fourViewUrls: { front }, fourViewError: "其餘三張生成失敗，請再按一次確認。" } as any);
+          } else {
+            await storage.updateCharacter(character.id, { fourViewStatus: "completed", fourViewUrls: { front, ...results } } as any);
+          }
+        } catch (e: any) {
+          console.error("[CharLib] remaining views failed:", e);
+          await storage.updateCharacter(character.id, { fourViewStatus: waiting, fourViewUrls: { front }, fourViewError: "其餘三張生成失敗，請再按一次確認。" } as any);
+        }
+      })().catch(console.error);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Front view does not look like the person: make it again ───────────────
+  // The first FRONT_FREE_RETRIES are free, after that one image's credits each.
+  // `mainPhoto` (one of the character's own photos) can be moved to first place first.
+  app.post("/api/character-library/:id/four-views/retry-front", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
+      const before = await storage.getCharacter(req.params.id);
+      if (!before || before.userId !== userId) return res.status(404).json({ error: "找不到角色" });
+      const mainPhoto = typeof req.body?.mainPhoto === "string" ? req.body.mainPhoto : "";
+      if (mainPhoto && !(before.refImageUrls ?? []).includes(mainPhoto)) return res.status(400).json({ error: "這張照片不在角色圖庫裡。" });
+      if ((before.refImageUrls ?? []).length === 0) return res.status(400).json({ error: "請先上傳至少一張角色參考圖" });
+
+      const character = await claimFrontConfirm(req.params.id, userId);
+      if (!character) return res.status(409).json({ error: "這個角色目前沒有待確認的正面圖。" });
+      const used = frontRetriesUsed(before.fourViewStatus);
+      const oldFront = ((character.fourViewUrls ?? {}) as FourViewUrls).front;
+      const charged = used >= FRONT_FREE_RETRIES;
+      if (charged) {
+        try {
+          await storage.atomicDeductCredits(userId, IMAGE_COST, `角色「${character.name}」正面圖重新生成`);
+        } catch (deductErr: any) {
+          await storage.updateCharacter(character.id, { fourViewStatus: before.fourViewStatus } as any);
+          return res.status(400).json({ error: deductErr.message || `積分不足，需要 ${IMAGE_COST} 積分` });
+        }
+      }
+      let refUrls = character.refImageUrls ?? [];
+      if (mainPhoto && refUrls[0] !== mainPhoto) {
+        refUrls = [mainPhoto, ...refUrls.filter(u => u !== mainPhoto)];
+        await storage.updateCharacter(character.id, { refImageUrls: refUrls } as any);
+      }
+      const user = await storage.getUser(userId);
+      res.json({ ok: true, creditsUsed: charged ? IMAGE_COST : 0, freeLeft: Math.max(0, FRONT_FREE_RETRIES - used - 1) });
+
+      (async () => {
+        const giveBack = async (message: string) => {
+          if (charged) await refundCredits(userId, IMAGE_COST, `角色「${character.name}」正面圖重新生成失敗退款`);
+          await storage.updateCharacter(character.id, {
+            fourViewStatus: frontConfirmStatus(used), fourViewError: message,
+            ...(oldFront ? { fourViewUrls: { front: oldFront } } : {}),
+          } as any);
+        };
+        try {
+          const description = await descriptionForGeneration(character.id, character.description, refUrls);
+          const { results, succeeded } = await generateViews({
+            character, description, refUrls, userFolder: user?.username || userId,
+            keys: ["front"], fileTag: `_r${Date.now()}`,
+          });
+          if (succeeded === 0 || !results.front) return await giveBack("正面圖重新生成失敗，沒有算次數，請再試一次。");
+          await storage.updateCharacter(character.id, { fourViewStatus: frontConfirmStatus(used + 1), fourViewUrls: { front: results.front } } as any);
+        } catch (e: any) {
+          console.error("[CharLib] front view retry failed:", e);
+          await giveBack("正面圖重新生成失敗，沒有算次數，請再試一次。");
         }
       })().catch(console.error);
     } catch (e: any) {

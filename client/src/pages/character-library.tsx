@@ -10,6 +10,8 @@ import { useEmbed } from "@/components/EmbedBar";
 import { NavigationHeader } from "./account";
 import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type FourViewUrls } from "@shared/schema";
 import { CharacterWizard } from "@/components/CharacterWizard";
+import { FrontConfirmDialog } from "@/components/FrontConfirm";
+import { awaitingFrontConfirm } from "@shared/fourViews";
 
 async function uploadToObjectStorage(file: File): Promise<string> {
   const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
@@ -111,6 +113,7 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
   const freeFourView = !!user && !user.freeFourViewUsedAt && !useEmbed();
   const fourViewCost = FOUR_VIEW_COST;
   const [showEdit, setShowEdit] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const generateFourViews = useMutation({
     mutationFn: () =>
@@ -133,6 +136,8 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
 
   const fourViews = character.fourViewUrls as FourViewUrls | null;
   const fourViewStatus = character.fourViewStatus ?? "idle";
+  // The front view is ready and waits for "does it look like you?" before the other three are made.
+  const needsConfirm = awaitingFrontConfirm(fourViewStatus);
   const refCount = character.refImageUrls?.length ?? 0;
   const completedCount = fourViews ? Object.values(fourViews).filter(Boolean).length : 0;
 
@@ -160,6 +165,9 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
             {fourViewStatus === "failed" && (
               <span className="text-[10px] bg-[#ef4444]/10 text-[#dc2626] px-2 py-0.5 rounded-full">{tr("✗ 失敗")}</span>
             )}
+            {needsConfirm && (
+              <span className="text-[10px] bg-[#ca8a04]/10 text-[#a16207] px-2 py-0.5 rounded-full">{tr("待確認正面圖")}</span>
+            )}
           </div>
         </div>
         <div className="flex flex-col gap-1.5 shrink-0">
@@ -170,6 +178,14 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
       </div>
 
       <FourViewGrid urls={fourViews} status={fourViewStatus} />
+
+      {needsConfirm && (
+        <button onClick={() => setShowConfirm(true)}
+          className="w-full text-sm bg-[#ca8a04] hover:bg-[#a16207] text-white py-2 rounded-lg transition-colors" data-testid={`button-confirm-front-${character.id}`}>
+          {tr("確認正面圖像不像，再生成其餘三張")}
+        </button>
+      )}
+      {showConfirm && <FrontConfirmDialog characterId={character.id} onClose={() => setShowConfirm(false)} />}
 
       <button
         onClick={() => {

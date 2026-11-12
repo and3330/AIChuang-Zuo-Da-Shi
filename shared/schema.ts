@@ -452,7 +452,7 @@ export const characterLibrary = pgTable("character_library", {
   refImageUrls: text("ref_image_urls").array().default([]),
   /** Generated 4-view URLs: { front, threeQuarter, side, back } */
   fourViewUrls: json("four_view_urls"),
-  fourViewStatus: text("four_view_status").default("idle"), // idle | generating | completed | failed
+  fourViewStatus: text("four_view_status").default("idle"), // idle | generating | confirm[:N] | completed | failed (see shared/fourViews.ts)
   fourViewError: text("four_view_error"),
   styleHint: text("style_hint").default(""), // e.g. "anime", "realistic"
   createdAt: timestamp("created_at").defaultNow(),
