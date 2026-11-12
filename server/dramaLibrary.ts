@@ -237,7 +237,7 @@ export function registerDramaLibraryRoutes(
       const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
       const english = req.body?.lang === "en";
       if (!url || url.length > 2000 || url.startsWith("data:")) return res.status(400).json({ error: "缺少照片。" });
-      if (!process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY) return res.status(500).json({ error: "規劃用的 AI 服務尚未設定。" });
+      if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
 
       const now = Date.now();
       const recent = (photoTagCalls.get(userId) ?? []).filter(t => now - t < PHOTO_TAG_WINDOW_MS);
@@ -248,12 +248,9 @@ export function registerDramaLibraryRoutes(
       const dataUrl = await loadAsBase64(url);
       const small = await sharp(Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"))
         .rotate().resize({ width: 768, height: 768, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 80 }).toBuffer();
-      const anthropic = new Anthropic({
-        apiKey: process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL,
-      });
+      const anthropic = createAtlasSeedClient();
       const resp = await anthropic.messages.create({
-        model: "claude-haiku-4-5",
+        model: ATLAS_SEED_MODEL,
         max_tokens: 300,
         messages: [{
           role: "user",
