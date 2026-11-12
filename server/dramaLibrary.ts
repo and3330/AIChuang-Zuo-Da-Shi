@@ -88,7 +88,12 @@ export function registerDramaLibraryRoutes(
    * character is created without a description; never overwrites one the user
    * wrote. Failing is harmless: the character simply keeps an empty description.
    */
-  async function describeCharacterFromPhotos(characterId: string, urls: string[]): Promise<void> {
+  async function describeCharacterFromPhotos(characterId: string, urls: string[], photoPrompts: string[] = []): Promise<void> {
+    // Per-photo readings from the wizard (see /photo-tags): they cover every uploaded photo,
+    // while only the first four images are looked at again here.
+    const notes = photoPrompts.length > 0
+      ? `以下是逐張判讀每一張上傳照片得到的外貌描述（共 ${photoPrompts.length} 張）。請以它們和下面的照片為依據，多張都提到的特徵優先採用，彼此矛盾時以照片為準：\n${photoPrompts.map((t, i) => `第 ${i + 1} 張：${t}`).join("\n")}\n\n`
+      : "";
     try {
       const images: Array<{ type: "image"; source: { type: "base64"; media_type: "image/jpeg"; data: string } }> = [];
       for (const url of urls.slice(0, 4)) {
@@ -111,7 +116,7 @@ export function registerDramaLibraryRoutes(
             ...images,
             {
               type: "text",
-              text: "這些是同一個人的照片，之後要用來讓 AI 繪圖時畫得像這個人。請用繁體中文寫一段 80 到 150 字的外貌描述，只寫看得到的特徵：臉型、眉眼、鼻子、嘴唇、髮型與髮色、膚色、體型，以及明顯的特徵（例如痣、酒窩、眼鏡）。不要猜測姓名、身分、職業或年齡數字，不要描述服裝、背景與拍攝方式，不要加任何前言或結語，只輸出描述本身。",
+              text: notes + "這些是同一個人的照片，之後要用來讓 AI 繪圖時畫得像這個人。請用繁體中文寫一段 80 到 150 字的外貌描述，只寫看得到的特徵：臉型、眉眼、鼻子、嘴唇、髮型與髮色、膚色、體型，以及明顯的特徵（例如痣、酒窩、眼鏡）。不要猜測姓名、身分、職業或年齡數字，不要描述服裝、背景與拍攝方式，不要加任何前言或結語，只輸出描述本身。",
             },
           ],
         }],
@@ -129,10 +134,10 @@ export function registerDramaLibraryRoutes(
   // One description call per character at a time: the create route starts it, and the
   // four-view job waits for the same call so the front view is drawn with the description.
   const describing = new Map<string, Promise<void>>();
-  function ensureDescription(characterId: string, urls: string[]): Promise<void> {
+  function ensureDescription(characterId: string, urls: string[], photoPrompts: string[] = []): Promise<void> {
     let running = describing.get(characterId);
     if (!running) {
-      running = describeCharacterFromPhotos(characterId, urls).finally(() => describing.delete(characterId));
+      running = describeCharacterFromPhotos(characterId, urls, photoPrompts).finally(() => describing.delete(characterId));
       describing.set(characterId, running);
     }
     return running;
@@ -251,20 +256,23 @@ export function registerDramaLibraryRoutes(
       const anthropic = createAtlasSeedClient();
       const resp = await anthropic.messages.create({
         model: ATLAS_SEED_MODEL,
-        max_tokens: 300,
+        max_tokens: 700,
+        temperature: 0.2,
         messages: [{
           role: "user",
           content: [
             { type: "image", source: { type: "base64", media_type: "image/jpeg", data: small.toString("base64") } },
             {
               type: "text",
-              text: `這張照片要當作 AI 繪圖的人物參考圖，用來把這個人畫得像。請判讀這張照片適不適合，只輸出一個 JSON 物件，不要有其他文字：
-{"angle": "...", "quality": "...", "issue": "...", "tags": ["...", "..."]}
+              text: `這張照片要當作 AI 繪圖的人物參考圖，用來把這個人畫得像本人。請仔細看這張照片，只輸出一個 JSON 物件，不要有其他文字：
+{"angle": "...", "quality": "...", "issue": "...", "tags": ["...", "..."], "prompt": "..."}
 angle 只能是：front_face（臉部正面，五官完整看得到）、three_quarter（臉轉約 45 度）、side（側臉）、full_body（全身入鏡）、back（背面）、other（看不到人或無法判斷）。同時是全身又是正面時，臉夠清楚選 front_face，臉很小選 full_body。
 quality 只能是：good（臉清楚、光線足、沒有遮擋）、fair（可以用但不理想）、poor（模糊、太暗、臉被遮住、戴墨鏡或口罩、濾鏡或美顏很重、臉太小、畫面裡不只一個人、或根本不是真人照片）。
 issue：quality 不是 good 時，用一句 15 字以內的話說明原因；good 時給空字串。
-tags：3 到 5 個簡短標籤，描述拍攝角度、光線、表情與看得到的外貌特徵（例如髮型、髮色、眼鏡）。不要猜測姓名、身分、職業、種族或年齡數字。
-issue 與 tags 請用${english ? "英文" : "繁體中文"}書寫。`,
+tags：4 到 6 個簡短標籤，只寫這個人本身的外貌特徵（臉型、眼睛、眉毛、鼻子、嘴唇、膚色、髮型、髮色、痣、酒窩、眼鏡等），不要寫衣服、背景或拍攝方式。
+prompt：一段 60 到 120 字的完整外貌描述，可以直接放進繪圖提示詞讓 AI 畫出同一個人。依序寫這張照片裡看得到的：臉型與輪廓、眼型與眼距、眉形、鼻子、嘴唇、膚色與膚質、髮型髮長與髮色、體型，以及痣、酒窩、眼鏡等明顯特徵。這張照片看不清楚的部位就不要寫，不要編造。不要寫衣服、飾品、背景、姿勢、光線與拍攝方式。
+不要猜測姓名、身分、職業、種族或年齡數字。
+issue、tags 與 prompt 請用${english ? "英文" : "繁體中文"}書寫。`,
             },
           ],
         }],
@@ -277,7 +285,8 @@ issue 與 tags 請用${english ? "英文" : "繁體中文"}書寫。`,
         angle: PHOTO_ANGLES.includes(parsed.angle) ? parsed.angle : "other",
         quality: PHOTO_QUALITIES.includes(parsed.quality) ? parsed.quality : "fair",
         issue: typeof parsed.issue === "string" ? parsed.issue.trim().slice(0, 80) : "",
-        tags: Array.isArray(parsed.tags) ? parsed.tags.filter((t: any) => typeof t === "string" && t.trim()).map((t: string) => t.trim().slice(0, 24)).slice(0, 5) : [],
+        tags: Array.isArray(parsed.tags) ? parsed.tags.filter((t: any) => typeof t === "string" && t.trim()).map((t: string) => t.trim().slice(0, 24)).slice(0, 6) : [],
+        prompt: typeof parsed.prompt === "string" ? parsed.prompt.trim().slice(0, 400) : "",
       };
       if (tags.quality === "good") tags.issue = "";
       res.json(tags);
@@ -293,7 +302,11 @@ issue 與 tags 請用${english ? "英文" : "繁體中文"}書寫。`,
       const c = await storage.createCharacter({ ...data, userId: req.session.userId! });
       res.json(c);
       if (!(c.description ?? "").trim() && (c.refImageUrls?.length ?? 0) > 0) {
-        void ensureDescription(c.id, c.refImageUrls ?? []);
+        // The wizard sends what the AI read from each photo; the description is written from all of them.
+        const photoPrompts = Array.isArray(req.body?.photoPrompts)
+          ? req.body.photoPrompts.filter((t: unknown) => typeof t === "string" && t.trim()).map((t: string) => t.trim().slice(0, 400)).slice(0, 10)
+          : [];
+        void ensureDescription(c.id, c.refImageUrls ?? [], photoPrompts);
       }
     } catch (e: any) {
       res.status(400).json({ error: e.message });

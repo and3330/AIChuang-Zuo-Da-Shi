@@ -2478,4 +2478,5 @@ export const en: Record<string, string> = {
   "關閉，稍後在角色卡片上重新生成": "Close and regenerate later on the character card",
   "待確認正面圖": "Front view to confirm",
   "確認正面圖像不像，再生成其餘三張": "Check the front view, then generate the other three",
+  "AI 讀到的外貌描述（建立角色時會一起用上）": "Appearance read by AI (used when the character is created)",
 };

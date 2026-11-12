@@ -51,6 +51,8 @@ export type PhotoTags = {
   quality: PhotoQuality;
   /** Why it is not "good" (blurry, face covered, filter...). Empty when good. In the interface language. */
   issue: string;
-  /** 3 to 5 short labels, in the interface language. */
+  /** 4 to 6 short labels of the person's own features (not clothes or background), in the interface language. */
   tags: string[];
+  /** A full appearance description of the person as seen in this photo, ready to go into an image prompt. */
+  prompt: string;
 };
