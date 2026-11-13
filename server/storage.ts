@@ -589,7 +589,8 @@ export class DatabaseStorage implements IStorage {
       else if (aspectRatio === "9:16") { width = 1080; height = 1920; }
       else { width = 1080; height = 1080; }
     }
-    const costPerSec = model.includes("kling") ? (resolution === "720p" ? 4.6 : 6.9) : (resolution === "720p" ? 5.5 : 11);
+    const costPerSec = model.includes("seedance") ? (resolution === "720p" ? 9.6 : 18.9)
+      : model.includes("kling") ? (resolution === "720p" ? 4.6 : 6.9) : (resolution === "720p" ? 5.5 : 11);
     const videoCost = duration * costPerSec;
 
     const [row] = await db.insert(videoGenerations).values({

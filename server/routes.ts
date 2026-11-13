@@ -27,7 +27,7 @@ import { setAtlasUsageListener } from "./atlasProvider";
 import { partnerStore, embedWalletAccount, createPartnerImageIngestor, createPartnerUploadStore } from "./partnerStore";
 import { atlasSizeDimensions } from "./atlasProvider";
 import { assertAllowedRemoteUrl as ssrfAssertAllowedRemoteUrl, assertPublicHttpsUrl, fetchImageWithLimits } from "./ssrfGuard";
-import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIsConfigured, ATLAS_EDIT_MODEL, ATLAS_T2I_MODEL, ATLAS_I2V_MODEL, ATLAS_T2V_MODEL, ATLAS_KLING_I2V_MODEL, ATLAS_KLING_T2V_MODEL, ATLAS_MAX_REFERENCE_IMAGES } from "./atlasProvider";
+import { atlasGenerateImage, atlasGenerateVideo, atlasGenerateTextVideo, atlasIsConfigured, ATLAS_EDIT_MODEL, ATLAS_T2I_MODEL, ATLAS_I2V_MODEL, ATLAS_T2V_MODEL, ATLAS_KLING_I2V_MODEL, ATLAS_KLING_T2V_MODEL, ATLAS_SEEDANCE_I2V_MODEL, ATLAS_SEEDANCE_T2V_MODEL, ATLAS_MAX_REFERENCE_IMAGES } from "./atlasProvider";
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "");
 
@@ -135,7 +135,9 @@ function promptRefusal(promptText: string, goldZone: boolean, isAdmin: boolean =
 /** Rough provider cost per second in NT$, recorded on each video row for the admin statistics. */
 function apiVideoCostTwd(model: string | null | undefined, resolution: string | null | undefined): number {
   const hd = (resolution || "1080p") !== "720p";
-  return videoModelKey(model) === "kling" ? (hd ? 6.9 : 4.6) : (hd ? 11 : 5.5);
+  const key = videoModelKey(model);
+  if (key === "seedance") return hd ? 18.9 : 9.6;
+  return key === "kling" ? (hd ? 6.9 : 4.6) : (hd ? 11 : 5.5);
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -1398,10 +1400,13 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       // All video generation runs on AtlasCloud: WAN 3.0 by default, Kling 4.0 when the
       // user picks it (`videoModel`). Legacy `provider` / `model` fields are ignored.
       const provider = "atlas";
-      const engine = validatedData.videoModel === "kling" ? "kling" : "wan";
+      const engine = validatedData.videoModel === "kling" || validatedData.videoModel === "seedance" ? validatedData.videoModel : "wan";
+      const i2v = videoType === "image-to-video";
       const modelId = engine === "kling"
-        ? (videoType === "image-to-video" ? ATLAS_KLING_I2V_MODEL : ATLAS_KLING_T2V_MODEL)
-        : (videoType === "image-to-video" ? ATLAS_I2V_MODEL : ATLAS_T2V_MODEL);
+        ? (i2v ? ATLAS_KLING_I2V_MODEL : ATLAS_KLING_T2V_MODEL)
+        : engine === "seedance"
+          ? (i2v ? ATLAS_SEEDANCE_I2V_MODEL : ATLAS_SEEDANCE_T2V_MODEL)
+          : (i2v ? ATLAS_I2V_MODEL : ATLAS_T2V_MODEL);
       // Text-to-video: the ratio must be one this model can produce (image-to-video follows the first frame).
       if (videoType === "text-to-video" && !(VIDEO_MODELS[engine].ratios as readonly string[]).includes(validatedData.aspectRatio)) {
         return res.status(400).json({ error: `${VIDEO_MODELS[engine].label} 不支援 ${validatedData.aspectRatio} 的畫面比例。` });

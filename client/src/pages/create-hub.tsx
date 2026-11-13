@@ -34,7 +34,7 @@ const TEMPLATES: Template[] = [
 
 const FREE: Array<Action & { desc: string; meta: string }> = [
   { href: "/create/image", label: tr("圖片生成"), icon: "fa-image", desc: tr("用一句話畫一張圖，或請 AI 修改你的照片。"), meta: tr("{n} 積分／張", { n: IMAGE_COST }) },
-  { href: "/create/video", label: tr("影片生成"), icon: "fa-clapperboard", desc: tr("用文字或一張圖生成短影片，可選 WAN 3.0 或 Kling 4.0。"), meta: tr("{n} 積分／秒起", { n: VIDEO_COST_PER_SECOND["720p"] }) },
+  { href: "/create/video", label: tr("影片生成"), icon: "fa-clapperboard", desc: tr("用文字或一張圖生成短影片，可選 WAN 3.0、Kling 4.0 或 Seedance 2.5。"), meta: tr("{n} 積分／秒起", { n: VIDEO_COST_PER_SECOND["720p"] }) },
 ];
 
 const LIBRARY_TABS = [
@@ -195,7 +195,7 @@ export default function CreateHub() {
           </div>
         </section>
 
-        <p className="text-xs text-slate-400 text-center pt-2">{tr("圖片使用 Seedream 5.5，影片使用 WAN 3.0 或 Kling 4.0。生成失敗會自動退還積分。")}</p>
+        <p className="text-xs text-slate-400 text-center pt-2">{tr("圖片使用 Seedream 5.5，影片使用 WAN 3.0、Kling 4.0 或 Seedance 2.5。生成失敗會自動退還積分。")}</p>
       </main>
     </div>
   );
