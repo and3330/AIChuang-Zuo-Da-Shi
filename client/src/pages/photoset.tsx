@@ -41,7 +41,7 @@ import {
 // 姿勢與服裝都只選一個。選的姿勢用在第一張，其餘由 AI 依情境安排；
 // 規劃完之後每個鏡頭可以再各自換姿勢，服裝也可以隨時更換（不用重新規劃）。
 //
-// 圖片模型一次最多 10 張圖，分配見 REF_BUDGET：情境 1 ＋ 人物最多 6 ＋ 服裝 1 ＋ 該鏡頭的姿勢 1。
+// 圖片模型一次最多 10 張圖，分配見 REF_BUDGET：情境 1 ＋ 服裝 1 ＋ 姿勢 1（有用到才佔），其餘全部給人物照，補滿 10 張。
 // 送出順序固定為 [情境圖?, ...人物參考圖, 服裝圖?, (姿勢圖)]，與提示詞後面的圖片說明一致。
 
 type Variant = "studio" | "sheet";
@@ -56,8 +56,8 @@ type LibraryAsset = { id: string; name: string; usage: string; imageUrl: string 
 const MIN_SHOTS = 2;
 const MAX_SHOTS = 10;
 const SHEET_MAX_REFS = 9;
-/** A library character brings its four views (front, 3/4, side, back). */
-const CHARACTER_IMAGES = REF_BUDGET.character;
+/** Most images a library character can bring: its photos, then its four views (front, 3/4, side, back). */
+const CHARACTER_IMAGES = REF_BUDGET.total;
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 
 async function uploadToObjectStorage(file: File): Promise<string> {
@@ -267,14 +267,19 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   // The sheet builds the pack, so it reads the whole pack; a shoot takes the four views.
   const characterShown = useMemo(() => (isSheet ? characterRefs : characterImages(character)), [isSheet, character, characterRefs]);
 
-  const refCap = isSheet ? SHEET_MAX_REFS : REF_BUDGET.character;
+  const costumeImage = !isSheet ? costume?.imageUrl ?? "" : "";
+  const hasSituation = mode === "scene" && !!situationPath;
+  // A pose image is sent with a shot that has one: before planning that is the picked pose, after it any shot's own.
+  const anyPoseRef = plan ? plan.shots.some(s => s.prompt.trim().length > 0 && !!s.poseRef) : !!pose;
+  // The person gets every slot the other images leave, so all 10 images the model takes are used.
+  const refCap = isSheet
+    ? SHEET_MAX_REFS
+    : REF_BUDGET.total - (hasSituation ? REF_BUDGET.situation : 0) - (costumeImage ? REF_BUDGET.costume : 0) - (anyPoseRef ? REF_BUDGET.pose : 0);
   const wantedRefs = useMemo(
     () => [...(portrait?.imageUrl ? [portrait.imageUrl] : []), ...characterShown, ...extraRefs],
     [portrait, characterShown, extraRefs],
   );
   const personRefs = useMemo(() => wantedRefs.slice(0, refCap), [wantedRefs, refCap]);
-  const costumeImage = !isSheet ? costume?.imageUrl ?? "" : "";
-  const hasSituation = mode === "scene" && !!situationPath;
 
   const watermark = !removeWatermark;
   const ratio = IMAGE_RATIOS.find(r => r.id === ratioId) ?? IMAGE_RATIOS[0];
@@ -284,7 +289,6 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
   const perImage = priceHere(watermark);
   const totalCost = validShots.length * perImage;
   const credits = user?.credits ?? 0;
-  const anyPoseRef = plan ? validShots.some(s => !!s.poseRef) : !!pose;
 
   // Images every shot shares, in the order the prompt note describes them.
   const sharedImages = [...(hasSituation ? [situationPath] : []), ...personRefs, ...(costumeImage ? [costumeImage] : [])];
@@ -429,7 +433,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         mode: hasSituation ? "scene" : "character",
         planner,
         situationImageUrl: hasSituation ? situationPath : undefined,
-        referenceImageUrls: personRefs,
+        referenceImageUrls: personRefs.slice(0, 9), // the planner looks at a few; its limit is 9
         characterName: character?.name,
         characterDescription: character?.description || undefined,
         outfitFrom,
@@ -652,7 +656,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       )}
       {refUploader}
       <p className="text-[11px] text-slate-400">
-        {tr("人物參考圖 {0}／{1} 張。{2}臉部清楚的正面照效果最好。", { 0: personRefs.length, 1: refCap, 2: isSheet ? "" : tr("選角色會帶入它的照片（最多 {0} 張，本人照片優先）。", { 0: CHARACTER_IMAGES }) })}
+        {tr("人物參考圖 {0}／{1} 張。{2}臉部清楚的正面照效果最好。", { 0: personRefs.length, 1: refCap, 2: isSheet ? "" : tr("選角色會帶入它的照片（最多 {0} 張，本人照片優先）。", { 0: refCap }) })}
       </p>
     </>
   );
@@ -889,7 +893,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
             </div>
             <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-slate-500 mt-2">
               {mode === "scene" && <span><i className="fas fa-circle text-[6px] text-sky-400 mr-1 align-middle" />{tr("情境 {0}／1", { 0: hasSituation ? 1 : 0 })}</span>}
-              <span><i className="fas fa-circle text-[6px] text-indigo-500 mr-1 align-middle" />{tr("人物 {0}／{1}", { 0: personRefs.length, 1: REF_BUDGET.character })}</span>
+              <span><i className="fas fa-circle text-[6px] text-indigo-500 mr-1 align-middle" />{tr("人物 {0}／{1}", { 0: personRefs.length, 1: refCap })}</span>
               <span><i className="fas fa-circle text-[6px] text-fuchsia-400 mr-1 align-middle" />{tr("服裝 {0}／1", { 0: costumeImage ? 1 : 0 })}</span>
               <span><i className="fas fa-circle text-[6px] text-amber-400 mr-1 align-middle" />{tr("姿勢 {0}／1", { 0: anyPoseRef ? 1 : 0 })}</span>
             </p>

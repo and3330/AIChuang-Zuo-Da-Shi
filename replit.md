@@ -70,7 +70,7 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 個人專區：作品庫、編輯器、帳戶與儲值、交易記錄（桌面「我的」選單、手機「我的」底部選單）。次要素材：角色庫、場景庫。導覽全部定義在 `client/src/components/AppNav.tsx`。
 - 寫真工作室有兩區：情境寫真（`?mode=scene`）與寫真套圖（`?mode=kit`，不需情境圖）。人像／服裝／姿勢都用 `client/src/components/LibraryPicker.tsx` 從素材圖庫挑；舊的內建姿勢清單只剩對外 API 使用。
 - 角色九宮格搬到角色庫：`/character-library/sheet?character=<id>`（同一個頁面元件，`variant="sheet"`，固定規格，沒有比例與質感設定）。
-- 參考圖配額（Seedream 一次最多 10 張）：`REF_BUDGET` in `shared/photosetOptions.ts` —— 情境 1、人物最多 6、服裝 1、每個鏡頭的姿勢 1。送圖順序與提示詞說明由 `studioReferenceNote()` 決定，兩者必須一致。
+- 參考圖配額（Seedream 一次最多 10 張）：`REF_BUDGET` in `shared/photosetOptions.ts` —— 情境 1、服裝 1、姿勢 1（有用到才佔），其餘全部給人物照補滿 10 張（人物 7–10 張）。送圖順序與提示詞說明由 `studioReferenceNote()` 決定，兩者必須一致。
 - 規劃端點 `/api/photosets/plan` 多了 `customPoses`（素材圖庫的姿勢，自由文字）。
 - 配色：紫→靛→藍的品牌漸層（`bg-brand`、`text-brand`、`shadow-glow`），淺藍 sky 為輔，fuchsia／amber 為跳色。`client/src/index.css` 末段把所有實心品牌色與頁面底色一次換掉，新頁面直接用 `bg-indigo-600` 即可得到漸層。
 
@@ -127,7 +127,7 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 三張照片建立角色：按「下一步」建立角色後回到角色庫；免費資格還在時會自動開始生成四視圖，用過之後只建立角色、不自動扣積分。
 - 角色卡片的四視圖可以點圖放大（左右切換、Esc 關閉、下載）。
 - 寫真工作室改為逐步顯示：一開始只有第一步，按「下一步」才出現下一步，全部走完才出現「規劃鏡頭」（`reached` 狀態；從素材圖庫帶配方進來時全部顯示）。人物參考圖上方新增提示「再上傳幾張你的照片，會更像你自己」。角色卡片的「拍寫真」會帶 `?mode=kit&character=<id>` 自動選好角色。
-- 建立角色改為最多 10 張照片（`CharacterWizard`，`WIZARD_MAX_PHOTOS`；第一張是臉部正面，可調整順序）。寫真帶入角色時改為「本人照片優先，四視圖補滿」，最多 6 張（`characterImages()`，`REF_BUDGET.character`），不再只用四視圖。
+- 建立角色改為最多 10 張照片（`CharacterWizard`，`WIZARD_MAX_PHOTOS`；第一張是臉部正面，可調整順序）。寫真帶入角色時改為「本人照片優先，四視圖補滿」，補滿其餘名額（`characterImages()`，最多 10 張），不再只用四視圖。
 - 角色外貌描述由 AI 自動寫：建立角色時若沒填描述，背景用 Claude 看前 4 張照片寫 80–150 字外貌特徵存進 `description`（`describeCharacterFromPhotos`，不覆蓋使用者自己寫的），寫真規劃與四視圖會帶入。
 - 寫真工作室：預設分頁改為「寫真套圖」；沒有角色的人進來會自動跳出建立角色視窗（建好自動選上），角色選單旁多一顆「新角色」。原「情境寫真」改名「照片同款」：第一步是放一張要模仿的照片（沒有照片才用文字描述），人物照片改到第二步「角色」上傳。
 - 後台「訂單」分頁新增訂單統計（`OrderStatsPanel`）：日／週／月／季，付款筆數、售出積分、實收 NT$／US$、手動加值積分。實收金額記在 `credit_transactions.paid_amount`／`paid_currency`（Stripe 的 `amount_total`，未扣手續費），這次改版後的訂單才有。
@@ -146,3 +146,4 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 創作中心範本卡加上小動畫：`client/public/landing/*.mp4`（用封面圖以 WAN 生成一次的 4 秒無聲片段，壓成寬 360 的靜態檔，多數做成正放加倒放的無縫循環）。`TEMPLATES` 的 `video` 欄位指向它，疊在封面圖上自動播放；減少動態效果時只顯示封面。
 
 - 多語系（2026-11-12，先做英文）：`client/src/lib/i18n.ts` 的 `tr("中文")`，中文原句就是鍵，英文字典在 `client/src/locales/en.ts`；語言在載入時決定（localStorage `lang` → `?lang=` → 瀏覽器語言），`LangSwitch` 切換後重新載入。共用選項清單由 `lib/i18n-shared.ts` 在啟動時就地換成目前語言。`npx tsx scripts/check-i18n.ts` 檢查有沒有漏翻。伺服器訊息仍以中文回傳，前端用 `trServer()` 對照 `locales/en-server.ts`（固定句與帶 {0} 的句型）換成英文，接在 `lib/queryClient.ts` 的錯誤處理與交易記錄說明。素材圖庫的名稱、分類、說明由 `trAsset()` 用 `locales/en-library.ts` 的詞彙表（對應 `shared/libraryCatalog.ts`）組成英文，在讀取 `/api/library/*` 時套用；分類與視角的篩選值維持中文送回伺服器。規劃端點多收 `lang`，英文介面下 AI 的鏡頭、文案、字幕用英文寫。`npx tsx scripts/test-i18n.ts` 會跑過整份素材清單與幾句伺服器訊息。管理後台也已翻譯。前端每個請求帶 `X-Lang`，伺服器用 `server/lang.ts`（`requestLang`、`byLang`、`outputLanguageNote`）決定驗證信、Stripe 付款頁品名，以及漫劇 AI 劇本、劇本匯入、故事大綱、提示詞優化的輸出語言。圖庫英文搜尋由 `assetQuery()` 把英文關鍵字換成中文詞再送出。尚未翻：`client/index.html` 的靜態標題與 SEO 中繼資料、已存在資料庫裡的使用者內容與舊紀錄、Telegram 機器人、對外夥伴 API 的訊息。新增語言：加一個字典並在 `DICTS`、`LANGS` 登記。
+- 四視圖提示詞（`fourViewPrompt()`）有多張參考圖時要求「綜合每一張判斷臉部，不要只看其中一張；服裝以第 1 張為準」；原本寫「與第 1 張參考圖完全一致」，模型只照第一張畫。

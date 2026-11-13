@@ -1287,7 +1287,7 @@ export function registerPartnerRoutes(app: Express, deps: PartnerDeps) {
             batchId,
             originalImageUrl: refs[0],
             additionalImageUrls: refs.slice(1),
-            prompt: fourViewPrompt(view.promptZh, character.description, character.styleHint),
+            prompt: fourViewPrompt(view.promptZh, character.description, character.styleHint, Math.min(10, refs.length)),
             watermark: false,
             size: FOUR_VIEW_SIZE,
             provider: "atlas",
