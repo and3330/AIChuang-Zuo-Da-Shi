@@ -983,7 +983,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
               <button onClick={() => generateMutation.mutate()} disabled={!canGenerate} className="w-full h-12 rounded-xl bg-indigo-600 text-white text-sm font-semibold shadow-glow disabled:opacity-40 disabled:shadow-none" data-testid="button-photoset-generate">
                 {isGenerating ? tr("生成中… {0}", { 0: batch ? `${batch.completedCount + batch.failedCount}/${batch.totalCount}` : "" }) : batchDone ? tr("再生成一組（{0} 積分）", { 0: totalCost }) : tr("生成整組（{0} 積分）", { 0: totalCost })}
               </button>
-              <p className="text-[11px] text-slate-400">{tr("每張約需 1–3 分鐘，整組同時生成；失敗的張數會自動退還積分。每日圖片上限 50 張。")}</p>
+              <p className="text-[11px] text-slate-400">{tr("每張約需 1–3 分鐘，整組同時生成；失敗的張數會自動退還積分。每日生成不限次數，依積分餘額扣款。")}</p>
             </div>
           )}
 

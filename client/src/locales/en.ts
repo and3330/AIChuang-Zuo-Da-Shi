@@ -762,7 +762,7 @@ export const en: Record<string, string> = {
   "生成中… {0}": "Generating… {0}",
   "再生成一組（{0} 積分）": "Generate another set ({0} credits)",
   "生成整組（{0} 積分）": "Generate the set ({0} credits)",
-  "每張約需 1–3 分鐘，整組同時生成；失敗的張數會自動退還積分。每日圖片上限 50 張。": "Each photo takes about 1–3 minutes and the whole set is generated at once. Credits for failed photos are refunded automatically. The daily limit is 50 images.",
+  "每張約需 1–3 分鐘，整組同時生成；失敗的張數會自動退還積分。每日生成不限次數，依積分餘額扣款。": "Each photo takes about 1–3 minutes and the whole set is generated at once. Credits for failed photos are refunded automatically. There is no daily generation limit; generation costs are deducted from your credit balance.",
   "完成 {0}／{1}": "Done {0}/{1}",
   "，失敗 {0}（已退點）": ", {0} failed (refunded)",
   "到作品庫看": "View in My Work",
