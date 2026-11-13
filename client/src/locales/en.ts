@@ -2486,4 +2486,8 @@ export const en: Record<string, string> = {
   "全部照片都判讀好了": "All photos have been read",
   "先把要用的照片全部上傳，再按這裡。之後再加照片，要再按一次。": "Upload every photo you want to use first, then press this. If you add photos later, press it again.",
   "先判讀全部照片，才能建立角色": "Read all photos first to create the character",
+  "用文字或一張圖生成短影片，可選 WAN 3.0、Kling 4.0 或 Seedance 2.5。": "Generate a short video from text or one image. Choose WAN 3.0, Kling 4.0 or Seedance 2.5.",
+  "圖片使用 Seedream 5.5，影片使用 WAN 3.0、Kling 4.0 或 Seedance 2.5。生成失敗會自動退還積分。": "Images use Seedream 5.5. Videos use WAN 3.0, Kling 4.0 or Seedance 2.5. Credits are refunded automatically if a generation fails.",
+  "使用模型：Seedream 5.5・WAN 3.0・Kling 4.0・Seedance 2.5": "Models: Seedream 5.5 · WAN 3.0 · Kling 4.0 · Seedance 2.5",
+  "字節 Seedance 2.5，畫面與動作最細緻、自帶音訊，價格最高。": "ByteDance Seedance 2.5: the finest picture and motion, with its own audio. The highest price.",
 };

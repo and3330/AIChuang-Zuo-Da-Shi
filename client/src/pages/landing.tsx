@@ -381,7 +381,7 @@ export default function LandingPage() {
               {tr("AI 創意工坊")}
             </p>
             <p className="mt-3">{tr("極電行銷整合")}</p>
-            <p className="mt-1 text-xs text-slate-500">{tr("使用模型：Seedream 5.5・WAN 3.0・Kling 4.0")}</p>
+            <p className="mt-1 text-xs text-slate-500">{tr("使用模型：Seedream 5.5・WAN 3.0・Kling 4.0・Seedance 2.5")}</p>
           </div>
           <div className="flex flex-col gap-2 md:items-end">
             <p className="flex flex-wrap gap-x-5 gap-y-1">

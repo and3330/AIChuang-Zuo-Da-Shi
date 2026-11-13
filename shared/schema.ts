@@ -250,7 +250,7 @@ export const insertImageToVideoSchema = z.object({
   aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]).optional().default("16:9"),
   resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
   /** Which model runs the job: see VIDEO_MODELS in shared/pricing.ts. */
-  videoModel: z.enum(["wan", "kling"]).optional().default("wan"),
+  videoModel: z.enum(["wan", "kling", "seedance"]).optional().default("wan"),
   /** Legacy fields from old clients — accepted but ignored (videoModel picks the model). */
   provider: z.enum(["byteplus", "gmi", "atlas"]).optional(),
   model: z.string().optional(),
@@ -268,7 +268,7 @@ export const insertTextToVideoSchema = z.object({
   aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]).optional().default("16:9"),
   resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
   /** Which model runs the job: see VIDEO_MODELS in shared/pricing.ts. */
-  videoModel: z.enum(["wan", "kling"]).optional().default("wan"),
+  videoModel: z.enum(["wan", "kling", "seedance"]).optional().default("wan"),
 });
 
 export const insertStoryGenerationSchema = z.object({
@@ -312,8 +312,8 @@ export type InsertImageGeneration = z.infer<typeof insertImageGenerationSchema>;
 export type InsertTextToImage = z.infer<typeof insertTextToImageSchema>;
 export type InsertImageToImage = z.infer<typeof insertImageToImageSchema>;
 export type InsertBatchImageToImage = z.infer<typeof insertBatchImageToImageSchema>;
-export type InsertImageToVideo = Omit<z.infer<typeof insertImageToVideoSchema>, "videoModel"> & { videoModel?: "wan" | "kling" };
-export type InsertTextToVideo = Omit<z.infer<typeof insertTextToVideoSchema>, "videoModel"> & { videoModel?: "wan" | "kling" };
+export type InsertImageToVideo = Omit<z.infer<typeof insertImageToVideoSchema>, "videoModel"> & { videoModel?: "wan" | "kling" | "seedance" };
+export type InsertTextToVideo = Omit<z.infer<typeof insertTextToVideoSchema>, "videoModel"> & { videoModel?: "wan" | "kling" | "seedance" };
 export type InsertStoryGeneration = z.infer<typeof insertStoryGenerationSchema>;
 export type ImageGeneration = typeof imageGenerations.$inferSelect;
 export type VideoGeneration = typeof videoGenerations.$inferSelect;
