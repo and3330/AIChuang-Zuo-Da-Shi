@@ -103,6 +103,8 @@ export default function AccountPage() {
     ["fa-clapperboard", tr("影片生成 1080p"), tr("{0} 積分／秒", { 0: VIDEO_COST_PER_SECOND["1080p"] })],
     ["fa-clapperboard", tr("影片生成 {0} 720p", { 0: VIDEO_MODELS.kling.label }), tr("{0} 積分／秒", { 0: VIDEO_MODELS.kling.perSecond["720p"] })],
     ["fa-clapperboard", tr("影片生成 {0} 1080p", { 0: VIDEO_MODELS.kling.label }), tr("{0} 積分／秒", { 0: VIDEO_MODELS.kling.perSecond["1080p"] })],
+    ["fa-clapperboard", tr("影片生成 {0} 720p", { 0: VIDEO_MODELS.seedance.label }), tr("{0} 積分／秒", { 0: VIDEO_MODELS.seedance.perSecond["720p"] })],
+    ["fa-clapperboard", tr("影片生成 {0} 1080p", { 0: VIDEO_MODELS.seedance.label }), tr("{0} 積分／秒", { 0: VIDEO_MODELS.seedance.perSecond["1080p"] })],
   ];
 
   return (

@@ -301,7 +301,11 @@ export const ATLAS_VIDEO_MODEL_LABEL = "WAN 3.0";
  *  instead of `ratio` (16:9 | 9:16 | 1:1 | 21:9), and no `audio` switch. */
 export const ATLAS_KLING_I2V_MODEL = "kwaivgi/kling-v4.0/image-to-video";
 export const ATLAS_KLING_T2V_MODEL = "kwaivgi/kling-v4.0/text-to-video";
-export type AtlasVideoEngine = "wan" | "kling";
+/** Seedance 2.5: 4–30 s, `ratio` (text-to-video only; image-to-video is always "adaptive"),
+ *  `generate_audio` for the native track, `watermark` off by default. */
+export const ATLAS_SEEDANCE_I2V_MODEL = "bytedance/seedance-2.5/image-to-video";
+export const ATLAS_SEEDANCE_T2V_MODEL = "bytedance/seedance-2.5/text-to-video";
+export type AtlasVideoEngine = "wan" | "kling" | "seedance";
 
 export type AtlasVideoResult = { videoUrl: string; predictionId: string; processingTime: number };
 
@@ -315,6 +319,10 @@ function wanDuration(d: number | null | undefined): number {
 
 function klingDuration(d: number | null | undefined): number {
   return Math.max(3, Math.min(30, Math.round(d || 5)));
+}
+
+function seedanceDuration(d: number | null | undefined): number {
+  return Math.max(4, Math.min(30, Math.round(d || 5)));
 }
 
 /** Submit a WAN job, poll until done, return the video URL. */
@@ -365,6 +373,17 @@ export async function atlasGenerateTextVideo(args: {
       aspect_ratio: ["16:9", "9:16", "1:1", "21:9"].includes(args.aspectRatio || "") ? args.aspectRatio : "16:9",
     });
   }
+  if (args.engine === "seedance") {
+    return runWanVideo({
+      model: ATLAS_SEEDANCE_T2V_MODEL,
+      prompt: args.prompt,
+      resolution: wanResolution(args.resolution === "480p" ? "720p" : args.resolution),
+      duration: seedanceDuration(args.duration),
+      ratio: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"].includes(args.aspectRatio || "") ? args.aspectRatio : "adaptive",
+      generate_audio: args.audio ?? true,
+      watermark: false,
+    });
+  }
   const ratio = ["16:9", "9:16", "1:1", "4:3", "3:4"].includes(args.aspectRatio || "")
     ? args.aspectRatio
     : "adaptive";
@@ -413,6 +432,20 @@ export async function atlasGenerateVideo(args: {
     };
     if (args.lastImage) klingPayload.last_image = args.lastImage;
     return runWanVideo(klingPayload);
+  }
+  if (args.engine === "seedance") {
+    const seedancePayload: Record<string, any> = {
+      model: ATLAS_SEEDANCE_I2V_MODEL,
+      prompt: args.prompt,
+      image: args.image,
+      resolution: wanResolution(args.resolution === "480p" ? "720p" : args.resolution),
+      duration: seedanceDuration(args.duration),
+      ratio: "adaptive",
+      generate_audio: args.audio ?? true,
+      watermark: false,
+    };
+    if (args.lastImage) seedancePayload.last_image = args.lastImage;
+    return runWanVideo(seedancePayload);
   }
   const payload: Record<string, any> = {
     model: ATLAS_I2V_MODEL,

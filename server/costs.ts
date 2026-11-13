@@ -33,6 +33,7 @@ export function costSettings() {
     seedreamInputImageUsd: num("COST_SEEDREAM_INPUT_IMAGE_USD", 0.0075),
     wanSecondUsd: { "720p": num("COST_WAN_720P_SECOND_USD", 0.05), "1080p": num("COST_WAN_1080P_SECOND_USD", 0.05) } as Record<string, number>,
     klingSecondUsd: { "720p": num("COST_KLING_720P_SECOND_USD", 0.143), "1080p": num("COST_KLING_1080P_SECOND_USD", 0.214) } as Record<string, number>,
+    seedanceSecondUsd: { "720p": num("COST_SEEDANCE_720P_SECOND_USD", 0.3), "1080p": num("COST_SEEDANCE_1080P_SECOND_USD", 0.591) } as Record<string, number>,
     /** Asset-library image: Seedream text-to-image by default, GPT Image 2.5 Flare if switched back. */
     libraryImageUsd: num("COST_LIBRARY_IMAGE_USD", ATLAS_LIBRARY_PRICE_USD),
     /** What one credit sells for when topped up. */
@@ -52,7 +53,7 @@ export function estimateUsd(u: ProviderUsage): number {
   const s = costSettings();
   if (u.kind === "image") return u.images * s.seedreamImageUsd + u.inputImages * s.seedreamInputImageUsd;
   if (u.kind === "video") {
-    const table = u.model.includes("kling") ? s.klingSecondUsd : s.wanSecondUsd;
+    const table = u.model.includes("kling") ? s.klingSecondUsd : u.model.includes("seedance") ? s.seedanceSecondUsd : s.wanSecondUsd;
     return u.seconds * (table[u.resolution] ?? table["1080p"]);
   }
   return u.images * s.libraryImageUsd;
@@ -130,6 +131,8 @@ export function unitEconomics() {
       row("影片 1080p 5 秒", 5 * VIDEO_COST_PER_SECOND["1080p"], 5 * s.wanSecondUsd["1080p"]),
       row("影片 Kling 4.0 720p 5 秒", 5 * VIDEO_MODELS.kling.perSecond["720p"], 5 * s.klingSecondUsd["720p"]),
       row("影片 Kling 4.0 1080p 5 秒", 5 * VIDEO_MODELS.kling.perSecond["1080p"], 5 * s.klingSecondUsd["1080p"]),
+      row("影片 Seedance 2.5 720p 5 秒", 5 * VIDEO_MODELS.seedance.perSecond["720p"], 5 * s.seedanceSecondUsd["720p"]),
+      row("影片 Seedance 2.5 1080p 5 秒", 5 * VIDEO_MODELS.seedance.perSecond["1080p"], 5 * s.seedanceSecondUsd["1080p"]),
     ],
     freebies: {
       signupCredits: SIGNUP_CREDITS,

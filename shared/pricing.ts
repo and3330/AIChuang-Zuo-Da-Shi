@@ -33,6 +33,12 @@ export const VIDEO_MODELS = {
     label: "Kling 4.0", desc: "可靈 Kling 4.0，人物與動作更細緻，適合要求高的作品。",
     perSecond: { "720p": 12, "1080p": 20 }, ratios: ["16:9", "9:16", "1:1", "21:9"], audio: false,
   },
+  // AtlasCloud list price (2026-11): 720p US$0.30/s, 1080p US$0.59/s — about 2.7× Kling's.
+  // Priced for about a 40% gross margin (1 credit = NT$1, after the 8% payment fee).
+  seedance: {
+    label: "Seedance 2.5", desc: "字節 Seedance 2.5，畫面與動作最細緻、自帶音訊，價格最高。",
+    perSecond: { "720p": 18, "1080p": 35 }, ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], audio: true,
+  },
 } as const;
 export type VideoModelKey = keyof typeof VIDEO_MODELS;
 export const VIDEO_MODEL_KEYS = Object.keys(VIDEO_MODELS) as VideoModelKey[];
@@ -41,7 +47,8 @@ export const VIDEO_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"] as con
 
 /** Accepts a key ("kling") or a provider model id ("kwaivgi/kling-v4.0/..."). Anything else is WAN. */
 export function videoModelKey(model: string | null | undefined): VideoModelKey {
-  return model && model.toLowerCase().includes("kling") ? "kling" : "wan";
+  const m = (model ?? "").toLowerCase();
+  return m.includes("kling") ? "kling" : m.includes("seedance") ? "seedance" : "wan";
 }
 
 export function videoCostPerSecond(model: string | null | undefined, resolution: string | null | undefined): number {

@@ -117,8 +117,8 @@ export default function Home({ section = "image" }: { section?: "image" | "video
   const [myVideosOpen, setMyVideosOpen] = useState(false);
   const [videoResolution, setVideoResolution] = useState<"720p" | "1080p">("1080p");
   const [currentVideoGenerationId, setCurrentVideoGenerationId] = useState<string>("");
-  // Video model, shared by 文字生影片 and 圖生影片 (VIDEO_MODELS in shared/pricing.ts): WAN 3.0 or
-  // Kling 4.0. Prices and the options shown follow the chosen model. Both take one first frame only —
+  // Video model, shared by 文字生影片 and 圖生影片 (VIDEO_MODELS in shared/pricing.ts): WAN 3.0,
+  // Kling 4.0 or Seedance 2.5. Prices and the options shown follow the chosen model. Both take one first frame only —
   // no extra reference images / audio — and image-to-video follows the uploaded image's ratio.
   const I2V_MODELS = VIDEO_MODEL_KEYS.map(k => ({
     id: k as string, label: VIDEO_MODELS[k].label as string, desc: VIDEO_MODELS[k].desc as string,
@@ -1622,7 +1622,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                     <i className="fas fa-robot text-purple-500"></i>
                     {tr("AI 影片模型")}
                   </Label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                     {I2V_MODELS.map(m => (
                       <button key={m.id} onClick={() => setSelectedI2VModel(m.id)} aria-pressed={selectedI2VModel === m.id}
                         className={`p-3 rounded-lg border-2 text-left transition-all ${selectedI2VModel === m.id ? "border-purple-500 bg-purple-50 text-purple-700" : "border-gray-200 bg-white text-gray-600 hover:border-purple-200"}`}
