@@ -66,7 +66,7 @@ function FourViewGrid({ urls, status }: { urls: FourViewUrls | null | undefined;
             <div key={key} className="aspect-[3/4] rounded-lg border border-[#e2e8f0] bg-[#f8fafc] overflow-hidden flex flex-col items-center justify-center">
               {url ? (
                 <button type="button" onClick={() => setZoom(key)} className="group relative w-full h-full cursor-zoom-in" aria-label={tr("放大{0}", { 0: label })} data-testid={`button-fourview-zoom-${key}`}>
-                  <img src={url} alt={label} className="w-full h-full object-cover" data-testid={`img-fourview-${key}`} />
+                  <img src={url} alt={label} loading="lazy" decoding="async" className="w-full h-full object-cover" data-testid={`img-fourview-${key}`} />
                   <span className="absolute inset-0 flex items-center justify-center bg-black/0 group-hover:bg-black/30 transition-colors">
                     <i className="fas fa-magnifying-glass-plus text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                   </span>
@@ -109,8 +109,9 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user } = useUser();
+  const embed = useEmbed();
   // Each account's first 四視圖 generation is free (not in a partner workspace).
-  const freeFourView = !!user && !user.freeFourViewUsedAt && !useEmbed();
+  const freeFourView = !!user && !user.freeFourViewUsedAt && !embed;
   const fourViewCost = FOUR_VIEW_COST;
   const [showEdit, setShowEdit] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);

@@ -2490,4 +2490,7 @@ export const en: Record<string, string> = {
   "圖片使用 Seedream 5.5，影片使用 WAN 3.0、Kling 4.0 或 Seedance 2.5。生成失敗會自動退還積分。": "Images use Seedream 5.5. Videos use WAN 3.0, Kling 4.0 or Seedance 2.5. Credits are refunded automatically if a generation fails.",
   "使用模型：Seedream 5.5・WAN 3.0・Kling 4.0・Seedance 2.5": "Models: Seedream 5.5 · WAN 3.0 · Kling 4.0 · Seedance 2.5",
   "字節 Seedance 2.5，畫面與動作最細緻、自帶音訊，價格最高。": "ByteDance Seedance 2.5: the finest picture and motion, with its own audio. The highest price.",
+  "畫面暫時無法顯示": "This page could not be displayed",
+  "請重新載入頁面。尚未送出的輸入可能需要重新填寫。": "Please reload the page. You may need to re-enter anything you have not submitted.",
+  "重新載入頁面": "Reload page",
 };
