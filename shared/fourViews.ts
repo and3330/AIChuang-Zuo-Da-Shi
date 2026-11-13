@@ -13,10 +13,17 @@ export const FOUR_VIEW_PRESETS: { key: FourViewKey; promptZh: string }[] = [
 export const FOUR_VIEW_SIZE = "1440x2560";
 
 /** The full prompt for one view of a character. */
-export function fourViewPrompt(presetPrompt: string, description?: string | null, styleHint?: string | null): string {
+/**
+ * `refCount` is how many reference images go with the prompt. With several, the model is told to
+ * read the face from all of them: "match reference 1" made it copy the first photo and ignore the rest.
+ */
+export function fourViewPrompt(presetPrompt: string, description?: string | null, styleHint?: string | null, refCount = 1): string {
   const base = description?.trim() ? `角色描述：${description.trim()}。` : "";
   const style = styleHint?.trim() ? `，整體風格：${styleHint.trim()}` : "";
-  return `${base}${presetPrompt}${style}（保持與第 1 張參考圖完全一致的角色外貌、髮色、五官、年齡與服裝）`;
+  const keep = refCount > 1
+    ? `（${refCount} 張參考圖都是同一個人：請綜合每一張參考圖判斷他的臉型、五官、髮型髮色、膚色、年齡與體型，不要只看其中一張；服裝以第 1 張參考圖為準）`
+    : "（保持與第 1 張參考圖完全一致的角色外貌、髮色、五官、年齡與服裝）";
+  return `${base}${presetPrompt}${style}${keep}`;
 }
 
 // ─── 先確認正面圖 ───────────────────────────────────────────────────────────
