@@ -174,10 +174,11 @@ export function referenceNote(
 
 /**
  * How the image model's 10 input images are shared out in the photo studio.
- * The character always keeps up to 6 so the face stays stable; the rest are
- * one slot each for the 情境圖, a costume image and that shot's pose image.
+ * The 情境圖, a costume image and the shots' pose image take one slot each when
+ * they are used; the person gets every slot left (7 to 10), so the face has as
+ * many references as the model can take. `character` is the least it gets.
  */
-export const REF_BUDGET = { total: 10, character: 6, situation: 1, costume: 1, pose: 1 } as const;
+export const REF_BUDGET = { total: 10, character: 7, situation: 1, costume: 1, pose: 1 } as const;
 
 /**
  * Note appended to every studio prompt. Image order must be

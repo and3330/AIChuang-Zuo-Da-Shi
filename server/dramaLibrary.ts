@@ -176,8 +176,8 @@ export function registerDramaLibraryRoutes(
     let frontViewUrl = opts.frontUrl ?? "";
     for (const preset of FOUR_VIEW_PRESETS.filter(p => opts.keys.includes(p.key))) {
       try {
-        const plainPrompt = fourViewPrompt(preset.promptZh, opts.description, character.styleHint);
         const chained = preset.key !== "front" && !!frontViewUrl;
+        const plainPrompt = fourViewPrompt(preset.promptZh, opts.description, character.styleHint, chained ? Math.min(10, refBase64s.length + 1) : refBase64s.length);
         const fullPrompt = chained
           ? `${plainPrompt}（第 1 張參考圖是這個角色已完成的正面定裝圖：服裝、鞋子、髮型與體型必須和它完全一樣。其餘參考圖是本人的照片，用來保持臉部五官一致。）`
           : plainPrompt;
