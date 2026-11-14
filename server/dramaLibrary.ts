@@ -16,9 +16,14 @@ import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService } from "./bunnyStorage";
 import { plainImagePrompt } from "./promptEnhancer";
 import {
-  FOUR_VIEW_PRESETS, FOUR_VIEW_SIZE, fourViewPrompt, FRONT_FREE_RETRIES, frontConfirmStatus, frontRetriesUsed,
+  FOUR_VIEW_PRESETS, FOUR_VIEW_SIZE, fourViewPrompt, fourViewPromptWith, FRONT_FREE_RETRIES, frontConfirmStatus, frontRetriesUsed,
+  faceCardPrompt, faceAnglePrompt, builderFrontNote, builderChainNote,
   type FourViewKey, type PhotoTags,
 } from "@shared/fourViews";
+import {
+  sanitizeProfile, profilePrompt, looksPrompt, PROFILE_ATTRS,
+  type CharacterProfile, type FaceBox,
+} from "@shared/characterProfile";
 import { motionPromptRequest, finishMotionPrompt } from "@shared/dramaMotion";
 import {
   insertCharacterLibrarySchema,
@@ -28,6 +33,7 @@ import {
   type FourViewUrls,
   users,
   characterLibrary,
+  characterProfiles,
 } from "@shared/schema";
 import { and, eq, isNull, like } from "drizzle-orm";
 import { db } from "./db";
@@ -167,21 +173,30 @@ export function registerDramaLibraryRoutes(
     frontUrl?: string;
     fileTag?: string;
     onView?: (soFar: FourViewUrls) => Promise<void>;
+    /** Characters made with the builder: their own references and notes instead of refUrls. */
+    builder?: BuilderRefs;
   }): Promise<{ results: FourViewUrls; succeeded: number }> {
-    const { character } = opts;
+    const { character, builder } = opts;
     // A character pack can hold up to 30 images; the edit model uses 10.
-    const refBase64s = await Promise.all(opts.refUrls.slice(0, 10).map(loadAsBase64));
+    const refBase64s = builder ? [] : await Promise.all(opts.refUrls.slice(0, 10).map(loadAsBase64));
     const results: FourViewUrls = {};
     let succeeded = 0;
     let frontViewUrl = opts.frontUrl ?? "";
     for (const preset of FOUR_VIEW_PRESETS.filter(p => opts.keys.includes(p.key))) {
       try {
         const chained = preset.key !== "front" && !!frontViewUrl;
-        const plainPrompt = fourViewPrompt(preset.promptZh, opts.description, character.styleHint, chained ? Math.min(10, refBase64s.length + 1) : refBase64s.length);
-        const fullPrompt = chained
-          ? `${plainPrompt}（第 1 張參考圖是這個角色已完成的正面定裝圖：服裝、鞋子、髮型與體型必須和它完全一樣。其餘參考圖是本人的照片，用來保持臉部五官一致。）`
-          : plainPrompt;
-        const viewImages = chained ? [frontViewUrl, ...refBase64s.slice(0, 9)] : refBase64s;
+        let fullPrompt: string;
+        let viewImages: string[];
+        if (builder) {
+          fullPrompt = fourViewPromptWith(preset.promptZh, opts.description, character.styleHint, chained ? builder.chainNote : builder.frontNote);
+          viewImages = (chained ? [frontViewUrl, ...builder.chainRefs] : builder.frontRefs).slice(0, 10);
+        } else {
+          const plainPrompt = fourViewPrompt(preset.promptZh, opts.description, character.styleHint, chained ? Math.min(10, refBase64s.length + 1) : refBase64s.length);
+          fullPrompt = chained
+            ? `${plainPrompt}（第 1 張參考圖是這個角色已完成的正面定裝圖：服裝、鞋子、髮型與體型必須和它完全一樣。其餘參考圖是本人的照片，用來保持臉部五官一致。）`
+            : plainPrompt;
+          viewImages = chained ? [frontViewUrl, ...refBase64s.slice(0, 9)] : refBase64s;
+        }
         const imageUrl = await atlasGenerateImage({
           prompt: fullPrompt,
           images: (viewImages.length === 1 ? viewImages[0] : viewImages) as any,
@@ -210,6 +225,123 @@ export function registerDramaLibraryRoutes(
       }
     }
     return { results, succeeded };
+  }
+
+  // ─── Character builder (two-stage: face card first, then the body) ─────────
+  // See shared/characterProfile.ts. Profiles live in their own table; until `npm run db:push`
+  // has created it, reading returns null and every character uses the old flow.
+
+  type BuilderRefs = { frontRefs: string[]; frontNote: string; chainRefs: string[]; chainNote: string };
+
+  async function getProfile(characterId: string): Promise<CharacterProfile | null> {
+    try {
+      const [row] = await db.select().from(characterProfiles).where(eq(characterProfiles.characterId, characterId));
+      return row ? (row.profile as CharacterProfile) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  async function saveProfile(characterId: string, userId: string, profile: CharacterProfile): Promise<void> {
+    const now = new Date();
+    await db.insert(characterProfiles).values({ characterId, userId, profile, updatedAt: now })
+      .onConflictDoUpdate({ target: characterProfiles.characterId, set: { profile, updatedAt: now } });
+  }
+
+  /** A builder character: it has a profile with at least one face photo. */
+  async function builderProfile(characterId: string): Promise<CharacterProfile | null> {
+    const p = await getProfile(characterId);
+    return p && p.facePhotos.length > 0 ? p : null;
+  }
+
+  /** Copies a generated image to Bunny CDN; returns the original URL when that is not possible. */
+  async function keepOnCdn(imageUrl: string, remotePath: string): Promise<string> {
+    if (!bunnyStorage.isConfigured()) return imageUrl;
+    try {
+      const safe = assertPublicHttpsUrl(imageUrl);
+      const imgResp = await fetch(safe.toString(), { redirect: "error" });
+      if (!imgResp.ok) throw new Error(`HTTP ${imgResp.status}`);
+      return await bunnyStorage.uploadBuffer(Buffer.from(await imgResp.arrayBuffer()), remotePath);
+    } catch (e) {
+      console.warn(`[CharLib] Bunny upload failed for ${remotePath}:`, e);
+      return imageUrl;
+    }
+  }
+
+  /** Greys out the face in a body photo so the model cannot take the face (or hair) from it. */
+  async function maskFace(dataUrl: string, box: FaceBox | undefined): Promise<string> {
+    const input = Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64");
+    const { data, info } = await sharp(input).rotate()
+      .resize({ width: 2048, height: 2048, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 90 }).toBuffer({ resolveWithObject: true });
+    if (!box) return `data:image/jpeg;base64,${data.toString("base64")}`;
+    const [x1, y1, x2, y2] = box;
+    const W = info.width, H = info.height;
+    const cx = ((x1 + x2) / 2 / 1000) * W, cy = ((y1 + y2) / 2 / 1000) * H;
+    // A little larger than the face box, so the hairline and jaw are covered too.
+    const rx = Math.max(12, ((x2 - x1) / 1000) * W * 0.7), ry = Math.max(12, ((y2 - y1) / 1000) * H * 0.75);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}"><ellipse cx="${cx.toFixed(1)}" cy="${cy.toFixed(1)}" rx="${rx.toFixed(1)}" ry="${ry.toFixed(1)}" fill="#808080"/></svg>`;
+    const out = await sharp(data).composite([{ input: Buffer.from(svg) }]).jpeg({ quality: 88 }).toBuffer();
+    return `data:image/jpeg;base64,${out.toString("base64")}`;
+  }
+
+  /**
+   * Makes the face card (standard front face) and a 3/4 face when they are missing or `redoFace`,
+   * saves them in the profile, and returns the references for the four views.
+   * Throws when the face card cannot be made.
+   */
+  async function prepareBuilder(characterId: string, userId: string, profile: CharacterProfile, userFolder: string, redoFace = false): Promise<BuilderRefs> {
+    const looks = looksPrompt(profile);
+    const faceData = await Promise.all(profile.facePhotos.slice(0, 5).map(loadAsBase64));
+    const tag = `_${Date.now()}`;
+    let card = redoFace ? "" : profile.faceCardUrl ?? "";
+    let angle = redoFace ? "" : profile.faceAngleUrl ?? "";
+    if (!card) {
+      const made = await atlasGenerateImage({ prompt: faceCardPrompt(faceData.length, looks), images: faceData.length === 1 ? faceData[0] : faceData, size: "1536x1536" });
+      card = await keepOnCdn(made, `users/${userFolder}/character-library/${characterId}_facecard${tag}.jpg`);
+      angle = "";
+    }
+    if (!angle) {
+      try {
+        const made = await atlasGenerateImage({ prompt: faceAnglePrompt(looks), images: [card, ...faceData.slice(0, 4)], size: "1536x1536" });
+        angle = await keepOnCdn(made, `users/${userFolder}/character-library/${characterId}_faceangle${tag}.jpg`);
+      } catch (e: any) {
+        console.warn("[CharLib] 3/4 face failed, continuing with the face card only:", String(e?.message ?? e).slice(0, 120));
+      }
+    }
+    if (card !== profile.faceCardUrl || angle !== (profile.faceAngleUrl ?? "")) {
+      profile.faceCardUrl = card;
+      if (angle) profile.faceAngleUrl = angle; else delete profile.faceAngleUrl;
+      await saveProfile(characterId, userId, profile);
+    }
+    const faceRefs = [card, ...(angle ? [angle] : []), ...faceData.slice(0, 2)];
+    const boxes = profile.faceBoxes ?? {};
+    const bodyFront = profile.bodyPhotos.front ? await maskFace(await loadAsBase64(profile.bodyPhotos.front), boxes[profile.bodyPhotos.front]) : "";
+    const bodyBack = profile.bodyPhotos.back ? await maskFace(await loadAsBase64(profile.bodyPhotos.back), boxes[profile.bodyPhotos.back]) : "";
+    const chainFaces = [card, ...(angle ? [angle] : [])];
+    return {
+      frontRefs: [...faceRefs, ...(bodyFront ? [bodyFront] : []), ...(bodyBack ? [bodyBack] : [])],
+      frontNote: builderFrontNote({ faceRefs: faceRefs.length, bodyFront: !!bodyFront, bodyBack: !!bodyBack }),
+      chainRefs: [...chainFaces, ...(bodyBack ? [bodyBack] : [])],
+      chainNote: builderChainNote({ faceRefs: chainFaces.length, bodyBack: !!bodyBack }),
+    };
+  }
+
+  /**
+   * The character's image pack with the face card and 3/4 face at the front, so every later
+   * generation (photosets, drama frames…) takes the face from them. Done once the four views are complete.
+   */
+  async function withFaceCardFirst(characterId: string, refUrls: string[]): Promise<string[]> {
+    const p = await getProfile(characterId);
+    const faces = [p?.faceCardUrl, p?.faceAngleUrl].filter((u): u is string => !!u);
+    if (faces.length === 0) return refUrls;
+    return [...faces, ...refUrls.filter(u => !faces.includes(u) && !/_face(card|angle)_/.test(u))];
+  }
+
+  /** The description for a builder character: what the AI read from the face photos plus the chosen settings. */
+  async function builderDescription(characterId: string, current: string | null | undefined, profile: CharacterProfile): Promise<string> {
+    const read = await descriptionForGeneration(characterId, current, profile.facePhotos);
+    return [read, profilePrompt(profile)].filter(Boolean).join("。");
   }
 
   async function refundCredits(userId: string, amount: number, description: string): Promise<void> {
@@ -296,17 +428,114 @@ issue、tags 與 prompt 請用${english ? "英文" : "繁體中文"}書寫。`,
     }
   });
 
+  // ─── Builder: what the AI reads from the face and body photos ───────────────
+  // One Seed call picks a value for every look and body setting; one more per body photo finds the
+  // face, so it can be greyed out when generating. Free for the person; shares the photo-tag cap.
+  async function smallJpeg(url: string, side: number): Promise<string> {
+    const dataUrl = await loadAsBase64(url);
+    const small = await sharp(Buffer.from(dataUrl.slice(dataUrl.indexOf(",") + 1), "base64"))
+      .rotate().resize({ width: side, height: side, fit: "inside", withoutEnlargement: true }).jpeg({ quality: 82 }).toBuffer();
+    return small.toString("base64");
+  }
+
+  function seedJson(text: string): any {
+    try { return JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1)); } catch { return null; }
+  }
+
+  async function findFaceBox(url: string): Promise<FaceBox | null> {
+    try {
+      const resp = await createAtlasSeedClient().messages.create({
+        model: ATLAS_SEED_MODEL, max_tokens: 120, temperature: 0,
+        messages: [{ role: "user", content: [
+          { type: "image", source: { type: "base64", media_type: "image/jpeg", data: await smallJpeg(url, 1024) } },
+          { type: "text", text: `找出這張照片裡主要人物的臉（含髮際線與下巴）。只輸出 JSON：{"face": [x1, y1, x2, y2]}，座標是相對於整張圖的 0 到 1000（左上角是 0,0，右下角是 1000,1000）。看不到臉（例如背面照）就輸出 {"face": null}。` },
+        ] }],
+      });
+      const parsed = seedJson(((resp.content.find((b: any) => b.type === "text") as any)?.text || "").trim());
+      const b = parsed?.face;
+      if (!Array.isArray(b) || b.length !== 4) return null;
+      const box = b.map((n: unknown) => Math.round(Number(n))) as FaceBox;
+      if (box.some(n => !Number.isFinite(n) || n < 0 || n > 1000) || box[2] <= box[0] || box[3] <= box[1]) return null;
+      return box;
+    } catch {
+      return null;
+    }
+  }
+
+  app.post("/api/character-library/analyze-profile", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const okUrl = (v: unknown) => (typeof v === "string" && v.trim() && v.length <= 2000 && !v.startsWith("data:") ? v.trim() : "");
+      const facePhotos = (Array.isArray(req.body?.facePhotos) ? req.body.facePhotos : []).map(okUrl).filter(Boolean).slice(0, 3) as string[];
+      const bodyFront = okUrl(req.body?.bodyPhotos?.front);
+      const bodyBack = okUrl(req.body?.bodyPhotos?.back);
+      if (facePhotos.length === 0) return res.status(400).json({ error: "請先上傳臉部照片。" });
+      if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
+
+      const now = Date.now();
+      const recent = (photoTagCalls.get(userId) ?? []).filter(t => now - t < PHOTO_TAG_WINDOW_MS);
+      if (recent.length >= PHOTO_TAG_LIMIT) return res.status(429).json({ error: "照片判讀次數太多，請稍後再試。" });
+      recent.push(now, now);
+      photoTagCalls.set(userId, recent);
+
+      const images = await Promise.all([...facePhotos, ...(bodyFront ? [bodyFront] : [])].map(u => smallJpeg(u, 768)));
+      const menu = PROFILE_ATTRS.map(a => `${a.group}.${a.key}（${a.label}）：${a.options.map(op => `${op.value}=${op.label}`).join("、")}`).join("\n");
+      const bodyNote = bodyFront ? `最後一張是這個人的全身身材照，身材項目以它為準。` : `沒有全身身材照：身材項目只在照片看得出來時填，看不出來就填 null。`;
+      const [resp, frontBox, backBox] = await Promise.all([
+        createAtlasSeedClient().messages.create({
+          model: ATLAS_SEED_MODEL, max_tokens: 500, temperature: 0.1,
+          messages: [{ role: "user", content: [
+            ...images.map(data => ({ type: "image" as const, source: { type: "base64" as const, media_type: "image/jpeg" as const, data } })),
+            { type: "text", text: `這些照片都是同一個成年人，要用來設定 AI 角色的外貌與身材。前 ${facePhotos.length} 張是臉部照片。${bodyNote}
+請為下面每一項選出最接近的一個值（只能用等號左邊的英文值），照片看不清楚的填 null：
+${menu}
+另外判斷 gender：female 或 male。
+只輸出一個 JSON 物件，不要其他文字，格式：{"gender": "...", "looks": {"skinTone": "...", ...}, "body": {"build": "...", ...}}
+不要猜測姓名、身分或年齡。` },
+          ] }],
+        }),
+        bodyFront ? findFaceBox(bodyFront) : Promise.resolve(null),
+        bodyBack ? findFaceBox(bodyBack) : Promise.resolve(null),
+      ]);
+      const parsed = seedJson(((resp.content.find((b: any) => b.type === "text") as any)?.text || "").trim());
+      if (!parsed) return res.status(502).json({ error: "照片判讀失敗，請稍後再試。" });
+      const clean = sanitizeProfile({ gender: parsed.gender, looks: parsed.looks, body: parsed.body });
+      const faceBoxes: Record<string, FaceBox> = {};
+      if (bodyFront && frontBox) faceBoxes[bodyFront] = frontBox;
+      if (bodyBack && backBox) faceBoxes[bodyBack] = backBox;
+      res.json({ gender: clean.gender ?? null, looks: clean.looks, body: clean.body, faceBoxes });
+    } catch (e: any) {
+      console.warn("[Character] analyze profile failed:", String(e?.message ?? e).slice(0, 120));
+      res.status(502).json({ error: "照片判讀失敗，請稍後再試。" });
+    }
+  });
+
   app.post("/api/character-library", requireAuth, async (req, res) => {
     try {
       const data = insertCharacterLibrarySchema.parse(req.body);
+      // Characters from the builder: the photos come from the profile, face photos first.
+      const profile = req.body?.profile ? sanitizeProfile(req.body.profile) : null;
+      if (profile && profile.facePhotos.length === 0) return res.status(400).json({ error: "請先上傳臉部照片。" });
+      if (profile) {
+        data.refImageUrls = [...profile.facePhotos, ...[profile.bodyPhotos.front, profile.bodyPhotos.back].filter((u): u is string => !!u)];
+      }
       const c = await storage.createCharacter({ ...data, userId: req.session.userId! });
+      if (profile) {
+        try {
+          await saveProfile(c.id, c.userId, profile);
+        } catch (e: any) {
+          // Most likely the table does not exist yet (`npm run db:push`): the character still works the old way.
+          console.error("[CharLib] could not save the builder profile:", String(e?.message ?? e).slice(0, 160));
+        }
+      }
       res.json(c);
       if (!(c.description ?? "").trim() && (c.refImageUrls?.length ?? 0) > 0) {
         // The wizard sends what the AI read from each photo; the description is written from all of them.
         const photoPrompts = Array.isArray(req.body?.photoPrompts)
           ? req.body.photoPrompts.filter((t: unknown) => typeof t === "string" && t.trim()).map((t: string) => t.trim().slice(0, 400)).slice(0, 10)
           : [];
-        void ensureDescription(c.id, c.refImageUrls ?? [], photoPrompts);
+        // A builder character is described from its face photos only (body photos may hide the face).
+        void ensureDescription(c.id, profile ? profile.facePhotos : c.refImageUrls ?? [], photoPrompts);
       }
     } catch (e: any) {
       res.status(400).json({ error: e.message });
@@ -317,9 +546,31 @@ issue、tags 與 prompt 請用${english ? "英文" : "繁體中文"}書寫。`,
     try {
       const c = await storage.getCharacter(req.params.id);
       if (!c || c.userId !== req.session.userId!) return res.status(404).json({ error: "找不到角色" });
-      res.json(c);
+      res.json({ ...c, profile: await getProfile(c.id) });
     } catch (e: any) {
       res.status(500).json({ error: e.message });
+    }
+  });
+
+  // Edit the builder settings later (looks, body, numbers, backstory, gender). Photos and the
+  // generated face card are kept as they are.
+  app.put("/api/character-library/:id/profile", requireAuth, async (req, res) => {
+    try {
+      const c = await storage.getCharacter(req.params.id);
+      if (!c || c.userId !== req.session.userId!) return res.status(404).json({ error: "找不到角色" });
+      const current = await getProfile(c.id);
+      if (!current) return res.status(404).json({ error: "這個角色不是用角色生成器建立的。" });
+      const next = sanitizeProfile({ ...req.body, facePhotos: current.facePhotos, bodyPhotos: current.bodyPhotos, faceBoxes: current.faceBoxes });
+      const looksChanged = JSON.stringify(next.looks) !== JSON.stringify(current.looks) || next.gender !== current.gender;
+      // Changing the face settings means the face card has to be made again on the next generation.
+      if (!looksChanged) {
+        if (current.faceCardUrl) next.faceCardUrl = current.faceCardUrl;
+        if (current.faceAngleUrl) next.faceAngleUrl = current.faceAngleUrl;
+      }
+      await saveProfile(c.id, c.userId, next);
+      res.json(next);
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
     }
   });
 
@@ -402,12 +653,26 @@ issue、tags 與 prompt 請用${english ? "英文" : "繁體中文"}書寫。`,
       (async () => {
         try {
           const userFolder = user?.username || userId;
-          const description = await descriptionForGeneration(character.id, character.description, refUrls);
-          const { results, succeeded } = await generateViews({
-            character, description, refUrls, userFolder,
-            keys: frontFirst ? ["front"] : FOUR_VIEW_PRESETS.map(p => p.key),
-            onView: soFar => storage.updateCharacter(character.id, { fourViewUrls: soFar } as any).then(() => undefined),
-          });
+          const profile = await builderProfile(character.id);
+          let builder: BuilderRefs | undefined;
+          let description: string;
+          let results: FourViewUrls = {};
+          let succeeded = 0;
+          if (profile) {
+            description = await builderDescription(character.id, character.description, profile);
+            // No face card means nothing can be drawn: counts as a failed generation (refunded below).
+            try { builder = await prepareBuilder(character.id, userId, profile, userFolder); }
+            catch (e: any) { console.error("[CharLib] face card failed:", String(e?.message ?? e).slice(0, 160)); }
+          } else {
+            description = await descriptionForGeneration(character.id, character.description, refUrls);
+          }
+          if (!profile || builder) {
+            ({ results, succeeded } = await generateViews({
+              character, description, refUrls, userFolder, builder,
+              keys: frontFirst ? ["front"] : FOUR_VIEW_PRESETS.map(p => p.key),
+              onView: soFar => storage.updateCharacter(character.id, { fourViewUrls: soFar } as any).then(() => undefined),
+            }));
+          }
 
           if (succeeded === 0) {
             if (free) {
@@ -421,10 +686,12 @@ issue、tags 與 prompt 請用${english ? "英文" : "繁體中文"}書寫。`,
               fourViewError: "全部視圖生成失敗",
             } as any);
           } else {
+            const done = !frontFirst;
             await storage.updateCharacter(character.id, {
               // Front view only: wait for the person to confirm the likeness before the other three.
               fourViewStatus: frontFirst ? frontConfirmStatus(0) : "completed",
               fourViewUrls: results,
+              ...(done && profile ? { refImageUrls: await withFaceCardFirst(character.id, character.refImageUrls ?? []) } : {}),
             } as any);
           }
         } catch (e: any) {
@@ -462,9 +729,14 @@ issue、tags 與 prompt 請用${english ? "英文" : "繁體中文"}書寫。`,
       (async () => {
         const waiting = frontConfirmStatus(frontRetriesUsed(before.fourViewStatus));
         try {
-          const description = await descriptionForGeneration(character.id, character.description, refUrls);
+          const userFolder = user?.username || userId;
+          const profile = await builderProfile(character.id);
+          const description = profile
+            ? await builderDescription(character.id, character.description, profile)
+            : await descriptionForGeneration(character.id, character.description, refUrls);
+          const builder = profile ? await prepareBuilder(character.id, userId, profile, userFolder) : undefined;
           const { results, succeeded } = await generateViews({
-            character, description, refUrls, userFolder: user?.username || userId,
+            character, description, refUrls, userFolder, builder,
             keys: ["threeQuarter", "side", "back"], frontUrl: front,
             onView: soFar => storage.updateCharacter(character.id, { fourViewUrls: { front, ...soFar } } as any).then(() => undefined),
           });
@@ -472,7 +744,10 @@ issue、tags 與 prompt 請用${english ? "英文" : "繁體中文"}書寫。`,
             // Nothing new was made: stay on the confirmation step so it can be pressed again for free.
             await storage.updateCharacter(character.id, { fourViewStatus: waiting, fourViewUrls: { front }, fourViewError: "其餘三張生成失敗，請再按一次確認。" } as any);
           } else {
-            await storage.updateCharacter(character.id, { fourViewStatus: "completed", fourViewUrls: { front, ...results } } as any);
+            await storage.updateCharacter(character.id, {
+              fourViewStatus: "completed", fourViewUrls: { front, ...results },
+              ...(profile ? { refImageUrls: await withFaceCardFirst(character.id, character.refImageUrls ?? []) } : {}),
+            } as any);
           }
         } catch (e: any) {
           console.error("[CharLib] remaining views failed:", e);
@@ -527,9 +802,20 @@ issue、tags 與 prompt 請用${english ? "英文" : "繁體中文"}書寫。`,
           } as any);
         };
         try {
-          const description = await descriptionForGeneration(character.id, character.description, refUrls);
+          const userFolder = user?.username || userId;
+          const profile = await builderProfile(character.id);
+          if (profile && mainPhoto && profile.facePhotos.includes(mainPhoto) && profile.facePhotos[0] !== mainPhoto) {
+            // A new main face photo means a new face card.
+            profile.facePhotos = [mainPhoto, ...profile.facePhotos.filter(u => u !== mainPhoto)];
+            await saveProfile(character.id, userId, profile);
+          }
+          const redoFace = !!profile && (req.body?.redoFace === true || (!!mainPhoto && profile.facePhotos[0] === mainPhoto));
+          const description = profile
+            ? await builderDescription(character.id, character.description, profile)
+            : await descriptionForGeneration(character.id, character.description, refUrls);
+          const builder = profile ? await prepareBuilder(character.id, userId, profile, userFolder, redoFace) : undefined;
           const { results, succeeded } = await generateViews({
-            character, description, refUrls, userFolder: user?.username || userId,
+            character, description, refUrls, userFolder, builder,
             keys: ["front"], fileTag: `_r${Date.now()}`,
           });
           if (succeeded === 0 || !results.front) return await giveBack("正面圖重新生成失敗，沒有算次數，請再試一次。");

@@ -459,6 +459,18 @@ export const characterLibrary = pgTable("character_library", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+/**
+ * Character builder settings (shared/characterProfile.ts): face and body photos, chosen looks and
+ * body proportions, backstory, and the generated face card. A separate NEW table, so the character
+ * library keeps working before `npm run db:push` has created it (only the builder needs it).
+ */
+export const characterProfiles = pgTable("character_profiles", {
+  characterId: varchar("character_id").primaryKey(),
+  userId: varchar("user_id").notNull(),
+  profile: json("profile").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 export const sceneLibrary = pgTable("scene_library", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull(),

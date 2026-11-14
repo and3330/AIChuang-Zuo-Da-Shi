@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { IMAGE_COST } from "@shared/pricing";
 import { FRONT_FREE_RETRIES, awaitingFrontConfirm, frontRetriesUsed } from "@shared/fourViews";
 import type { CharacterLibraryItem, FourViewUrls } from "@shared/schema";
+import type { CharacterProfile } from "@shared/characterProfile";
 
 // 「先確認正面圖」：建立角色後只先做正面圖，這裡把它跟使用者的主照片並排，問像不像。
 // 像 → 繼續做其餘三張（不再扣積分）。不像 → 重新生成，可以先換一張主照片；
@@ -22,8 +23,10 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [mainPhoto, setMainPhoto] = useState<string | null>(null);
+  // Builder characters only: make the face card again too (when the face itself is wrong).
+  const [redoFace, setRedoFace] = useState(false);
 
-  const { data: character } = useQuery<CharacterLibraryItem>({
+  const { data: character } = useQuery<CharacterLibraryItem & { profile?: CharacterProfile | null }>({
     queryKey: ["/api/character-library", characterId],
     refetchInterval: query => ((query.state.data as CharacterLibraryItem | undefined)?.fourViewStatus === "generating" ? 3000 : false),
   });
@@ -42,13 +45,16 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
     onError: (e: any) => toast({ title: tr("無法繼續"), description: trServer(e.message), variant: "destructive" }),
   });
   const retry = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/character-library/${characterId}/four-views/retry-front`, mainPhoto ? { mainPhoto } : {}),
-    onSuccess: () => { setMainPhoto(null); refresh(); },
+    mutationFn: () => apiRequest("POST", `/api/character-library/${characterId}/four-views/retry-front`, { ...(mainPhoto ? { mainPhoto } : {}), ...(redoFace ? { redoFace: true } : {}) }),
+    onSuccess: () => { setMainPhoto(null); setRedoFace(false); refresh(); },
     onError: (e: any) => toast({ title: tr("無法重新生成"), description: trServer(e.message), variant: "destructive" }),
   });
 
   const status = character?.fourViewStatus ?? "generating";
-  const photos = (character?.refImageUrls ?? []).slice(0, 10);
+  const profile = character?.profile && character.profile.facePhotos?.length ? character.profile : null;
+  // Builder characters choose among their face photos; the face card is shown beside the result.
+  const photos = (profile ? profile.facePhotos : character?.refImageUrls ?? []).slice(0, 10);
+  const faceCard = profile?.faceCardUrl;
   const front = ((character?.fourViewUrls ?? {}) as FourViewUrls).front;
   const waiting = awaitingFrontConfirm(status) && !!front;
   const working = !character || status === "generating" || retry.isPending;
@@ -83,6 +89,12 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
           <figcaption className="text-[11px] text-slate-500 text-center mt-1">{tr("AI 生成的正面圖")}</figcaption>
         </figure>
       </div>
+      {faceCard && !working && (
+        <div className="flex items-center gap-3 mt-3 rounded-xl bg-slate-50 border border-slate-200 p-2" data-testid="front-confirm-facecard">
+          <img src={faceCard} alt={tr("臉卡")} className="w-16 h-16 rounded-lg object-cover" />
+          <p className="text-[11px] text-slate-600 leading-relaxed">{tr("這是 AI 從你的臉部照片做出的臉卡（標準正臉）。角色之後的每張圖都會以它為準。")}</p>
+        </div>
+      )}
 
       {!working && character?.fourViewError && (waiting || status === "failed") && (
         <p className="mt-3 text-xs text-red-600" data-testid="front-confirm-error">{trServer(character.fourViewError)}</p>
@@ -108,6 +120,12 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
                 ))}
               </div>
             </div>
+          )}
+          {faceCard && (
+            <label className="flex items-start gap-2 mt-3 text-xs text-slate-700 cursor-pointer">
+              <input type="checkbox" checked={redoFace || !!mainPhoto} disabled={!!mainPhoto} onChange={e => setRedoFace(e.target.checked)} className="mt-0.5 accent-indigo-600" data-testid="checkbox-redo-face" />
+              <span>{tr("連臉卡一起重做（臉不像的時候勾；只是身材或衣服不對就不用勾）")}</span>
+            </label>
           )}
           <button onClick={() => retry.mutate()} disabled={confirm.isPending}
             className="mt-3 w-full h-11 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:border-indigo-400 hover:text-indigo-600 disabled:opacity-40" data-testid="button-front-retry">
