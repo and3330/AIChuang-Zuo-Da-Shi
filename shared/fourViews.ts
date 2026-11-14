@@ -18,12 +18,45 @@ export const FOUR_VIEW_SIZE = "1440x2560";
  * read the face from all of them: "match reference 1" made it copy the first photo and ignore the rest.
  */
 export function fourViewPrompt(presetPrompt: string, description?: string | null, styleHint?: string | null, refCount = 1): string {
-  const base = description?.trim() ? `角色描述：${description.trim()}。` : "";
-  const style = styleHint?.trim() ? `，整體風格：${styleHint.trim()}` : "";
   const keep = refCount > 1
     ? `（${refCount} 張參考圖都是同一個人：請綜合每一張參考圖判斷他的臉型、五官、髮型髮色、膚色、年齡與體型，不要只看其中一張；服裝以第 1 張參考圖為準）`
     : "（保持與第 1 張參考圖完全一致的角色外貌、髮色、五官、年齡與服裝）";
-  return `${base}${presetPrompt}${style}${keep}`;
+  return fourViewPromptWith(presetPrompt, description, styleHint, keep);
+}
+
+/** Same as fourViewPrompt, with the caller's own note on what each reference image is. */
+export function fourViewPromptWith(presetPrompt: string, description: string | null | undefined, styleHint: string | null | undefined, refNote: string): string {
+  const base = description?.trim() ? `角色描述：${description.trim()}。` : "";
+  const style = styleHint?.trim() ? `，整體風格：${styleHint.trim()}` : "";
+  return `${base}${presetPrompt}${style}${refNote}`;
+}
+
+// ─── 角色生成器（兩階段）的提示詞 ─────────────────────────────────────────────
+// 臉卡：用本人的臉部照片做一張標準正臉，之後所有生成都以它為準。
+export function faceCardPrompt(photoCount: number, looks: string): string {
+  const same = photoCount > 1 ? `${photoCount} 張參考圖都是同一個人，請綜合每一張判斷` : "依照參考圖判斷";
+  return `證件照風格的標準大頭照：參考圖中這個人的正臉，直視鏡頭，表情自然中性、嘴巴閉合，拍到肩膀以上，純淺灰背景，正面均勻柔光、沒有陰影，真實皮膚質感，不美顏、不修圖。${same}臉型、眼型、眉形、鼻子、嘴唇、膚色、髮型髮色，以及痣、酒窩、雀斑等明顯特徵，全部保持一致。穿素色深色圓領上衣，不戴眼鏡、帽子與飾品。${looks ? `外貌設定（與照片不同時以設定為準）：${looks}。` : ""}`;
+}
+
+export function faceAnglePrompt(looks: string): string {
+  return `同一個人的 3/4 側臉大頭照：臉轉向畫面左前方約 45 度，眼睛看向前方，表情自然中性，拍到肩膀以上，純淺灰背景，均勻柔光，真實皮膚質感，不美顏。第 1 張參考圖是這個人的標準正臉，臉型、五官、膚色、髮型髮色與明顯特徵必須和它完全一致；其餘參考圖是本人的照片。穿素色深色圓領上衣。${looks ? `外貌設定：${looks}。` : ""}`;
+}
+
+/** What each reference image is, for the builder's front view (no finished front view yet). */
+export function builderFrontNote(o: { faceRefs: number; bodyFront: boolean; bodyBack: boolean }): string {
+  let n = 1;
+  const lines = [`第 1 張參考圖是這個角色的標準正臉，頭部、臉、五官、膚色、髮型髮色與明顯特徵必須和它完全一致`];
+  if (o.faceRefs > 1) { lines.push(`第 2${o.faceRefs > 2 ? ` 到 ${o.faceRefs}` : ""} 張是同一個人的臉部照片，用來輔助判斷五官`); }
+  n = o.faceRefs;
+  if (o.bodyFront) { n += 1; lines.push(`第 ${n} 張是本人的正面身材照：身高比例、肩寬、胸、腰、臀與腿型照它，頭部已被灰色遮住，請忽略那個位置，也不要使用這張照片裡的頭髮與臉`); }
+  if (o.bodyBack) { n += 1; lines.push(`第 ${n} 張是本人的背面身材照，同樣只參考身材`); }
+  return `（${lines.join("；")}。脖子與膚色要和臉自然銜接）`;
+}
+
+/** What each reference image is once the front view exists (it is reference 1). */
+export function builderChainNote(o: { faceRefs: number; bodyBack: boolean }): string {
+  const tail = o.bodyBack ? `；最後一張是本人的背面身材照，只參考身材` : "";
+  return `（第 1 張參考圖是這個角色已完成的正面定裝圖：服裝、鞋子、髮型與體型必須和它完全一樣。第 2${o.faceRefs > 1 ? ` 到 ${o.faceRefs + 1}` : ""} 張是這個角色的臉，五官必須一致${tail}）`;
 }
 
 // ─── 先確認正面圖 ───────────────────────────────────────────────────────────

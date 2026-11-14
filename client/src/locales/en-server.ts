@@ -217,6 +217,8 @@ export const serverEn: Record<string, string> = {
   "生成服務暫時無法使用，請聯絡平台管理員。": "The generation service is temporarily unavailable. Please contact the platform administrator.",
   "讀取作品庫失敗。": "Could not load My Work.",
   "無法讀取這張圖片。": "This image could not be read.",
+  "請先上傳臉部照片。": "Upload a face photo first.",
+  "這個角色不是用角色生成器建立的。": "This character was not made with the character builder.",
 };
 
 export const serverPatterns: Array<[string, string]> = [
