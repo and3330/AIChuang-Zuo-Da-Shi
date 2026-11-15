@@ -2646,4 +2646,12 @@ export const en: Record<string, string> = {
   "例如：抹茶、陶藝、二手古著": "e.g. matcha, pottery, vintage clothes",
   "誰會追蹤她、想看什麼": "Who follows them and what they come for",
   "其他值得記住的設定": "Anything else worth remembering",
+  "照片判讀失敗": "Could not read the photo",
+  "姿勢：第二張請使用這個姿勢——{0}；第一張照情境圖的姿勢，其餘各張請依情境自行安排不同的姿勢，不要重複": "Pose: use this pose for the second shot: {0}. The first shot keeps the photo's pose; give each of the others a different pose that suits the setting, with no repeats",
+  "AI 判讀照片內容": "What the AI sees in the photo",
+  "重新判讀": "Read again",
+  "AI 正在判讀照片的場景、構圖、姿勢、服裝與光線…": "The AI is reading the setting, framing, pose, clothes and light…",
+  "判讀失敗。可以按「重新判讀」，或直接往下規劃（只看照片）。": "Reading failed. Tap \"Read again\", or go ahead and plan from the photo alone.",
+  "第一張會照這份內容重拍成你的角色，其餘鏡頭沿用同樣的場景與光線。哪裡判讀錯了可以直接改。": "The first shot recreates this with your character; the others keep the same setting and light. Fix anything the AI got wrong.",
+  "AI 正在判讀照片…": "The AI is reading the photo…",
 };

@@ -99,7 +99,69 @@ export const planRequestSchema = z.object({
   aspectRatio: z.string().max(10).optional(),
   /** Interface language of the person asking. Anything but "zh" makes the planner write its whole answer in that language. */
   lang: z.enum(["zh", "en"]).optional(),
+  /** Scene mode: the full reading of the 情境圖 (from POST /api/photosets/read-photo), possibly edited by the person. */
+  photoReading: z.string().trim().max(3000).optional(),
 });
+
+/* ---------- full reading of the photo to copy (照片同款) ---------- */
+
+/** What the reading covers, in order. The person is described by pose, expression and clothes only: who they are comes from the character. */
+const READING_FIELDS = [
+  { key: "scene", zh: "場景與地點", en: "Setting", ask: "在哪裡拍的：地點類型、背景裡看得到的所有東西與它們的位置、時段" },
+  { key: "composition", zh: "構圖與鏡頭", en: "Framing and camera", ask: "景別（特寫／半身／七分身／全身／遠景）、人物在畫面中的位置與大小、拍攝角度與高度、鏡頭焦段感與景深、畫面比例" },
+  { key: "pose", zh: "姿勢與動作", en: "Pose", ask: "身體朝向、頭部角度、雙手與雙腳的位置、重心、正在做的動作，寫到能照著擺出一模一樣的姿勢" },
+  { key: "expression", zh: "表情與視線", en: "Expression and gaze", ask: "表情、嘴型、眼神看向哪裡" },
+  { key: "outfit", zh: "服裝與配件", en: "Outfit and accessories", ask: "每一件衣物的款式、顏色、材質、合身程度，以及鞋子、包包、飾品、眼鏡" },
+  { key: "props", zh: "道具與互動", en: "Props", ask: "人物拿著、靠著、坐著或互動的物件；沒有就寫「無」" },
+  { key: "lighting", zh: "光線", en: "Lighting", ask: "光源種類、方向、軟硬、明暗對比、有沒有逆光或輪廓光" },
+  { key: "color", zh: "色調與質感", en: "Colour and finish", ask: "主要色彩、冷暖、飽和度、底片感或手機感等後製風格、顆粒" },
+  { key: "mood", zh: "整體氛圍", en: "Mood", ask: "一句話說這張照片給人的感覺" },
+] as const;
+
+function readingPrompt(lang: "zh" | "en" = "zh"): string {
+  const list = READING_FIELDS.map(f => `- ${f.key}：${f.ask}`).join("\n");
+  const language = lang === "en" ? "自然的英文" : "繁體中文";
+  return `你是一位資深攝影指導。使用者想用自己的角色拍一張和這張照片「幾乎一樣」的照片，接著再延伸成一整組寫真。請完整、具體地判讀這張照片，讓攝影師只看你的文字就能重拍出同一張。
+
+規則：
+- 只寫看得到的內容，不要猜測或美化；不確定就寫「看不清楚」。
+- 不要描述人物的長相、臉部五官、膚色、年齡或身分（人物會換成使用者的角色）；髮型也不用寫。
+- 每一項用${language}寫 1–3 句，具體到位置、方向、顏色與數量。
+- 如果照片裡沒有人，pose、expression、outfit 都寫「畫面中沒有人物」。
+
+要判讀的項目：
+${list}
+
+只輸出一個 JSON 物件，鍵就是上面的英文名稱，值是文字，不要有任何其他文字或 Markdown。`;
+}
+
+/** Turn the model's JSON into labelled lines the person can read and edit. */
+export function formatReading(value: unknown, lang: "zh" | "en" = "zh"): string {
+  const obj = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  return READING_FIELDS
+    .map(f => {
+      const text = typeof obj[f.key] === "string" ? (obj[f.key] as string).trim().slice(0, 400) : "";
+      return text ? `${lang === "en" ? f.en : f.zh}：${text}` : "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+/** First balanced JSON object in a text answer. */
+function firstJsonObject(text: string): unknown {
+  let start = -1, depth = 0, quoted = false, escaped = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (start < 0) { if (c === "{") { start = i; depth = 1; } continue; }
+    if (quoted) { if (escaped) escaped = false; else if (c === "\\") escaped = true; else if (c === '"') quoted = false; continue; }
+    if (c === '"') quoted = true;
+    else if (c === "{") depth++;
+    else if (c === "}" && --depth === 0) {
+      try { return JSON.parse(text.slice(start, i + 1)); } catch { start = -1; }
+    }
+  }
+  return undefined;
+}
 
 type PlanRequest = z.infer<typeof planRequestSchema>;
 export type PhotosetShot = {
@@ -189,20 +251,31 @@ function buildScenePrompt(req: PlanRequest, refLooks: number, poses: PlanPose[])
           : "服裝請沿用角色參考圖中的穿著。"
       }`
     : "你會看到一張「情境圖」，請把它當成一次拍攝的定裝照：保持圖中同一位人物（臉部、髮型、身形、服裝配件）與同一個場景、色調。";
-  return `你是一位資深人像寫真攝影師兼社群視覺企劃。${imageIntro}
+  const reading = req.photoReading?.trim()
+    ? `
+
+【情境圖的完整判讀】（使用者已確認，可能改過；與圖片不同時以這段文字為準）
+${req.photoReading.trim()}`
+    : "";
+  const firstOutfit = hasRefs && req.outfitFrom !== "scene" ? "，只有人物換成角色、服裝換成角色的穿著" : hasRefs ? "，只有人物換成角色" : "";
+  // Picked poses decide every shot, so the replica rule only applies without them.
+  const replica = poses.length === 0;
+  return `你是一位資深人像寫真攝影師兼社群視覺企劃。${imageIntro}${reading}
 
 請規劃一組 ${req.count} 張的寫真套圖，讓整組圖貼在社群（Instagram、Threads、小紅書）時像同一次拍攝的作品集。
 
 【先分析】
 用 2–3 句繁體中文描述：${hasRefs ? "角色的外貌特徵與服裝，以及情境圖的" : "主體人物的外貌特徵與服裝，以及"}場景、光線、色調與整體氛圍。
-
-【再規劃 ${req.count} 個鏡頭】
+${replica ? `
+【第一個鏡頭：重拍情境圖】
+第一個鏡頭要和情境圖「幾乎一模一樣」${firstOutfit}：同一個地點與背景元素的位置、同樣的景別與人物在畫面中的位置和大小、同樣的拍攝角度與高度、同樣的姿勢（頭、手、腳、身體朝向）、表情與視線、同樣的道具與互動、同樣的光線方向與色調。提示詞要把這些逐項寫清楚（這一個可以寫到 220 字），不要自行加入新元素或改變構圖。title 寫「照片同款」。
+` : ""}
+【${replica ? `其餘 ${Math.max(0, req.count - 1)} 個鏡頭` : `規劃 ${req.count} 個鏡頭`}】
 ${SHOT_RULES}
 
 【整組的節奏】
-- ${req.count} 張之間要有明顯差異，避免重複的姿勢或構圖，並善用情境圖場景中的不同位置與元素。
+- ${replica ? "第二張以後" : `${req.count} 張之間`}彼此要有明顯差異，避免重複的姿勢或構圖，並善用情境圖場景中的不同位置與元素；光線、色調與氛圍維持和情境圖一致。
 - 景別要有遠有近：至少包含一張環境全景、一張半身、一張臉部或細節特寫（張數不足時依序優先）。
-- 第一張適合當封面：最能代表整組氛圍、主體清楚。
 - 不要改變人物身分、年齡或場景。${poseBlock(poses)}${userExtras(req)}
 
 ${outputFormat(req.count)}`;
@@ -583,7 +656,44 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
     };
   }
 
-  return { plan };
+  /** 照片同款: read the whole photo once, before planning, so the person can check and correct it. */
+  async function readPhoto(input: unknown): Promise<{ reading: string }> {
+    const parsed = z.object({ imageUrl: z.string().min(1).max(2000), lang: z.enum(["zh", "en"]).optional() }).safeParse(input);
+    if (!parsed.success) throw new PhotosetPlanError(400, "請求格式錯誤。");
+    if (!process.env.ATLASCLOUD_API_KEY) throw new PhotosetPlanError(500, "規劃用的 AtlasCloud AI 服務尚未設定。");
+    const lang = parsed.data.lang ?? "zh";
+    let image: Anthropic.ImageBlockParam;
+    try {
+      image = await loadForVision(parsed.data.imageUrl);
+    } catch {
+      throw new PhotosetPlanError(400, "讀不到這張照片，請重新上傳。");
+    }
+    const message = await createAtlasSeedClient().messages.create({
+      model: PLANNER_MODEL,
+      max_tokens: 2500,
+      messages: [{ role: "user", content: [image, { type: "text", text: readingPrompt(lang) }] }],
+    });
+    if (message.stop_reason === "refusal") throw new PhotosetPlanError(422, "AI 無法判讀這張照片，請換一張再試。");
+    const text = message.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map(block => block.text).join("\n");
+    const reading = formatReading(firstJsonObject(text), lang);
+    if (!reading) throw new PhotosetPlanError(502, "AI 判讀照片失敗，請再試一次。");
+    return { reading };
+  }
+
+  return { plan, readPhoto };
+}
+
+/** Free calls that still cost us a model call: a few per minute per person. */
+const readHits = new Map<string, number[]>();
+function tooManyReads(userId: string): boolean {
+  const now = Date.now();
+  const recent = (readHits.get(userId) ?? []).filter(t => now - t < 60_000);
+  if (recent.length >= 8) { readHits.set(userId, recent); return true; }
+  recent.push(now);
+  readHits.set(userId, recent);
+  return false;
 }
 
 export function registerPhotosetRoutes(
@@ -606,6 +716,18 @@ export function registerPhotosetRoutes(
       console.error("Photoset planning failed:", error?.message || error);
       const status = error instanceof Anthropic.RateLimitError ? 429 : 500;
       res.status(status).json({ error: error?.message || "套圖規劃失敗，請稍後再試。" });
+    }
+  });
+
+  app.post("/api/photosets/read-photo", requireAuth, async (req, res) => {
+    const userId = String(req.session.userId ?? req.ip);
+    if (tooManyReads(userId)) return res.status(429).json({ error: "判讀太頻繁，請稍候一分鐘再試。" });
+    try {
+      res.json(await planner.readPhoto(req.body));
+    } catch (error: any) {
+      if (error instanceof PhotosetPlanError) return res.status(error.status).json({ error: error.message });
+      console.error("Photo reading failed:", error?.message || error);
+      res.status(500).json({ error: "AI 判讀照片失敗，請再試一次。" });
     }
   });
 }

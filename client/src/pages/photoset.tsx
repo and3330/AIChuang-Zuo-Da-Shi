@@ -269,6 +269,27 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
 
   const costumeImage = !isSheet ? costume?.imageUrl ?? "" : "";
   const hasSituation = mode === "scene" && !!situationPath;
+
+  // 照片同款: as soon as there is a photo, the AI reads all of it (setting, framing, pose, clothes,
+  // light, colour); the person can correct the text, and planning follows it.
+  const [reading, setReading] = useState("");
+  const [readingState, setReadingState] = useState<"" | "reading" | "done" | "failed">("");
+  const [readingTry, setReadingTry] = useState(0);
+  useEffect(() => {
+    setReading("");
+    if (!hasSituation) { setReadingState(""); return; }
+    let cancelled = false;
+    setReadingState("reading");
+    apiRequest("POST", "/api/photosets/read-photo", { imageUrl: situationPath, lang: getLang() })
+      .then(r => r.json())
+      .then((d: { reading: string }) => { if (!cancelled) { setReading(d.reading); setReadingState("done"); } })
+      .catch(e => {
+        if (cancelled) return;
+        setReadingState("failed");
+        toast({ title: tr("照片判讀失敗"), description: errorText(e), variant: "destructive" });
+      });
+    return () => { cancelled = true; };
+  }, [hasSituation, situationPath, readingTry]); // eslint-disable-line react-hooks/exhaustive-deps
   // A pose image is sent with a shot that has one: before planning that is the picked pose, after it any shot's own.
   const anyPoseRef = plan ? plan.shots.some(s => s.prompt.trim().length > 0 && !!s.poseRef) : !!pose;
   // The person gets every slot the other images leave, so all 10 images the model takes are used.
@@ -424,7 +445,11 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
       const scene = sceneText.trim();
       const directionParts = [
         scene ? (hasSituation ? tr("情境補充：{0}", { 0: scene }) : mode === "scene" ? tr("拍攝情境（整組都在這個情境裡拍攝）：{0}", { 0: scene }) : "") : "",
-        pose ? tr("姿勢：第一張請使用這個姿勢——{0}；其餘各張請依情境自行安排不同的姿勢，不要重複", { 0: pose.usage }) : "",
+        pose
+          ? hasSituation
+            ? tr("姿勢：第二張請使用這個姿勢——{0}；第一張照情境圖的姿勢，其餘各張請依情境自行安排不同的姿勢，不要重複", { 0: pose.usage })
+            : tr("姿勢：第一張請使用這個姿勢——{0}；其餘各張請依情境自行安排不同的姿勢，不要重複", { 0: pose.usage })
+          : "",
         costume ? tr("規劃時納入服裝參考：{0}。生成時會依目前選擇的服裝調整。", { 0: costume.usage }) : "",
         isSheet ? "" : shootControlText(control, { hasSceneImage: hasSituation }),
       ].filter(Boolean);
@@ -433,6 +458,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         mode: hasSituation ? "scene" : "character",
         planner,
         situationImageUrl: hasSituation ? situationPath : undefined,
+        photoReading: hasSituation && reading.trim() ? reading.trim().slice(0, 3000) : undefined,
         referenceImageUrls: personRefs.slice(0, 9), // the planner looks at a few; its limit is 9
         characterName: character?.name,
         characterDescription: character?.description || undefined,
@@ -610,6 +636,27 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
           <div className="relative mb-2">
             <img src={situationPath} alt={tr("要模仿的照片")} className="w-full max-h-56 object-contain rounded-xl bg-slate-100" />
             <button onClick={() => { setSituationPath(""); resetPlan(); }} disabled={busy} className="absolute top-2 right-2 w-7 h-7 rounded-full bg-black/60 text-white" title={tr("移除")}><i className="fas fa-xmark text-xs" /></button>
+          </div>
+        )}
+        {hasSituation && (
+          <div className="mb-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-3" data-testid="photo-reading">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-slate-800"><i className="fas fa-wand-magic-sparkles text-indigo-500 mr-1" />{tr("AI 判讀照片內容")}</p>
+              {readingState !== "reading" && (
+                <button onClick={() => { setReadingTry(n => n + 1); resetPlan(); }} disabled={busy} className="text-[11px] text-indigo-600 hover:underline">{tr("重新判讀")}</button>
+              )}
+            </div>
+            {readingState === "reading" ? (
+              <p className="text-xs text-indigo-500 mt-2"><i className="fas fa-spinner fa-spin mr-1" />{tr("AI 正在判讀照片的場景、構圖、姿勢、服裝與光線…")}</p>
+            ) : readingState === "failed" ? (
+              <p className="text-xs text-red-600 mt-2">{tr("判讀失敗。可以按「重新判讀」，或直接往下規劃（只看照片）。")}</p>
+            ) : (
+              <>
+                <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">{tr("第一張會照這份內容重拍成你的角色，其餘鏡頭沿用同樣的場景與光線。哪裡判讀錯了可以直接改。")}</p>
+                <textarea value={reading} onChange={e => { setReading(e.target.value.slice(0, 3000)); if (plan) resetPlan(); }} rows={8} disabled={busy}
+                  className="w-full mt-2 px-3 py-2 border border-slate-200 rounded-lg text-xs leading-relaxed bg-white focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-testid="input-photo-reading" />
+              </>
+            )}
           </div>
         )}
         <SourceButtons onUpload={() => situationInputRef.current?.click()} onVault={() => setVaultTarget({ purpose: "situation" })} busy={uploading === "situation"} disabled={busy} />
@@ -908,9 +955,9 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
             </button>
           )}
           {isSheet && direction.trim() && <p id="photoset-preset-help" className="text-xs text-slate-600">{tr("已填寫額外 Prompt，請使用下方 AI 規劃，標準九宮格不套用自訂描述。")}</p>}
-          <button onClick={() => planMutation.mutate("ai")} disabled={!inputsReady || busy}
+          <button onClick={() => planMutation.mutate("ai")} disabled={!inputsReady || busy || readingState === "reading"}
             className={`w-full h-12 rounded-xl text-sm font-semibold disabled:opacity-40 ${isSheet ? "border border-slate-300 bg-white text-slate-800" : "bg-indigo-600 text-white shadow-glow"}`} data-testid="button-photoset-plan">
-            {planMutation.isPending ? tr("AI 規劃中…") : plan ? tr("重新規劃鏡頭") : isSheet ? tr("請 AI 依角色規劃（免費）") : tr("規劃 {0} 個鏡頭（免費）", { 0: count })}
+            {planMutation.isPending ? tr("AI 規劃中…") : readingState === "reading" ? tr("AI 正在判讀照片…") : plan ? tr("重新規劃鏡頭") : isSheet ? tr("請 AI 依角色規劃（免費）") : tr("規劃 {0} 個鏡頭（免費）", { 0: count })}
           </button>
           {!inputsReady && (
             <p className="text-[11px] text-slate-400 text-center">
