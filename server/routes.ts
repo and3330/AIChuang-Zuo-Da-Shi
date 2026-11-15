@@ -2520,7 +2520,7 @@ Requirements:
         model: ATLAS_SEED_MODEL,
         max_tokens: 512,
         messages: [
-          { role: "user", content: `${systemPrompt}\n\n原始提示詞：${prompt.trim()}${outputLanguageNote(req)}` }
+          { role: "user", content: `${systemPrompt}\n\n原始提示詞：${prompt.trim()}` }
         ],
       });
 
@@ -2829,7 +2829,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const message = await anthropic.messages.create({
         model: ATLAS_SEED_MODEL,
         max_tokens: 2048,
-        messages: [{ role: "user", content: prompt + outputLanguageNote(req) }],
+        messages: [{ role: "user", content: prompt + outputLanguageNote(req, ["description"]) }],
       });
 
       const text = message.content[0].type === "text" ? message.content[0].text : "";
@@ -3202,7 +3202,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const message = await anthropic.messages.create({
         model: ATLAS_SEED_MODEL,
         max_tokens: 4096,
-        messages: [{ role: "user", content: prompt + outputLanguageNote(req) }],
+        messages: [{ role: "user", content: prompt + outputLanguageNote(req, ["description"]) }],
       });
 
       // Combine all text blocks (model may return multiple text segments)

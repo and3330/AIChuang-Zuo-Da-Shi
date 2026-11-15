@@ -8,22 +8,48 @@ import { libraryEn, libraryJoinersEn } from "@/locales/en-library";
 //   tr("送你 {n} 積分", { n: credits })     → "You get 120 credits"
 //
 // 好處是不用另外發明鍵名，頁面可以一頁一頁慢慢包；字典裡沒有的句子會直接顯示中文（開發時在主控台提醒）。
-// 新增語言：在 client/src/locales 加一個字典、在 DICTS 與 LANGS 登記。
+// 英文字典是手寫的（locales/en*.ts）。日文、越南文、簡體中文是 scripts/translate-locales.ts 從英文字典翻成的
+// locales/<語言>.json，只下載使用者選的那一種；加了新字串後跑一次那支腳本補翻。缺字時日文、越南文顯示英文，簡體顯示原文。
+// 新增語言：在 TARGETS（腳本）、LANGS 與 LOADERS 登記。
 //
 // 語言只在載入時讀一次（localStorage "lang" → 網址 ?lang= → 瀏覽器語言），切換語言會重新載入頁面。
 // 這樣寫在模組最外層的常數（選單、範本、步驟說明）也會跟著換，不需要每個元件訂閱語言。
 
-export type Lang = "zh" | "en";
+export type Lang = "zh" | "zh-CN" | "en" | "ja" | "vi";
 export const LANGS: Array<{ id: Lang; label: string }> = [
   { id: "zh", label: "繁體中文" },
+  { id: "zh-CN", label: "简体中文" },
   { id: "en", label: "English" },
+  { id: "ja", label: "日本語" },
+  { id: "vi", label: "Tiếng Việt" },
 ];
-const DICTS: Record<Exclude<Lang, "zh">, Record<string, string>> = { en };
-/** What the server says in Chinese, per language: fixed messages and messages with {0}-style values. */
-const SERVER: Record<Exclude<Lang, "zh">, { exact: Record<string, string>; patterns: Array<[string, string]> }> = {
-  en: { exact: serverEn, patterns: serverPatterns },
+
+// English is built in. The other languages are one generated file each (scripts/translate-locales.ts),
+// loaded by loadLanguage() before the app starts, so only the chosen one is downloaded.
+type LocaleFile = {
+  ui: Record<string, string>; server: Record<string, string>; patterns: Record<string, string>;
+  library: Record<string, string>; joiners: Record<string, string>;
 };
+const LOADERS: Partial<Record<Lang, () => Promise<{ default: LocaleFile }>>> = {
+  "zh-CN": () => import("@/locales/zh-CN.json") as Promise<{ default: LocaleFile }>,
+  ja: () => import("@/locales/ja.json") as Promise<{ default: LocaleFile }>,
+  vi: () => import("@/locales/vi.json") as Promise<{ default: LocaleFile }>,
+};
+let loaded: LocaleFile | null = null;
 const STORAGE_KEY = "lang";
+
+/** The browser's language mapped onto ours: Traditional Chinese stays the default for Chinese. */
+function fromBrowser(): Lang {
+  const langs = typeof navigator === "undefined" ? [] : (navigator.languages?.length ? navigator.languages : [navigator.language]);
+  for (const raw of langs) {
+    const l = (raw || "").toLowerCase();
+    if (l.startsWith("zh")) return /^zh-(cn|sg|hans)/.test(l) ? "zh-CN" : "zh";
+    if (l.startsWith("ja")) return "ja";
+    if (l.startsWith("vi")) return "vi";
+    if (l.startsWith("en")) return "en";
+  }
+  return langs.length ? "en" : "zh";
+}
 
 function detect(): Lang {
   if (typeof window === "undefined") return "zh";
@@ -34,11 +60,26 @@ function detect(): Lang {
     const stored = window.localStorage.getItem(STORAGE_KEY);
     if (known(stored)) return stored;
   } catch { /* storage unavailable: fall through to the browser language */ }
-  return (navigator.language || "zh").toLowerCase().startsWith("zh") ? "zh" : "en";
+  return fromBrowser();
 }
 
 const current: Lang = detect();
-if (typeof document !== "undefined") document.documentElement.lang = current === "zh" ? "zh-Hant" : current;
+if (typeof document !== "undefined") document.documentElement.lang = current === "zh" ? "zh-Hant" : current === "zh-CN" ? "zh-Hans" : current;
+
+/** Downloads the current language's text. main.tsx waits for it before loading the app. */
+export async function loadLanguage(): Promise<void> {
+  const loader = LOADERS[current];
+  if (!loader) return;
+  try { loaded = (await loader()).default; } catch (e) { console.warn("[i18n] could not load", current, e); }
+}
+
+/** Interface text for the current language, falling back to English (but not for Simplified Chinese, which falls back to the Chinese original). */
+function uiText(zh: string): string | undefined {
+  if (current === "en") return en[zh];
+  const hit = loaded?.ui[zh];
+  if (hit !== undefined) return hit;
+  return current === "zh-CN" ? undefined : en[zh];
+}
 
 export function getLang(): Lang {
   return current;
@@ -55,7 +96,7 @@ export function setLang(lang: Lang): void {
 
 /** Locale for Date#toLocaleString and friends. */
 export function dateLocale(): string {
-  return current === "zh" ? "zh-TW" : "en-US";
+  return { zh: "zh-TW", "zh-CN": "zh-CN", en: "en-US", ja: "ja-JP", vi: "vi-VN" }[current];
 }
 
 const warned = new Set<string>();
@@ -64,7 +105,7 @@ const warned = new Set<string>();
 export function tr(zh: string, vars?: Record<string, string | number | null | undefined>): string {
   let out = zh;
   if (current !== "zh") {
-    const hit = DICTS[current][zh];
+    const hit = uiText(zh);
     if (hit !== undefined) out = hit;
     else if (import.meta.env.DEV && !warned.has(zh)) { warned.add(zh); console.warn(`[i18n] no ${current} text for: ${zh}`); }
   }
@@ -82,11 +123,15 @@ let compiled: Array<[RegExp, string]> | null = null;
 export function trServer(message: string | null | undefined): string {
   if (!message) return "";
   if (current === "zh") return message;
-  const table = SERVER[current];
-  const exact = table.exact[message] ?? DICTS[current][message];
+  const own = current === "en" ? null : loaded;
+  const fallBack = current !== "zh-CN";
+  const exact = own?.server[message] ?? (fallBack ? serverEn[message] : undefined) ?? uiText(message);
   if (exact !== undefined) return exact;
   if (!compiled) {
-    compiled = table.patterns.map(([zh, out]) => {
+    const patterns: Array<[string, string]> = own
+      ? [...Object.entries(own.patterns), ...(fallBack ? serverPatterns.filter(([zh]) => own.patterns[zh] === undefined) : [])]
+      : current === "zh-CN" ? [] : serverPatterns;
+    compiled = patterns.map(([zh, out]) => {
       const source = zh.replace(/[.*+?^$()|[\]\\]/g, "\\$&").replace(/\{\d+\}/g, "(.*?)");
       return [new RegExp(`^${source}$`), out] as [RegExp, string];
     });
@@ -99,9 +144,20 @@ export function trServer(message: string | null | undefined): string {
 }
 
 /** Asset-library vocabulary per language (see locales/en-library.ts). */
-const LIBRARY: Record<Exclude<Lang, "zh">, { words: Record<string, string>; joiners: Array<[string, string]> }> = {
-  en: { words: libraryEn, joiners: libraryJoinersEn },
-};
+let libraryCache: { words: Record<string, string>; joiners: Array<[string, string]> } | null = null;
+function library(): { words: Record<string, string>; joiners: Array<[string, string]> } {
+  return (libraryCache ??= buildLibrary());
+}
+function buildLibrary(): { words: Record<string, string>; joiners: Array<[string, string]> } {
+  if (current === "en" || !loaded) return current === "zh-CN" ? { words: {}, joiners: [] } : { words: libraryEn, joiners: libraryJoinersEn };
+  const fallBack = current !== "zh-CN";
+  return {
+    words: fallBack ? { ...libraryEn, ...loaded.library } : loaded.library,
+    joiners: fallBack ? libraryJoinersEn.map(([zh, out]) => [zh, loaded!.joiners[zh] ?? out]) : Object.entries(loaded.joiners),
+  };
+}
+/** Languages that put spaces between words, and capitalise. */
+const SPACED = current === "en" || current === "vi";
 let libraryKeys: string[] | null = null;
 const assetCache = new Map<string, string>();
 
@@ -115,7 +171,7 @@ export function trAsset(text: string | null | undefined): string {
   if (current === "zh" || !/[\u4e00-\u9fff]/.test(text)) return text;
   const hit = assetCache.get(text);
   if (hit !== undefined) return hit;
-  const { words, joiners } = LIBRARY[current];
+  const { words, joiners } = library();
   if (!libraryKeys) libraryKeys = Object.keys(words).sort((a, b) => b.length - a.length);
   let out = "";
   let i = 0;
@@ -123,15 +179,17 @@ export function trAsset(text: string | null | undefined): string {
   while (i < text.length) {
     const word = libraryKeys.find(k => text.startsWith(k, i));
     if (word) {
-      out += (lastWasWord ? " " : "") + words[word];
+      out += (lastWasWord && SPACED ? " " : "") + words[word];
       i += word.length; lastWasWord = true; continue;
     }
     const joiner = joiners.find(([zh]) => text.startsWith(zh, i));
     if (joiner) { out += joiner[1]; i += joiner[0].length; lastWasWord = false; continue; }
     out += text[i]; i += 1; lastWasWord = false;
   }
-  out = out.replace(/ +/g, " ").trim();
-  out = out.charAt(0).toUpperCase() + out.slice(1);
+  if (SPACED) {
+    out = out.replace(/ +/g, " ").trim();
+    out = out.charAt(0).toUpperCase() + out.slice(1);
+  } else out = out.trim();
   assetCache.set(text, out);
   return out;
 }
@@ -164,10 +222,11 @@ export function localizeLibrary<T>(data: T): T {
  */
 export function assetQuery(query: string): string {
   const q = query.trim().toLowerCase();
-  if (current === "zh" || !q || /[\u4e00-\u9fff]/.test(q)) return query;
+  // Chinese queries are sent as typed (the library is indexed in Chinese); Japanese may contain kanji, so it is matched first.
+  if (current === "zh" || !q || (current !== "ja" && /[\u4e00-\u9fff]/.test(q))) return query;
   let best = "";
   let bestExtra = Infinity;
-  for (const [zh, translated] of Object.entries(LIBRARY[current].words)) {
+  for (const [zh, translated] of Object.entries(library().words)) {
     if (zh.length > 12) continue;                         // names and tags only, not the long descriptions
     const t = translated.toLowerCase();
     if (!t.includes(q)) continue;
