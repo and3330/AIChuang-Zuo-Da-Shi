@@ -47,6 +47,7 @@ import { z } from "zod";
 import type { ObjectStorageService } from "./objectStorage";
 import { assertAllowedRemoteUrl, fetchImageWithLimits } from "./ssrfGuard";
 import { PHOTO_LOOKS, poseById, type Pose } from "@shared/photosetOptions";
+import { LANGUAGE_NAME, languageNote, type RequestLang } from "./lang";
 
 const PLANNER_MODEL = ATLAS_SEED_MODEL;
 
@@ -98,7 +99,7 @@ export const planRequestSchema = z.object({
   /** Target aspect ratio label, only used to steer composition. */
   aspectRatio: z.string().max(10).optional(),
   /** Interface language of the person asking. Anything but "zh" makes the planner write its whole answer in that language. */
-  lang: z.enum(["zh", "en"]).optional(),
+  lang: z.enum(["zh", "zh-CN", "en", "ja", "vi"]).optional(),
   /** Scene mode: the full reading of the 情境圖 (from POST /api/photosets/read-photo), possibly edited by the person. */
   photoReading: z.string().trim().max(3000).optional(),
 });
@@ -107,20 +108,20 @@ export const planRequestSchema = z.object({
 
 /** What the reading covers, in order. The person is described by pose, expression and clothes only: who they are comes from the character. */
 const READING_FIELDS = [
-  { key: "scene", zh: "場景與地點", en: "Setting", ask: "在哪裡拍的：地點類型、背景裡看得到的所有東西與它們的位置、時段" },
-  { key: "composition", zh: "構圖與鏡頭", en: "Framing and camera", ask: "景別（特寫／半身／七分身／全身／遠景）、人物在畫面中的位置與大小、拍攝角度與高度、鏡頭焦段感與景深、畫面比例" },
-  { key: "pose", zh: "姿勢與動作", en: "Pose", ask: "身體朝向、頭部角度、雙手與雙腳的位置、重心、正在做的動作，寫到能照著擺出一模一樣的姿勢" },
-  { key: "expression", zh: "表情與視線", en: "Expression and gaze", ask: "表情、嘴型、眼神看向哪裡" },
-  { key: "outfit", zh: "服裝與配件", en: "Outfit and accessories", ask: "每一件衣物的款式、顏色、材質、合身程度，以及鞋子、包包、飾品、眼鏡" },
-  { key: "props", zh: "道具與互動", en: "Props", ask: "人物拿著、靠著、坐著或互動的物件；沒有就寫「無」" },
-  { key: "lighting", zh: "光線", en: "Lighting", ask: "光源種類、方向、軟硬、明暗對比、有沒有逆光或輪廓光" },
-  { key: "color", zh: "色調與質感", en: "Colour and finish", ask: "主要色彩、冷暖、飽和度、底片感或手機感等後製風格、顆粒" },
-  { key: "mood", zh: "整體氛圍", en: "Mood", ask: "一句話說這張照片給人的感覺" },
+  { key: "scene", zh: "場景與地點", en: "Setting", cn: "场景与地点", ja: "撮影場所", vi: "Bối cảnh", ask: "在哪裡拍的：地點類型、背景裡看得到的所有東西與它們的位置、時段" },
+  { key: "composition", zh: "構圖與鏡頭", en: "Framing and camera", cn: "构图与镜头", ja: "構図とカメラ", vi: "Bố cục và góc máy", ask: "景別（特寫／半身／七分身／全身／遠景）、人物在畫面中的位置與大小、拍攝角度與高度、鏡頭焦段感與景深、畫面比例" },
+  { key: "pose", zh: "姿勢與動作", en: "Pose", cn: "姿势与动作", ja: "ポーズ", vi: "Tư thế", ask: "身體朝向、頭部角度、雙手與雙腳的位置、重心、正在做的動作，寫到能照著擺出一模一樣的姿勢" },
+  { key: "expression", zh: "表情與視線", en: "Expression and gaze", cn: "表情与视线", ja: "表情と視線", vi: "Biểu cảm và ánh mắt", ask: "表情、嘴型、眼神看向哪裡" },
+  { key: "outfit", zh: "服裝與配件", en: "Outfit and accessories", cn: "服装与配件", ja: "服装と小物", vi: "Trang phục và phụ kiện", ask: "每一件衣物的款式、顏色、材質、合身程度，以及鞋子、包包、飾品、眼鏡" },
+  { key: "props", zh: "道具與互動", en: "Props", cn: "道具与互动", ja: "小道具", vi: "Đạo cụ", ask: "人物拿著、靠著、坐著或互動的物件；沒有就寫「無」" },
+  { key: "lighting", zh: "光線", en: "Lighting", cn: "光线", ja: "ライティング", vi: "Ánh sáng", ask: "光源種類、方向、軟硬、明暗對比、有沒有逆光或輪廓光" },
+  { key: "color", zh: "色調與質感", en: "Colour and finish", cn: "色调与质感", ja: "色調と質感", vi: "Màu sắc và chất ảnh", ask: "主要色彩、冷暖、飽和度、底片感或手機感等後製風格、顆粒" },
+  { key: "mood", zh: "整體氛圍", en: "Mood", cn: "整体氛围", ja: "雰囲気", vi: "Không khí", ask: "一句話說這張照片給人的感覺" },
 ] as const;
 
-function readingPrompt(lang: "zh" | "en" = "zh"): string {
+function readingPrompt(lang: RequestLang = "zh"): string {
   const list = READING_FIELDS.map(f => `- ${f.key}：${f.ask}`).join("\n");
-  const language = lang === "en" ? "自然的英文" : "繁體中文";
+  const language = `自然的${LANGUAGE_NAME[lang]}`;
   return `你是一位資深攝影指導。使用者想用自己的角色拍一張和這張照片「幾乎一樣」的照片，接著再延伸成一整組寫真。請完整、具體地判讀這張照片，讓攝影師只看你的文字就能重拍出同一張。
 
 規則：
@@ -136,12 +137,12 @@ ${list}
 }
 
 /** Turn the model's JSON into labelled lines the person can read and edit. */
-export function formatReading(value: unknown, lang: "zh" | "en" = "zh"): string {
+export function formatReading(value: unknown, lang: RequestLang = "zh"): string {
   const obj = value && typeof value === "object" ? value as Record<string, unknown> : {};
   return READING_FIELDS
     .map(f => {
       const text = typeof obj[f.key] === "string" ? (obj[f.key] as string).trim().slice(0, 400) : "";
-      return text ? `${lang === "en" ? f.en : f.zh}：${text}` : "";
+      return text ? `${f[lang === "zh-CN" ? "cn" : lang === "zh" ? "zh" : lang]}：${text}` : "";
     })
     .filter(Boolean)
     .join("\n");
@@ -416,6 +417,13 @@ const OUTPUT_LANGUAGE: Record<string, string> = {
 這位使用者使用英文介面。所有文字欄位都必須用自然、道地的英文撰寫：analysis、每個鏡頭的 title 與 prompt，以及（如果有的話）caption、hashtags、subtitle。不要出現任何中文。每個 prompt 改為 40–90 個英文單字，title 改為 2–5 個英文單字，caption 改為 40–90 個英文單字，每句 subtitle 改為 4–10 個英文單字。欄位名稱維持不變。`,
 };
 
+/** The output-language block for the planner. Shot prompts go to the image model, so for Japanese and Vietnamese they stay in English. */
+function plannerLanguage(lang: RequestLang | undefined): string {
+  if (!lang || lang === "zh") return "";
+  if (lang === "en") return OUTPUT_LANGUAGE.en;
+  return languageNote(lang, ["每個鏡頭的 prompt", "motion"], "字數規定改為相當的長度；hashtags 用這個語言常用的標籤。");
+}
+
 /** Pull the first JSON object out of the model's text and validate it. */
 export function parsePlan(value: unknown, count: number): PhotosetPlan {
   let parsed: any = value;
@@ -640,7 +648,7 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
       }],
       tool_choice: { type: "auto" },
       messages: [
-        { role: "user", content: [...imageBlocks, { type: "text", text: `${promptText}${OUTPUT_LANGUAGE[body.lang ?? "zh"] ?? ""}\n\n請優先以 submit_photoset_plan 工具回傳結構化結果；若無法協助這次內容，請直接說明，不要產生替代鏡頭。` }] },
+        { role: "user", content: [...imageBlocks, { type: "text", text: `${promptText}${plannerLanguage(body.lang)}\n\n請優先以 submit_photoset_plan 工具回傳結構化結果；若無法協助這次內容，請直接說明，不要產生替代鏡頭。` }] },
       ],
     });
 
@@ -658,7 +666,7 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
 
   /** 照片同款: read the whole photo once, before planning, so the person can check and correct it. */
   async function readPhoto(input: unknown): Promise<{ reading: string }> {
-    const parsed = z.object({ imageUrl: z.string().min(1).max(2000), lang: z.enum(["zh", "en"]).optional() }).safeParse(input);
+    const parsed = z.object({ imageUrl: z.string().min(1).max(2000), lang: z.enum(["zh", "zh-CN", "en", "ja", "vi"]).optional() }).safeParse(input);
     if (!parsed.success) throw new PhotosetPlanError(400, "請求格式錯誤。");
     if (!process.env.ATLASCLOUD_API_KEY) throw new PhotosetPlanError(500, "規劃用的 AtlasCloud AI 服務尚未設定。");
     const lang = parsed.data.lang ?? "zh";

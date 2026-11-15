@@ -6,8 +6,8 @@ type VerificationEmail = {
   to: string; code: string; html: string;
   /** "註冊" by default; the word before 驗證碼 in the subject and text. */
   purpose?: string;
-  /** "en" sends the English e-mail (subject, text and body) instead of the Chinese one. */
-  lang?: "zh" | "en";
+  /** Anything but Chinese (Traditional or Simplified) sends the English e-mail (subject, text and body). */
+  lang?: "zh" | "zh-CN" | "en" | "ja" | "vi";
 };
 
 /** Body of the English verification e-mail. */
@@ -36,14 +36,15 @@ const sendWithResend: Send = async message => {
 };
 
 export async function sendVerificationEmail(email: VerificationEmail, send: Send = sendWithResend): Promise<void> {
+  const english = !!email.lang && email.lang !== "zh" && email.lang !== "zh-CN";
   const result = await send({
     from: verificationSender,
     to: email.to,
-    subject: email.lang === "en" ? "AI Creative Studio - Verification code" : `AI 創意工坊 - ${email.purpose ?? "註冊"}驗證碼`,
-    text: email.lang === "en"
+    subject: english ? "AI Creative Studio - Verification code" : `AI 創意工坊 - ${email.purpose ?? "註冊"}驗證碼`,
+    text: english
       ? `Your verification code is ${email.code}. It is valid for 10 minutes. If you did not request this, you can ignore this e-mail.`
       : `您的${email.purpose ?? "註冊"}驗證碼為：${email.code}。有效期為 10 分鐘。如果這不是您本人的操作，請忽略此郵件。`,
-    html: email.lang === "en" ? englishVerificationHtml(email.code) : email.html,
+    html: english ? englishVerificationHtml(email.code) : email.html,
   });
   // The SDK returns API failures as `error`; it does not always throw.
   if (result.error || !result.data?.id) {

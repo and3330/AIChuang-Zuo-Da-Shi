@@ -1,12 +1,19 @@
-import "./lib/i18n-shared";
 import { createRoot } from "react-dom/client";
-import App from "./App";
-import AppErrorBoundary from "./components/AppErrorBoundary";
+import { loadLanguage } from "./lib/i18n";
 import "./index.css";
 
-createRoot(document.getElementById("root")!).render(
-  <AppErrorBoundary><App /></AppErrorBoundary>,
-);
+// The interface language is downloaded first; only then are the app's modules loaded, because many of
+// them translate their text once, when they are first imported.
+loadLanguage().finally(async () => {
+  await import("./lib/i18n-shared");
+  const [{ default: App }, { default: AppErrorBoundary }] = await Promise.all([
+    import("./App"),
+    import("./components/AppErrorBoundary"),
+  ]);
+  createRoot(document.getElementById("root")!).render(
+    <AppErrorBoundary><App /></AppErrorBoundary>,
+  );
+});
 
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {

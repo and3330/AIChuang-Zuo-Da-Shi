@@ -8,7 +8,7 @@
  *   - Per-episode ZIP download (all assets)
  */
 
-import { outputLanguageNote } from "./lang";
+import { LANGUAGE_NAME, asLang, outputLanguageNote } from "./lang";
 import { FOUR_VIEW_COST, IMAGE_COST } from "@shared/pricing";
 import type { Express, Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
@@ -372,7 +372,10 @@ export function registerDramaLibraryRoutes(
     try {
       const userId = req.session.userId!;
       const url = typeof req.body?.url === "string" ? req.body.url.trim() : "";
-      const english = req.body?.lang === "en";
+      const lang = asLang(req.body?.lang);
+      const shownIn = LANGUAGE_NAME[lang];
+      // prompt goes to the image model, which reads Chinese and English well but not Japanese or Vietnamese.
+      const promptIn = lang === "ja" || lang === "vi" ? "英文" : shownIn;
       if (!url || url.length > 2000 || url.startsWith("data:")) return res.status(400).json({ error: "缺少照片。" });
       if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
 
@@ -404,7 +407,7 @@ issue：quality 不是 good 時，用一句 15 字以內的話說明原因；goo
 tags：4 到 6 個簡短標籤，只寫這個人本身的外貌特徵（臉型、眼睛、眉毛、鼻子、嘴唇、膚色、髮型、髮色、痣、酒窩、眼鏡等），不要寫衣服、背景或拍攝方式。
 prompt：一段 60 到 120 字的完整外貌描述，可以直接放進繪圖提示詞讓 AI 畫出同一個人。依序寫這張照片裡看得到的：臉型與輪廓、眼型與眼距、眉形、鼻子、嘴唇、膚色與膚質、髮型髮長與髮色、體型，以及痣、酒窩、眼鏡等明顯特徵。這張照片看不清楚的部位就不要寫，不要編造。不要寫衣服、飾品、背景、姿勢、光線與拍攝方式。
 不要猜測姓名、身分、職業、種族或年齡數字。
-issue、tags 與 prompt 請用${english ? "英文" : "繁體中文"}書寫。`,
+issue 與 tags 請用${shownIn}書寫，prompt 請用${promptIn}書寫。`,
             },
           ],
         }],
@@ -982,7 +985,7 @@ ${rawText}`;
       const claudeResp = await anthropic.messages.create({
         model: ATLAS_SEED_MODEL,
         max_tokens: 8000,
-        messages: [{ role: "user", content: prompt + outputLanguageNote(req) }],
+        messages: [{ role: "user", content: prompt + outputLanguageNote(req, ["description"]) }],
       });
 
       const textBlock = claudeResp.content.find((b: any) => b.type === "text") as any;
