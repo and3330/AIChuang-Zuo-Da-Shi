@@ -1,4 +1,6 @@
 import { LangSwitch } from "@/components/LangSwitch";
+import MetaEvents from "@/components/MetaEvents";
+import { sendMetaEvent } from "@/lib/metaPixel";
 import { SIGNUP_CREDITS } from "@shared/pricing";
 import { tr, getLang, trServer } from "@/lib/i18n";
 import { useState, useEffect, type ReactNode } from "react";
@@ -126,6 +128,7 @@ function AuthPage() {
         userData = data.user;
       }
       queryClient.setQueryData(["/api/auth/me"], userData);
+      if (userData) sendMetaEvent(activeTab === "register" ? "CompleteRegistration" : "LoginSuccess");
       toast({
         title: activeTab === "login" ? tr("登入成功") : tr("註冊成功"),
         description: activeTab === "register" ? tr("歡迎加入！已獲得 {n} 積分", { n: SIGNUP_CREDITS }) : tr("歡迎回來！"),
@@ -149,6 +152,7 @@ function AuthPage() {
   };
 
   const switchTab = (tab: "login" | "register") => {
+    if (tab === "register" && activeTab !== "register") sendMetaEvent("RegistrationStart");
     setActiveTab(tab);
     setError("");
     setUsername("");
@@ -311,7 +315,7 @@ function AuthPage() {
             type="button"
             variant="outline"
             className="w-full flex items-center justify-center gap-3 border-gray-300 hover:bg-gray-50 py-5"
-            onClick={() => { window.location.href = "/api/auth/google"; }}
+            onClick={() => { sendMetaEvent("GoogleLoginClick"); window.location.href = "/api/auth/google"; }}
           >
             <svg width="20" height="20" viewBox="0 0 24 24">
               <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
@@ -449,6 +453,7 @@ function AppContent() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <MetaEvents />
       <Toaster />
       <AppContent />
       <MobileTabBar />

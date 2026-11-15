@@ -1,4 +1,5 @@
 import { tr } from "@/lib/i18n";
+import { sendMetaEvent, trackPaymentConfirmed } from "@/lib/metaPixel";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -61,6 +62,7 @@ export default function StorePage() {
         try {
           const res = await apiRequest("POST", "/api/stripe/verify-session", { sessionId });
           const data = await res.json();
+          if (data.success && !data.gold && data.kind !== "gold") trackPaymentConfirmed(sessionId);
           await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
           queryClient.invalidateQueries({ queryKey: ["/api/credits/transactions"] });
           if (data.gold) setShowGoldGuide(true);
@@ -90,7 +92,10 @@ export default function StorePage() {
     try {
       const res = await apiRequest("POST", "/api/stripe/create-checkout", kind === "topup" ? { amount: finalAmount } : { kind });
       const data = await res.json();
-      if (data.url) window.location.href = data.url;
+      if (data.url) {
+        if (kind !== "gold") sendMetaEvent("InitiateCheckout");
+        window.location.href = data.url;
+      }
       else throw new Error(tr("無法建立付款頁面"));
     } catch (e) {
       toast({ title: tr("無法前往付款"), description: errorText(e), variant: "destructive" });

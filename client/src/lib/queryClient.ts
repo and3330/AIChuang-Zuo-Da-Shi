@@ -1,6 +1,7 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 import { zoneHeaders } from "@/lib/zone";
 import { getLang, localizeLibrary, trServer } from "@/lib/i18n";
+import { trackGenerationSubmission } from "@/lib/metaPixel";
 
 /** The server answers errors in Chinese; put the message in the interface language where we know it. */
 function localizeErrorBody(text: string): string {
@@ -35,6 +36,7 @@ export async function apiRequest(
   });
 
   await throwIfResNotOk(res);
+  void trackGenerationSubmission(method, url, res);
   return res;
 }
 
