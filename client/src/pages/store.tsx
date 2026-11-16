@@ -1,5 +1,5 @@
 import { tr } from "@/lib/i18n";
-import { sendMetaEvent, trackPaymentConfirmed } from "@/lib/metaPixel";
+import { sendMetaEvent, trackPaymentConfirmed, trackPurchase } from "@/lib/metaPixel";
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
@@ -62,7 +62,10 @@ export default function StorePage() {
         try {
           const res = await apiRequest("POST", "/api/stripe/verify-session", { sessionId });
           const data = await res.json();
-          if (data.success && !data.gold && data.kind !== "gold") trackPaymentConfirmed(sessionId);
+          if (data.success && !data.gold && data.kind !== "gold") {
+            trackPaymentConfirmed(sessionId);
+            trackPurchase(data.purchase);
+          }
           await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
           queryClient.invalidateQueries({ queryKey: ["/api/credits/transactions"] });
           if (data.gold) setShowGoldGuide(true);
