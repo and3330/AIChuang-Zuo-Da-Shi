@@ -2654,4 +2654,6 @@ export const en: Record<string, string> = {
   "判讀失敗。可以按「重新判讀」，或直接往下規劃（只看照片）。": "Reading failed. Tap \"Read again\", or go ahead and plan from the photo alone.",
   "第一張會照這份內容重拍成你的角色，其餘鏡頭沿用同樣的場景與光線。哪裡判讀錯了可以直接改。": "The first shot recreates this with your character; the others keep the same setting and light. Fix anything the AI got wrong.",
   "AI 正在判讀照片…": "The AI is reading the photo…",
+  "也可以上傳新的照片（例如更清楚的正面照），重新生成時會一起用上。": "You can also upload new photos (a clearer front photo, say); they are used when it is made again.",
+  "上傳新照片": "Upload new photos",
 };

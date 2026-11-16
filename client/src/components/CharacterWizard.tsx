@@ -2,12 +2,13 @@ import { getLang, tr, trServer } from "@/lib/i18n";
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { uploadToObjectStorage } from "@/lib/uploadImage";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { useEmbed } from "@/components/EmbedBar";
 import { Link } from "wouter";
 import { FOUR_VIEW_COST } from "@shared/pricing";
-import type { PhotoTags } from "@shared/fourViews";
+import type { PhotoAngle, PhotoTags } from "@shared/fourViews";
 import {
   attrsFor, findOption, optionImage, BODY_NUMBERS, BACKSTORY_FIELDS, MAX_FACE_PHOTOS,
   type CharacterProfile, type FaceBox, type Gender, type ProfileAttr, type BodyNumberKey, type BackstoryKey,
@@ -25,6 +26,10 @@ import { FrontConfirm } from "@/components/FrontConfirm";
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
 const LOW_RES_SIDE = 640;
+const ANGLE_LABEL: Record<PhotoAngle, string> = {
+  front_face: tr("正面臉"), three_quarter: tr("半側臉"), side: tr("側臉"), full_body: tr("全身"), back: tr("背面"), other: tr("其他"),
+};
+
 const STEPS = ["臉部照片", "身材照片", "外貌與身材", "背景故事", "建立"] as const;
 
 function shortSide(file: File): Promise<number> {
@@ -35,16 +40,6 @@ function shortSide(file: File): Promise<number> {
     img.onerror = () => { URL.revokeObjectURL(url); resolve(0); };
     img.src = url;
   });
-}
-
-async function uploadToObjectStorage(file: File): Promise<string> {
-  const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
-  const { uploadURL } = await uploadRes.json();
-  const putRes = await fetch(uploadURL, { method: "PUT", body: file, headers: { "Content-Type": file.type } });
-  if (!putRes.ok) throw new Error(tr("上傳失敗"));
-  const pathRes = await apiRequest("PUT", "/api/objects/set-path", { imageURL: uploadURL });
-  const { objectPath } = await pathRes.json();
-  return objectPath as string;
 }
 
 /** One option picker: example pictures in a grid. */
@@ -115,6 +110,8 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
   const [uploading, setUploading] = useState(0);
   // AI reading of each photo, by its path. `null` while it is being read; missing when it failed.
   const [tags, setTags] = useState<Record<string, PhotoTags | null>>({});
+  // Photos whose reading failed; they can be read again and do not block.
+  const [readFailed, setReadFailed] = useState<string[]>([]);
 
   const [gender, setGender] = useState<Gender | undefined>();
   const [looks, setLooks] = useState<Record<string, string>>({});
@@ -140,10 +137,14 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
 
   const readPhoto = (path: string) => {
     setTags(prev => ({ ...prev, [path]: null }));
+    setReadFailed(prev => prev.filter(u => u !== path));
     return apiRequest("POST", "/api/character-library/photo-tags", { url: path, lang: getLang() })
       .then(r => r.json())
       .then((t: PhotoTags) => setTags(prev => ({ ...prev, [path]: t })))
-      .catch(() => setTags(prev => { const next = { ...prev }; delete next[path]; return next; }));
+      .catch(() => {
+        setTags(prev => { const next = { ...prev }; delete next[path]; return next; });
+        setReadFailed(prev => [...prev, path]);
+      });
   };
 
   const upload = async (files: File[]): Promise<string[]> => {
@@ -279,7 +280,13 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
       {tags[url] === null
         ? <p className="text-[10px] text-slate-400 mt-1">{tr("AI 檢查中…")}</p>
         : tags[url]?.quality === "poor" ? <p className="text-[10px] text-red-600 mt-1 leading-tight">{tags[url]!.issue || tr("品質不佳")}</p>
-        : tags[url] ? <p className="text-[10px] text-emerald-600 mt-1">{tr("可以使用")}</p> : null}
+        : tags[url] ? (
+          <p className="text-[10px] text-slate-500 mt-1 leading-tight line-clamp-2" data-testid="wizard-photo-tags">
+            <span className="font-semibold text-indigo-600">{ANGLE_LABEL[tags[url]!.angle] ?? ""}</span>{tags[url]!.tags.length > 0 && `・${tags[url]!.tags.join("・")}`}
+          </p>
+        )
+        : readFailed.includes(url) ? <button onClick={() => void readPhoto(url)} className="text-[10px] text-indigo-600 mt-1 hover:underline">{tr("AI 判讀失敗")}・{tr("重新判讀")}</button>
+        : null}
     </div>
   );
 
@@ -312,7 +319,7 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
           <section className="mt-4" data-testid="step-face">
             <h4 className="font-semibold text-slate-900">{tr("臉部照片")}</h4>
             <p className="text-xs text-slate-500 mt-1">{tr("第一張最重要：AI 會用它做出角色的標準正臉（臉卡），之後每張圖都以臉卡為準。最多 {0} 張，其餘可以放不同角度或表情。", { 0: MAX_FACE_PHOTOS })}</p>
-            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2 mt-3">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 mt-3">
               {facePhotos.map((url, i) => photoTile(url, i === 0 ? tr("主照片") : tr("照片 {0}", { 0: i + 1 }),
                 () => setFacePhotos(prev => prev.filter(u => u !== url)),
                 i === 0
@@ -338,6 +345,26 @@ export function CharacterWizard({ onClose, onCreated }: { onClose: () => void; o
               </div>
             </div>
             {mainProblem && facePhotos.length > 0 && <p className="mt-2 text-xs font-semibold text-red-600" data-testid="face-problem">{mainProblem}</p>}
+            {facePhotos.some(url => tags[url]) && (
+              <details open className="mt-3 rounded-xl border border-slate-200 px-3 py-2" data-testid="wizard-photo-prompts">
+                <summary className="text-xs font-semibold text-slate-700 cursor-pointer">{tr("AI 讀到的外貌描述（建立角色時會一起用上）")}</summary>
+                <ul className="mt-2 space-y-2">
+                  {facePhotos.map((url, i) => tags[url] ? (
+                    <li key={url} className="flex gap-2">
+                      <img src={url} alt="" className="w-10 h-12 rounded-md object-cover shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[11px] font-semibold text-slate-800">{tr("第 {0} 張", { 0: i + 1 })}</p>
+                        <textarea value={tags[url]!.prompt ?? ""} rows={3}
+                          onChange={e => { const v = e.target.value.slice(0, 400); setTags(prev => (prev[url] ? { ...prev, [url]: { ...prev[url]!, prompt: v } } : prev)); }}
+                          className="w-full mt-0.5 px-2 py-1 border border-slate-200 rounded-md text-[11px] leading-relaxed text-slate-600 focus:ring-2 focus:ring-indigo-500 focus:border-transparent" />
+                      </div>
+                    </li>
+                  ) : tags[url] === null ? (
+                    <li key={url} className="text-[11px] text-slate-400">{tr("第 {0} 張", { 0: i + 1 })}　{tr("AI 判讀中…")}</li>
+                  ) : null)}
+                </ul>
+              </details>
+            )}
           </section>
         )}
 

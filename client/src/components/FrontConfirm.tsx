@@ -1,12 +1,13 @@
 import { tr, trServer } from "@/lib/i18n";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { uploadToObjectStorage } from "@/lib/uploadImage";
 import { useToast } from "@/hooks/use-toast";
 import { IMAGE_COST } from "@shared/pricing";
 import { FRONT_FREE_RETRIES, awaitingFrontConfirm, frontRetriesUsed } from "@shared/fourViews";
 import type { CharacterLibraryItem, FourViewUrls } from "@shared/schema";
-import type { CharacterProfile } from "@shared/characterProfile";
+import { MAX_FACE_PHOTOS, type CharacterProfile } from "@shared/characterProfile";
 
 // 「先確認正面圖」：建立角色後只先做正面圖，這裡把它跟使用者的主照片並排，問像不像。
 // 像 → 繼續做其餘三張（不再扣積分）。不像 → 重新生成，可以先換一張主照片；
@@ -25,6 +26,10 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
   const [mainPhoto, setMainPhoto] = useState<string | null>(null);
   // Builder characters only: make the face card again too (when the face itself is wrong).
   const [redoFace, setRedoFace] = useState(false);
+  // Photos uploaded here; they join the character when it is made again.
+  const [newPhotos, setNewPhotos] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(0);
+  const fileInput = useRef<HTMLInputElement>(null);
 
   const { data: character } = useQuery<CharacterLibraryItem & { profile?: CharacterProfile | null }>({
     queryKey: ["/api/character-library", characterId],
@@ -45,15 +50,30 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
     onError: (e: any) => toast({ title: tr("無法繼續"), description: trServer(e.message), variant: "destructive" }),
   });
   const retry = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/character-library/${characterId}/four-views/retry-front`, { ...(mainPhoto ? { mainPhoto } : {}), ...(redoFace ? { redoFace: true } : {}) }),
-    onSuccess: () => { setMainPhoto(null); setRedoFace(false); refresh(); },
+    mutationFn: () => apiRequest("POST", `/api/character-library/${characterId}/four-views/retry-front`, { ...(mainPhoto ? { mainPhoto } : {}), ...(redoFace ? { redoFace: true } : {}), ...(newPhotos.length ? { newPhotos } : {}) }),
+    onSuccess: () => { setMainPhoto(null); setRedoFace(false); setNewPhotos([]); refresh(); },
     onError: (e: any) => toast({ title: tr("無法重新生成"), description: trServer(e.message), variant: "destructive" }),
   });
 
   const status = character?.fourViewStatus ?? "generating";
   const profile = character?.profile && character.profile.facePhotos?.length ? character.profile : null;
   // Builder characters choose among their face photos; the face card is shown beside the result.
-  const photos = (profile ? profile.facePhotos : character?.refImageUrls ?? []).slice(0, 10);
+  const photos = [...(profile ? profile.facePhotos : character?.refImageUrls ?? []).slice(0, 10), ...newPhotos];
+  const addFiles = async (list: FileList | null) => {
+    const files = Array.from(list ?? []).filter(f => f.type.startsWith("image/")).slice(0, MAX_FACE_PHOTOS - newPhotos.length);
+    if (fileInput.current) fileInput.current.value = "";
+    setUploading(n => n + files.length);
+    for (const file of files) {
+      try {
+        const path = await uploadToObjectStorage(file);
+        setNewPhotos(prev => [...prev, path]);
+      } catch {
+        toast({ title: tr("上傳失敗"), description: tr("請再試一次。"), variant: "destructive" });
+      } finally {
+        setUploading(n => Math.max(0, n - 1));
+      }
+    }
+  };
   const faceCard = profile?.faceCardUrl;
   const front = ((character?.fourViewUrls ?? {}) as FourViewUrls).front;
   const waiting = awaitingFrontConfirm(status) && !!front;
@@ -107,9 +127,10 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
             {confirm.isPending ? tr("處理中…") : tr("像，繼續生成其餘三張")}
           </button>
 
-          {photos.length > 1 && (
-            <div className="mt-4">
+          <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={e => void addFiles(e.target.files)} data-testid="input-front-new-photos" />
+          <div className="mt-4">
               <p className="text-xs text-slate-600">{tr("不像的話，可以先換一張主照片（選臉最清楚的正面照）：")}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{tr("也可以上傳新的照片（例如更清楚的正面照），重新生成時會一起用上。")}</p>
               <div className="flex gap-2 mt-2 overflow-x-auto pb-1">
                 {photos.map((url, i) => (
                   <button key={url} onClick={() => setMainPhoto(url === photos[0] ? null : url)} aria-pressed={url === chosen}
@@ -118,16 +139,24 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
                     <img src={url} alt="" className="w-full h-full object-cover" />
                   </button>
                 ))}
+                {Array.from({ length: uploading }, (_, i) => (
+                  <div key={`u-${i}`} className="shrink-0 w-14 rounded-lg border-2 border-dashed border-indigo-300 flex items-center justify-center text-indigo-400" style={{ aspectRatio: "3 / 4" }}><i className="fas fa-spinner fa-spin text-xs" /></div>
+                ))}
+                {newPhotos.length + uploading < MAX_FACE_PHOTOS && (
+                  <button onClick={() => fileInput.current?.click()} disabled={retry.isPending}
+                    className="shrink-0 w-14 rounded-lg border-2 border-dashed border-slate-300 hover:border-indigo-400 text-slate-400 hover:text-indigo-500 flex flex-col items-center justify-center gap-0.5" style={{ aspectRatio: "3 / 4" }} data-testid="button-front-upload">
+                    <i className="fas fa-plus text-sm" /><span className="text-[9px] leading-tight">{tr("上傳新照片")}</span>
+                  </button>
+                )}
               </div>
             </div>
-          )}
           {faceCard && (
             <label className="flex items-start gap-2 mt-3 text-xs text-slate-700 cursor-pointer">
-              <input type="checkbox" checked={redoFace || !!mainPhoto} disabled={!!mainPhoto} onChange={e => setRedoFace(e.target.checked)} className="mt-0.5 accent-indigo-600" data-testid="checkbox-redo-face" />
+              <input type="checkbox" checked={redoFace || !!mainPhoto || newPhotos.length > 0} disabled={!!mainPhoto || newPhotos.length > 0} onChange={e => setRedoFace(e.target.checked)} className="mt-0.5 accent-indigo-600" data-testid="checkbox-redo-face" />
               <span>{tr("連臉卡一起重做（臉不像的時候勾；只是身材或衣服不對就不用勾）")}</span>
             </label>
           )}
-          <button onClick={() => retry.mutate()} disabled={confirm.isPending}
+          <button onClick={() => retry.mutate()} disabled={confirm.isPending || uploading > 0}
             className="mt-3 w-full h-11 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:border-indigo-400 hover:text-indigo-600 disabled:opacity-40" data-testid="button-front-retry">
             {freeLeft > 0 ? tr("不像，重新生成（還可免費 {0} 次）", { 0: freeLeft }) : tr("不像，重新生成（{0} 積分）", { 0: IMAGE_COST })}
           </button>

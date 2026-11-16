@@ -144,7 +144,8 @@ export type CharacterProfile = {
   faceAngleUrl?: string;
 };
 
-export const MAX_FACE_PHOTOS = 5;
+/** Face photos per character: with the face card and the 3/4 face this fills the image model's ten reference slots. */
+export const MAX_FACE_PHOTOS = 8;
 
 export function emptyProfile(): CharacterProfile {
   return { version: 1, facePhotos: [], bodyPhotos: {}, looks: {}, body: {}, numbers: {}, backstory: {} };

@@ -127,7 +127,7 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 三張照片建立角色：按「下一步」建立角色後回到角色庫；免費資格還在時會自動開始生成四視圖，用過之後只建立角色、不自動扣積分。
 - 角色卡片的四視圖可以點圖放大（左右切換、Esc 關閉、下載）。
 - 寫真工作室改為逐步顯示：一開始只有第一步，按「下一步」才出現下一步，全部走完才出現「規劃鏡頭」（`reached` 狀態；從素材圖庫帶配方進來時全部顯示）。人物參考圖上方新增提示「再上傳幾張你的照片，會更像你自己」。角色卡片的「拍寫真」會帶 `?mode=kit&character=<id>` 自動選好角色。
-- （已被下方「角色生成器」取代：現在是臉部照片最多 5 張＋身材照片正面／背面。）寫真帶入角色時改為「本人照片優先，四視圖補滿」，補滿其餘名額（`characterImages()`，最多 10 張），不再只用四視圖。
+- （已被下方「角色生成器」取代：現在是臉部照片最多 8 張＋身材照片正面／背面。）寫真帶入角色時改為「本人照片優先，四視圖補滿」，補滿其餘名額（`characterImages()`，最多 10 張），不再只用四視圖。
 - 角色外貌描述由 AI 自動寫：建立角色時若沒填描述，背景用 Claude 看前 4 張照片寫 80–150 字外貌特徵存進 `description`（`describeCharacterFromPhotos`，不覆蓋使用者自己寫的），寫真規劃與四視圖會帶入。
 - 寫真工作室：預設分頁改為「寫真套圖」；沒有角色的人進來會自動跳出建立角色視窗（建好自動選上），角色選單旁多一顆「新角色」。原「情境寫真」改名「照片同款」：第一步是放一張要模仿的照片（沒有照片才用文字描述），人物照片改到第二步「角色」上傳。
 - 後台「訂單」分頁新增訂單統計（`OrderStatsPanel`）：日／週／月／季，付款筆數、售出積分、實收 NT$／US$、手動加值積分。實收金額記在 `credit_transactions.paid_amount`／`paid_currency`（Stripe 的 `amount_total`，未扣手續費），這次改版後的訂單才有。
@@ -149,8 +149,9 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 四視圖提示詞（`fourViewPrompt()`）有多張參考圖時要求「綜合每一張判斷臉部，不要只看其中一張；服裝以第 1 張為準」；原本寫「與第 1 張參考圖完全一致」，模型只照第一張畫。
 - 影片模型新增 Seedance 2.5（`bytedance/seedance-2.5/image-to-video`、`/text-to-video`）：`VIDEO_MODELS.seedance` 在 `shared/pricing.ts`，720p 18、1080p 35 積分／秒（Atlas 牌價 0.30／0.59 美元／秒，毛利抓約 40%）；送 `generate_audio`、`watermark: false`，圖生影片 `ratio` 固定 `adaptive`，文字生影片可選 16:9、9:16、1:1、4:3、3:4、21:9。
 
-- 角色生成器（兩階段建立角色，`CharacterWizard` 改版，設定在 `shared/characterProfile.ts`）：步驟為臉部照片（最多 5 張，主照片必須是清楚正面）→ 身材照片（正面建議、背面選填）→ 外貌與身材（`/api/character-library/analyze-profile` 用 Seed 判讀並找出身材照裡的臉框，使用者用範例圖修改；可填身高、體重、三圍）→ 背景故事（選填，不影響長相）→ 命名建立。範例圖在 `client/public/character-options/<屬性>-<值>.webp`，用 Seedream 5.5 產生（`scripts/character-option-prompts.ts` 產生請求檔）。
-- 生成：先用臉部照片做「臉卡」（標準正臉）與 3/4 側臉，再用「臉卡＋側臉＋臉被塗灰的身材照」生成正面全身，確認像了才做其餘三張；四視圖完成後臉卡排到角色圖庫第一張。確認畫面可勾「連臉卡一起重做」。價格不變（`FOUR_VIEW_COST`）。
+- 角色生成器（兩階段建立角色，`CharacterWizard` 改版，設定在 `shared/characterProfile.ts`）：步驟為臉部照片（最多 8 張，主照片必須是清楚正面）→ 身材照片（正面建議、背面選填）→ 外貌與身材（`/api/character-library/analyze-profile` 用 Seed 判讀並找出身材照裡的臉框，使用者用範例圖修改；可填身高、體重、三圍）→ 背景故事（選填，不影響長相）→ 命名建立。範例圖在 `client/public/character-options/<屬性>-<值>.webp`，用 Seedream 5.5 產生（`scripts/character-option-prompts.ts` 產生請求檔）。
+- 生成：先用臉部照片做「臉卡」（標準正臉）與 3/4 側臉，再用「臉卡＋側臉＋本人臉部照片＋臉被塗灰的身材照」生成正面全身（參考圖補滿 10 張：身材照有幾張就少放幾張臉部照片），確認像了才做其餘三張（正面圖＋臉卡＋側臉＋臉部照片＋背面身材照，同樣補滿 10 張）；四視圖完成後臉卡排到角色圖庫第一張。確認畫面可勾「連臉卡一起重做」。價格不變（`FOUR_VIEW_COST`）。
 - 設定存在新表 `character_profiles`（需 `npm run db:push`；表還沒建立前，角色庫照舊運作，只是新角色退回舊流程）。`GET /api/character-library/:id` 多回傳 `profile`；`PUT /api/character-library/:id/profile` 修改設定（改了臉的設定，下次生成會重做臉卡）。
 - 照片同款（2026-11-15）：放照片後自動呼叫 `POST /api/photosets/read-photo`（Seed 看圖，不扣積分，每人每分鐘最多 8 次），完整判讀場景、構圖與鏡頭、姿勢、表情、服裝配件、道具、光線、色調、氛圍（不寫長相與髮型），顯示在照片下方讓使用者修改；判讀中不能按規劃。規劃時以 `photoReading` 帶入，第一個鏡頭固定是「照片同款」：照原照片重拍，只換成角色（與角色服裝）；其餘鏡頭沿用同場景與光線。網站上選的姿勢改用在第二張；API 用 poseIds／customPoses 指定姿勢時不套用第一張重拍規則。
 - 多語系（2026-11-16）：介面支援繁中、简体中文（`zh-CN`）、English、日本語（`ja`）、Tiếng Việt（`vi`）。英文字典手寫在 `client/src/locales/en*.ts`；其他三種是 `scripts/translate-locales.ts` 用 Atlas 的 GPT 5.6 Terra 從繁中原文（英文當參考）翻成的 `client/src/locales/<語言>.json`，`main.tsx` 先下載目前語言再載入 App。新增字串後要補英文，再跑 `npx tsx --tsconfig tsconfig.json scripts/translate-locales.ts ja vi zh-CN`（只翻缺的，會計費）。缺字時日文、越南文顯示英文，簡體顯示繁中。瀏覽器語言：zh-CN/SG/Hans → 簡體，其他中文 → 繁中，ja、vi 各自，其餘英文。伺服器的 `server/lang.ts` 依 `X-Lang` 決定 AI 輸出語言；日文、越南文時交給影像模型的欄位（寫真鏡頭 prompt、場景 description、照片標籤 prompt）仍用英文。驗證信與付款頁商品名稱：簡體用繁中、日越用英文。
+- 角色生成器補強（2026-11-16）：臉部照片最多 8 張；每張上傳後的 AI 判讀（角度、外貌標籤、外貌描述）重新顯示在照片下方與「AI 讀到的外貌描述」清單，描述可以修改，建立時以修改後的為準；判讀失敗可按「重新判讀」。正面圖確認畫面重新生成前可以「上傳新照片」（`retry-front` 的 `newPhotos`，只收 `/objects/` 路徑），新照片加入角色並自動重做臉卡。

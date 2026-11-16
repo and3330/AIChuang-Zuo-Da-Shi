@@ -2636,7 +2636,9 @@
   "AI 正在判讀照片的場景、構圖、姿勢、服裝與光線…": "AI đang phân tích bối cảnh, bố cục, tư thế, trang phục và ánh sáng trong ảnh…",
   "判讀失敗。可以按「重新判讀」，或直接往下規劃（只看照片）。": "Phân tích thất bại. Bạn có thể nhấn 「Phân tích lại」 hoặc tiếp tục lên kế hoạch (chỉ dựa trên ảnh).",
   "第一張會照這份內容重拍成你的角色，其餘鏡頭沿用同樣的場景與光線。哪裡判讀錯了可以直接改。": "Ảnh đầu tiên sẽ được tái tạo thành nhân vật của bạn theo nội dung này; các ảnh còn lại sẽ giữ nguyên bối cảnh và ánh sáng. Bạn có thể chỉnh sửa trực tiếp bất kỳ phần nào AI nhận diện sai.",
-  "AI 正在判讀照片…": "AI đang phân tích ảnh…"
+  "AI 正在判讀照片…": "AI đang phân tích ảnh…",
+  "也可以上傳新的照片（例如更清楚的正面照），重新生成時會一起用上。": "Bạn cũng có thể tải lên ảnh mới (ví dụ ảnh chính diện rõ hơn); chúng sẽ được dùng khi tạo lại.",
+  "上傳新照片": "Tải ảnh mới lên"
  },
  "server": {
   "（含去浮水印）": "（đã xóa hình mờ）",
@@ -2856,7 +2858,8 @@
   "讀不到這張照片，請重新上傳。": "Không thể mở ảnh này, vui lòng tải lên lại.",
   "AI 無法判讀這張照片，請換一張再試。": "AI không thể nhận diện ảnh này, hãy thử ảnh khác.",
   "AI 判讀照片失敗，請再試一次。": "AI không thể nhận diện ảnh, vui lòng thử lại.",
-  "判讀太頻繁，請稍候一分鐘再試。": "Nhận diện quá thường xuyên, vui lòng chờ một phút rồi thử lại."
+  "判讀太頻繁，請稍候一分鐘再試。": "Nhận diện quá thường xuyên, vui lòng chờ một phút rồi thử lại.",
+  "照片格式不正確，請重新上傳。": "Định dạng ảnh không đúng, vui lòng tải lên lại."
  },
  "patterns": {
   "AtlasCloud 任務建立失敗 ({0}): {1}": "Không thể tạo tác vụ AtlasCloud ({0}): {1}",
