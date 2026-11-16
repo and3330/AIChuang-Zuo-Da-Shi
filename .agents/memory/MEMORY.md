@@ -4,3 +4,4 @@
 - [Publish database ownership](publish-database.md) — leave production schema changes to Publish; never add a database push to build or startup.
 - [Photo-set prompt scope](photoset-prompt-scope.md) — combine assets and supplemental directions; approved fixes preserve safeguards and distinguish refusals from format errors.
 - [Atlas Seed compatibility](atlas-seed-compatibility.md) — verify actual vision modalities; use Chat Completions, not assumed Messages compatibility, for Seed.
+- [Regional payment defaults](regional-payment-defaults.md) — user wants Southeast Asian users to default to Airwallex, not a forced redirect.

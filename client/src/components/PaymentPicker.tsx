@@ -1,20 +1,24 @@
 import { tr } from "@/lib/i18n";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { resolvePaymentProvider, type PaymentProvider } from "@shared/paymentProvider";
 
 // 付款方式：Stripe 與 Airwallex 並存。伺服器沒設定 Airwallex 時只有 Stripe，選擇器也不顯示。
 // 上次選的方式記在這台裝置的瀏覽器裡。
 
-export type PaymentProvider = "stripe" | "airwallex";
+export type { PaymentProvider } from "@shared/paymentProvider";
 const KEY = "payment-provider";
 
 export function usePaymentProvider() {
   const { data } = useQuery<{ available: boolean }>({ queryKey: ["/api/airwallex/available"], staleTime: 5 * 60_000 });
   const airwallexOn = !!data?.available;
-  const [chosen, setChosen] = useState<PaymentProvider>(() => {
-    try { return localStorage.getItem(KEY) === "airwallex" ? "airwallex" : "stripe"; } catch { return "stripe"; }
+  const [chosen, setChosen] = useState<string | null>(() => {
+    try { return localStorage.getItem(KEY); } catch { return null; }
   });
-  const provider: PaymentProvider = airwallexOn ? chosen : "stripe";
+  const [timeZone] = useState(() => {
+    try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return ""; }
+  });
+  const provider = resolvePaymentProvider(airwallexOn, chosen, timeZone);
   const choose = (p: PaymentProvider) => {
     setChosen(p);
     try { localStorage.setItem(KEY, p); } catch { /* private window: just not remembered */ }
