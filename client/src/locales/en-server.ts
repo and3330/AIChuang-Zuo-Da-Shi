@@ -224,6 +224,7 @@ export const serverEn: Record<string, string> = {
   "AI 無法判讀這張照片，請換一張再試。": "The AI cannot read this photo. Try another one.",
   "AI 判讀照片失敗，請再試一次。": "The AI could not read the photo. Try again.",
   "判讀太頻繁，請稍候一分鐘再試。": "Too many readings. Wait a minute and try again.",
+  "照片格式不正確，請重新上傳。": "These photos could not be used. Upload them again.",
 };
 
 export const serverPatterns: Array<[string, string]> = [

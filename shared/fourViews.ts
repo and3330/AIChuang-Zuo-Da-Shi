@@ -46,7 +46,7 @@ export function faceAnglePrompt(looks: string): string {
 export function builderFrontNote(o: { faceRefs: number; bodyFront: boolean; bodyBack: boolean }): string {
   let n = 1;
   const lines = [`第 1 張參考圖是這個角色的標準正臉，頭部、臉、五官、膚色、髮型髮色與明顯特徵必須和它完全一致`];
-  if (o.faceRefs > 1) { lines.push(`第 2${o.faceRefs > 2 ? ` 到 ${o.faceRefs}` : ""} 張是同一個人的臉部照片，用來輔助判斷五官`); }
+  if (o.faceRefs > 1) { lines.push(`第 2${o.faceRefs > 2 ? ` 到 ${o.faceRefs}` : ""} 張是同一個人的臉（側臉與本人照片，可能有不同角度、表情與穿著），用來輔助判斷五官，不要沿用照片裡的衣服與背景`); }
   n = o.faceRefs;
   if (o.bodyFront) { n += 1; lines.push(`第 ${n} 張是本人的正面身材照：身高比例、肩寬、胸、腰、臀與腿型照它，頭部已被灰色遮住，請忽略那個位置，也不要使用這張照片裡的頭髮與臉`); }
   if (o.bodyBack) { n += 1; lines.push(`第 ${n} 張是本人的背面身材照，同樣只參考身材`); }
@@ -56,7 +56,7 @@ export function builderFrontNote(o: { faceRefs: number; bodyFront: boolean; body
 /** What each reference image is once the front view exists (it is reference 1). */
 export function builderChainNote(o: { faceRefs: number; bodyBack: boolean }): string {
   const tail = o.bodyBack ? `；最後一張是本人的背面身材照，只參考身材` : "";
-  return `（第 1 張參考圖是這個角色已完成的正面定裝圖：服裝、鞋子、髮型與體型必須和它完全一樣。第 2${o.faceRefs > 1 ? ` 到 ${o.faceRefs + 1}` : ""} 張是這個角色的臉，五官必須一致${tail}）`;
+  return `（第 1 張參考圖是這個角色已完成的正面定裝圖：服裝、鞋子、髮型與體型必須和它完全一樣。第 2${o.faceRefs > 1 ? ` 到 ${o.faceRefs + 1}` : ""} 張是這個角色的臉（含本人照片），五官必須一致，但服裝、髮型與背景以第 1 張為準${tail}）`;
 }
 
 // ─── 先確認正面圖 ───────────────────────────────────────────────────────────

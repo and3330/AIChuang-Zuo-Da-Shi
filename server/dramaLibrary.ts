@@ -21,7 +21,7 @@ import {
   type FourViewKey, type PhotoTags,
 } from "@shared/fourViews";
 import {
-  sanitizeProfile, profilePrompt, looksPrompt, PROFILE_ATTRS,
+  sanitizeProfile, profilePrompt, looksPrompt, PROFILE_ATTRS, MAX_FACE_PHOTOS,
   type CharacterProfile, type FaceBox,
 } from "@shared/characterProfile";
 import { motionPromptRequest, finishMotionPrompt } from "@shared/dramaMotion";
@@ -34,6 +34,7 @@ import {
   users,
   characterLibrary,
   characterProfiles,
+  CHARACTER_PACK_MAX_IMAGES,
 } from "@shared/schema";
 import { and, eq, isNull, like } from "drizzle-orm";
 import { db } from "./db";
@@ -290,9 +291,12 @@ export function registerDramaLibraryRoutes(
    * saves them in the profile, and returns the references for the four views.
    * Throws when the face card cannot be made.
    */
+  /** The image model takes at most this many reference images. */
+  const MODEL_MAX_IMAGES = 10;
+
   async function prepareBuilder(characterId: string, userId: string, profile: CharacterProfile, userFolder: string, redoFace = false): Promise<BuilderRefs> {
     const looks = looksPrompt(profile);
-    const faceData = await Promise.all(profile.facePhotos.slice(0, 5).map(loadAsBase64));
+    const faceData = await Promise.all(profile.facePhotos.slice(0, MAX_FACE_PHOTOS).map(loadAsBase64));
     const tag = `_${Date.now()}`;
     let card = redoFace ? "" : profile.faceCardUrl ?? "";
     let angle = redoFace ? "" : profile.faceAngleUrl ?? "";
@@ -303,7 +307,7 @@ export function registerDramaLibraryRoutes(
     }
     if (!angle) {
       try {
-        const made = await atlasGenerateImage({ prompt: faceAnglePrompt(looks), images: [card, ...faceData.slice(0, 4)], size: "1536x1536" });
+        const made = await atlasGenerateImage({ prompt: faceAnglePrompt(looks), images: [card, ...faceData].slice(0, MODEL_MAX_IMAGES), size: "1536x1536" });
         angle = await keepOnCdn(made, `users/${userFolder}/character-library/${characterId}_faceangle${tag}.jpg`);
       } catch (e: any) {
         console.warn("[CharLib] 3/4 face failed, continuing with the face card only:", String(e?.message ?? e).slice(0, 120));
@@ -314,11 +318,15 @@ export function registerDramaLibraryRoutes(
       if (angle) profile.faceAngleUrl = angle; else delete profile.faceAngleUrl;
       await saveProfile(characterId, userId, profile);
     }
-    const faceRefs = [card, ...(angle ? [angle] : []), ...faceData.slice(0, 2)];
     const boxes = profile.faceBoxes ?? {};
     const bodyFront = profile.bodyPhotos.front ? await maskFace(await loadAsBase64(profile.bodyPhotos.front), boxes[profile.bodyPhotos.front]) : "";
     const bodyBack = profile.bodyPhotos.back ? await maskFace(await loadAsBase64(profile.bodyPhotos.back), boxes[profile.bodyPhotos.back]) : "";
-    const chainFaces = [card, ...(angle ? [angle] : [])];
+    // Fill all ten slots the model takes: the face card and 3/4 face first, then as many of the person's
+    // own face photos as fit beside the body photos (front view) or beside the front view itself (the rest).
+    const cards = [card, ...(angle ? [angle] : [])];
+    const bodies = (bodyFront ? 1 : 0) + (bodyBack ? 1 : 0);
+    const faceRefs = [...cards, ...faceData.slice(0, Math.max(0, MODEL_MAX_IMAGES - cards.length - bodies))];
+    const chainFaces = [...cards, ...faceData.slice(0, Math.max(0, MODEL_MAX_IMAGES - 1 - cards.length - (bodyBack ? 1 : 0)))];
     return {
       frontRefs: [...faceRefs, ...(bodyFront ? [bodyFront] : []), ...(bodyBack ? [bodyBack] : [])],
       frontNote: builderFrontNote({ faceRefs: faceRefs.length, bodyFront: !!bodyFront, bodyBack: !!bodyBack }),
@@ -765,6 +773,7 @@ ${menu}
   // ─── Front view does not look like the person: make it again ───────────────
   // The first FRONT_FREE_RETRIES are free, after that one image's credits each.
   // `mainPhoto` (one of the character's own photos) can be moved to first place first.
+  // `newPhotos`: photos uploaded on the confirm screen, added to the character before making it again.
   app.post("/api/character-library/:id/four-views/retry-front", requireAuth, async (req, res) => {
     try {
       const userId = req.session.userId!;
@@ -772,8 +781,14 @@ ${menu}
       const before = await storage.getCharacter(req.params.id);
       if (!before || before.userId !== userId) return res.status(404).json({ error: "找不到角色" });
       const mainPhoto = typeof req.body?.mainPhoto === "string" ? req.body.mainPhoto : "";
-      if (mainPhoto && !(before.refImageUrls ?? []).includes(mainPhoto)) return res.status(400).json({ error: "這張照片不在角色圖庫裡。" });
-      if ((before.refImageUrls ?? []).length === 0) return res.status(400).json({ error: "請先上傳至少一張角色參考圖" });
+      const rawNew: unknown[] = Array.isArray(req.body?.newPhotos) ? req.body.newPhotos : [];
+      const newPhotos = Array.from(new Set(rawNew.filter((u): u is string => typeof u === "string").map(u => u.trim())))
+        .filter(u => u && u.length <= 2000 && !(before.refImageUrls ?? []).includes(u));
+      if (rawNew.length > MAX_FACE_PHOTOS || newPhotos.some(u => !u.startsWith("/objects/"))) {
+        return res.status(400).json({ error: "照片格式不正確，請重新上傳。" });
+      }
+      if (mainPhoto && !(before.refImageUrls ?? []).includes(mainPhoto) && !newPhotos.includes(mainPhoto)) return res.status(400).json({ error: "這張照片不在角色圖庫裡。" });
+      if ((before.refImageUrls ?? []).length + newPhotos.length === 0) return res.status(400).json({ error: "請先上傳至少一張角色參考圖" });
 
       const character = await claimFrontConfirm(req.params.id, userId);
       if (!character) return res.status(409).json({ error: "這個角色目前沒有待確認的正面圖。" });
@@ -788,9 +803,9 @@ ${menu}
           return res.status(400).json({ error: deductErr.message || `積分不足，需要 ${IMAGE_COST} 積分` });
         }
       }
-      let refUrls = character.refImageUrls ?? [];
-      if (mainPhoto && refUrls[0] !== mainPhoto) {
-        refUrls = [mainPhoto, ...refUrls.filter(u => u !== mainPhoto)];
+      let refUrls = [...(character.refImageUrls ?? []).slice(0, CHARACTER_PACK_MAX_IMAGES - newPhotos.length), ...newPhotos];
+      if (mainPhoto && refUrls[0] !== mainPhoto) refUrls = [mainPhoto, ...refUrls.filter(u => u !== mainPhoto)];
+      if (newPhotos.length > 0 || refUrls[0] !== (character.refImageUrls ?? [])[0]) {
         await storage.updateCharacter(character.id, { refImageUrls: refUrls } as any);
       }
       const user = await storage.getUser(userId);
@@ -807,12 +822,21 @@ ${menu}
         try {
           const userFolder = user?.username || userId;
           const profile = await builderProfile(character.id);
+          let faceChanged = false;
+          if (profile && newPhotos.length > 0) {
+            // New photos join the face photos; when there is no room, the oldest ones (never the main photo) make way.
+            const faces = [...profile.facePhotos, ...newPhotos];
+            while (faces.length > MAX_FACE_PHOTOS) faces.splice(1, 1);
+            profile.facePhotos = faces;
+            faceChanged = true;
+          }
           if (profile && mainPhoto && profile.facePhotos.includes(mainPhoto) && profile.facePhotos[0] !== mainPhoto) {
             // A new main face photo means a new face card.
             profile.facePhotos = [mainPhoto, ...profile.facePhotos.filter(u => u !== mainPhoto)];
-            await saveProfile(character.id, userId, profile);
+            faceChanged = true;
           }
-          const redoFace = !!profile && (req.body?.redoFace === true || (!!mainPhoto && profile.facePhotos[0] === mainPhoto));
+          if (profile && faceChanged) await saveProfile(character.id, userId, profile);
+          const redoFace = !!profile && (req.body?.redoFace === true || faceChanged);
           const description = profile
             ? await builderDescription(character.id, character.description, profile)
             : await descriptionForGeneration(character.id, character.description, refUrls);
