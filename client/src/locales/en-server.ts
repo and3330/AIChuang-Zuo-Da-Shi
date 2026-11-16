@@ -32,6 +32,7 @@ export const serverEn: Record<string, string> = {
   "找不到正面圖，請重新生成四視圖。": "The front view was not found. Generate the four views again.",
   "這張照片不在角色圖庫裡。": "This photo is not in the character's image pack.",
   "其餘三張生成失敗，請再按一次確認。": "The other three views failed. Press confirm again.",
+  "其餘三張生成失敗，請再按一次「生成其餘三張」。": "The other three views failed. Press \"Make the other three\" again.",
   "正面圖重新生成失敗，沒有算次數，請再試一次。": "The front view could not be regenerated. It was not counted; try again.",
   "全部視圖生成失敗": "All views failed to generate",
   "請先上傳至少一張角色參考圖": "Upload at least one character reference image first",

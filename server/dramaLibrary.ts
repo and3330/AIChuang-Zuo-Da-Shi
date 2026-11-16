@@ -16,7 +16,7 @@ import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService } from "./bunnyStorage";
 import { plainImagePrompt } from "./promptEnhancer";
 import {
-  FOUR_VIEW_PRESETS, FOUR_VIEW_SIZE, fourViewPrompt, fourViewPromptWith, FRONT_FREE_RETRIES, frontConfirmStatus, frontRetriesUsed,
+  FOUR_VIEW_PRESETS, FOUR_VIEW_SIZE, fourViewPrompt, fourViewPromptWith, FRONT_ACCEPTED, FRONT_FREE_RETRIES, frontConfirmStatus, frontRetriesUsed,
   faceCardPrompt, faceAnglePrompt, builderFrontNote, builderChainNote,
   type FourViewKey, type PhotoTags,
 } from "@shared/fourViews";
@@ -36,7 +36,7 @@ import {
   characterProfiles,
   CHARACTER_PACK_MAX_IMAGES,
 } from "@shared/schema";
-import { and, eq, isNull, like } from "drizzle-orm";
+import { and, eq, isNull, like, or } from "drizzle-orm";
 import { db } from "./db";
 import { ATLAS_SEED_MODEL, createAtlasSeedClient } from "./atlasSeed";
 import sharp from "sharp";
@@ -359,11 +359,16 @@ export function registerDramaLibraryRoutes(
     await storage.createCreditTransaction({ userId, type: "refund", amount, balance, description });
   }
 
-  /** Moves a character out of "waiting for front-view confirmation" into "generating". Null when it was not waiting. */
-  async function claimFrontConfirm(id: string, userId: string) {
+  /**
+   * Moves a character out of "waiting for front-view confirmation" (or "front accepted, other
+   * three not made yet") into "generating". Null when it was in neither state.
+   */
+  async function claimFrontConfirm(id: string, userId: string, opts: { acceptedToo?: boolean } = {}) {
+    const waiting = like(characterLibrary.fourViewStatus, "confirm%");
     const [claimed] = await db.update(characterLibrary)
       .set({ fourViewStatus: "generating", fourViewError: null, updatedAt: new Date() })
-      .where(and(eq(characterLibrary.id, id), eq(characterLibrary.userId, userId), like(characterLibrary.fourViewStatus, "confirm%")))
+      .where(and(eq(characterLibrary.id, id), eq(characterLibrary.userId, userId),
+        opts.acceptedToo ? or(waiting, eq(characterLibrary.fourViewStatus, FRONT_ACCEPTED)) : waiting))
       .returning();
     return claimed ?? null;
   }
@@ -718,6 +723,29 @@ ${menu}
     }
   });
 
+  // ─── Front view looks right: keep it and stop there ─────────────────────────
+  // The other three views were paid for with the front view; they are made later, for free,
+  // when the person presses "生成其餘三張" on the character card (the confirm route below).
+  app.post("/api/character-library/:id/four-views/accept-front", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const before = await storage.getCharacter(req.params.id);
+      if (!before || before.userId !== userId) return res.status(404).json({ error: "找不到角色" });
+      const front = ((before.fourViewUrls ?? {}) as FourViewUrls).front;
+      if (!front) return res.status(409).json({ error: "這個角色目前沒有待確認的正面圖。" });
+      const profile = await builderProfile(before.id);
+      const refImageUrls = profile ? await withFaceCardFirst(before.id, before.refImageUrls ?? []) : undefined;
+      const [accepted] = await db.update(characterLibrary)
+        .set({ fourViewStatus: FRONT_ACCEPTED, fourViewError: null, fourViewUrls: { front }, ...(refImageUrls ? { refImageUrls } : {}), updatedAt: new Date() })
+        .where(and(eq(characterLibrary.id, before.id), eq(characterLibrary.userId, userId), like(characterLibrary.fourViewStatus, "confirm%")))
+        .returning();
+      if (!accepted) return res.status(409).json({ error: "這個角色目前沒有待確認的正面圖。" });
+      res.json({ ok: true });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Front view confirmed: generate the other three views ──────────────────
   // Already paid for (or free) when the front view was started; nothing is charged here.
   app.post("/api/character-library/:id/four-views/confirm", requireAuth, async (req, res) => {
@@ -726,7 +754,7 @@ ${menu}
       if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
       const before = await storage.getCharacter(req.params.id);
       if (!before || before.userId !== userId) return res.status(404).json({ error: "找不到角色" });
-      const character = await claimFrontConfirm(req.params.id, userId);
+      const character = await claimFrontConfirm(req.params.id, userId, { acceptedToo: true });
       if (!character) return res.status(409).json({ error: "這個角色目前沒有待確認的正面圖。" });
       const front =((character.fourViewUrls ?? {}) as FourViewUrls).front;
       const refUrls = character.refImageUrls ?? [];
@@ -738,7 +766,8 @@ ${menu}
       res.json({ ok: true });
 
       (async () => {
-        const waiting = frontConfirmStatus(frontRetriesUsed(before.fourViewStatus));
+        // On failure, go back to where it was: waiting for confirmation, or front accepted.
+        const waiting = before.fourViewStatus === FRONT_ACCEPTED ? FRONT_ACCEPTED : frontConfirmStatus(frontRetriesUsed(before.fourViewStatus));
         try {
           const userFolder = user?.username || userId;
           const profile = await builderProfile(character.id);
@@ -753,7 +782,7 @@ ${menu}
           });
           if (succeeded === 0) {
             // Nothing new was made: stay on the confirmation step so it can be pressed again for free.
-            await storage.updateCharacter(character.id, { fourViewStatus: waiting, fourViewUrls: { front }, fourViewError: "其餘三張生成失敗，請再按一次確認。" } as any);
+            await storage.updateCharacter(character.id, { fourViewStatus: waiting, fourViewUrls: { front }, fourViewError: waiting === FRONT_ACCEPTED ? "其餘三張生成失敗，請再按一次「生成其餘三張」。" : "其餘三張生成失敗，請再按一次確認。" } as any);
           } else {
             await storage.updateCharacter(character.id, {
               fourViewStatus: "completed", fourViewUrls: { front, ...results },
@@ -762,7 +791,7 @@ ${menu}
           }
         } catch (e: any) {
           console.error("[CharLib] remaining views failed:", e);
-          await storage.updateCharacter(character.id, { fourViewStatus: waiting, fourViewUrls: { front }, fourViewError: "其餘三張生成失敗，請再按一次確認。" } as any);
+          await storage.updateCharacter(character.id, { fourViewStatus: waiting, fourViewUrls: { front }, fourViewError: waiting === FRONT_ACCEPTED ? "其餘三張生成失敗，請再按一次「生成其餘三張」。" : "其餘三張生成失敗，請再按一次確認。" } as any);
         }
       })().catch(console.error);
     } catch (e: any) {
