@@ -10,7 +10,7 @@ import type { CharacterLibraryItem, FourViewUrls } from "@shared/schema";
 import { MAX_FACE_PHOTOS, type CharacterProfile } from "@shared/characterProfile";
 
 // 「先確認正面圖」：建立角色後只先做正面圖，這裡把它跟使用者的主照片並排，問像不像。
-// 像 → 繼續做其餘三張（不再扣積分）。不像 → 重新生成，可以先換一張主照片；
+// 像 → 停在正面圖；其餘三張之後在角色卡片上按「生成其餘三張」再做（不再扣積分）。不像 → 重新生成，可以先換一張主照片；
 // 前 FRONT_FREE_RETRIES 次免費，之後每次 IMAGE_COST 積分。也可以先關掉，之後在角色庫的卡片上再確認。
 // 只有內容，不含遮罩：角色建立視窗直接接著顯示，角色庫則包在自己的彈窗裡（FrontConfirmDialog）。
 
@@ -41,10 +41,10 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
   };
 
   const confirm = useMutation({
-    mutationFn: () => apiRequest("POST", `/api/character-library/${characterId}/four-views/confirm`, {}),
+    mutationFn: () => apiRequest("POST", `/api/character-library/${characterId}/four-views/accept-front`, {}),
     onSuccess: () => {
       refresh();
-      toast({ title: tr("好，繼續生成其餘三張"), description: tr("大約一兩分鐘後會出現在角色卡片上。") });
+      toast({ title: tr("角色完成"), description: tr("其餘三個角度已經付過費，之後在角色卡片上按「生成其餘三張」就會做，不再扣積分。") });
       onDone();
     },
     onError: (e: any) => toast({ title: tr("無法繼續"), description: trServer(e.message), variant: "destructive" }),
@@ -86,7 +86,7 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-lg font-bold text-slate-900">{tr("先確認正面圖像不像")}</h3>
-          <p className="text-sm text-slate-500 mt-1">{tr("像了再往下生成其餘三張，角色才會穩定。")}</p>
+          <p className="text-sm text-slate-500 mt-1">{tr("像了角色就完成；其餘三個角度之後要用時再到角色卡片上生成。")}</p>
         </div>
         <button onClick={onLater} className="w-8 h-8 rounded-full text-slate-400 hover:bg-slate-100" aria-label={tr("關閉")}>×</button>
       </div>
@@ -124,7 +124,7 @@ export function FrontConfirm({ characterId, onDone, onLater }: {
         <>
           <button onClick={() => confirm.mutate()} disabled={confirm.isPending}
             className="mt-4 w-full h-11 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-40" data-testid="button-front-yes">
-            {confirm.isPending ? tr("處理中…") : tr("像，繼續生成其餘三張")}
+            {confirm.isPending ? tr("處理中…") : tr("像，就用這張")}
           </button>
 
           <input ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" multiple className="hidden" onChange={e => void addFiles(e.target.files)} data-testid="input-front-new-photos" />

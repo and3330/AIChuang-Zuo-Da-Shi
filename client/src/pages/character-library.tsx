@@ -1,4 +1,4 @@
-import { tr } from "@/lib/i18n";
+import { tr, trServer } from "@/lib/i18n";
 import { FOUR_VIEW_COST } from "@shared/pricing";
 import { useState, useRef, useEffect } from "react";
 import { Link } from "wouter";
@@ -11,7 +11,7 @@ import { NavigationHeader } from "./account";
 import { CHARACTER_PACK_MAX_IMAGES, type CharacterLibraryItem, type FourViewUrls } from "@shared/schema";
 import { CharacterWizard } from "@/components/CharacterWizard";
 import { FrontConfirmDialog } from "@/components/FrontConfirm";
-import { awaitingFrontConfirm } from "@shared/fourViews";
+import { awaitingFrontConfirm, frontAccepted } from "@shared/fourViews";
 
 async function uploadToObjectStorage(file: File): Promise<string> {
   const uploadRes = await apiRequest("POST", "/api/objects/upload", {});
@@ -127,6 +127,16 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
     onError: (e: any) => toast({ title: tr("生成失敗"), description: e.message, variant: "destructive" }),
   });
 
+  // Front view accepted: the other three were paid for at creation and are made on request.
+  const generateRest = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/character-library/${character.id}/four-views/confirm`, {}).then(r => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/character-library"] });
+      toast({ title: tr("正在生成其餘三張"), description: tr("大約一兩分鐘後會出現在角色卡片上。") });
+    },
+    onError: (e: any) => toast({ title: tr("生成失敗"), description: trServer(e.message), variant: "destructive" }),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => apiRequest("DELETE", `/api/character-library/${character.id}`),
     onSuccess: () => {
@@ -139,6 +149,7 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
   const fourViewStatus = character.fourViewStatus ?? "idle";
   // The front view is ready and waits for "does it look like you?" before the other three are made.
   const needsConfirm = awaitingFrontConfirm(fourViewStatus);
+  const frontOnly = frontAccepted(fourViewStatus);
   const refCount = character.refImageUrls?.length ?? 0;
   const completedCount = fourViews ? Object.values(fourViews).filter(Boolean).length : 0;
 
@@ -166,6 +177,9 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
             {fourViewStatus === "failed" && (
               <span className="text-[10px] bg-[#ef4444]/10 text-[#dc2626] px-2 py-0.5 rounded-full">{tr("✗ 失敗")}</span>
             )}
+            {frontOnly && (
+              <span className="text-[10px] bg-[#22c55e]/10 text-[#16a34a] px-2 py-0.5 rounded-full">{tr("✓ 正面圖")}</span>
+            )}
             {needsConfirm && (
               <span className="text-[10px] bg-[#ca8a04]/10 text-[#a16207] px-2 py-0.5 rounded-full">{tr("待確認正面圖")}</span>
             )}
@@ -186,6 +200,12 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
           {tr("確認正面圖像不像，再生成其餘三張")}
         </button>
       )}
+      {frontOnly && (
+        <button onClick={() => generateRest.mutate()} disabled={generateRest.isPending}
+          className="w-full text-sm bg-indigo-600 hover:bg-[#4338ca] text-white py-2 rounded-lg transition-colors disabled:opacity-40" data-testid={`button-generate-rest-${character.id}`}>
+          {generateRest.isPending ? tr("處理中…") : tr("生成其餘三張（已付費）")}
+        </button>
+      )}
       {showConfirm && <FrontConfirmDialog characterId={character.id} onClose={() => setShowConfirm(false)} />}
 
       <button
@@ -202,7 +222,7 @@ function CharacterCard({ character }: { character: CharacterLibraryItem }) {
       >
         {fourViewStatus === "generating" ? tr("⏳ 生成中…") :
          freeFourView ? tr("✨ 生成四視圖（首次免費）") :
-         fourViewStatus === "completed" ? tr("🔄 重新生成四視圖 (-{0} 積分)", { 0: fourViewCost }) :
+         fourViewStatus === "completed" || frontOnly ? tr("🔄 重新生成四視圖 (-{0} 積分)", { 0: fourViewCost }) :
          tr("✨ 生成四視圖 (-{0} 積分)", { 0: fourViewCost })}
       </button>
 

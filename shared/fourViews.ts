@@ -61,10 +61,19 @@ export function builderChainNote(o: { faceRefs: number; bodyBack: boolean }): st
 
 // ─── 先確認正面圖 ───────────────────────────────────────────────────────────
 // 從「上傳照片建立角色」開始的四視圖分兩段：先只做正面圖，角色的 fourViewStatus 變成 "confirm"，
-// 等使用者確認「像」之後才做其餘三張。不像可以重新生成正面圖：前 FRONT_FREE_RETRIES 次免費，
+// 等使用者確認「像」之後就停在正面圖（狀態 "front"），其餘三張之後在角色卡片上再做。不像可以重新生成正面圖：前 FRONT_FREE_RETRIES 次免費，
 // 之後每次收一張圖的積分。已經重生幾次記在狀態字串後面（"confirm:2"），不另外開欄位。
 
 export const FRONT_FREE_RETRIES = 2;
+
+// 確認「像」之後就停在正面圖：狀態 "front"。其餘三張在建立時已經付過費，
+// 之後在角色卡片上按「生成其餘三張」才做（不再扣積分）。
+export const FRONT_ACCEPTED = "front";
+
+/** The front view was accepted; the other three views are paid for but not made yet. */
+export function frontAccepted(status?: string | null): boolean {
+  return status === FRONT_ACCEPTED;
+}
 
 /** The front view is ready and waits for the person to say whether it looks like them. */
 export function awaitingFrontConfirm(status?: string | null): boolean {

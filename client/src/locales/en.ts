@@ -2656,4 +2656,11 @@ export const en: Record<string, string> = {
   "AI 正在判讀照片…": "The AI is reading the photo…",
   "也可以上傳新的照片（例如更清楚的正面照），重新生成時會一起用上。": "You can also upload new photos (a clearer front photo, say); they are used when it is made again.",
   "上傳新照片": "Upload new photos",
+  "角色完成": "Character ready",
+  "其餘三個角度已經付過費，之後在角色卡片上按「生成其餘三張」就會做，不再扣積分。": "The other three angles are already paid for. Press \"Make the other three\" on the character card whenever you want them; no more credits are taken.",
+  "像了角色就完成；其餘三個角度之後要用時再到角色卡片上生成。": "If it looks right, the character is done. Make the other three angles later from the character card when you need them.",
+  "像，就用這張": "Looks right, use this one",
+  "正在生成其餘三張": "Making the other three views",
+  "✓ 正面圖": "✓ Front view",
+  "生成其餘三張（已付費）": "Make the other three (paid)",
 };
