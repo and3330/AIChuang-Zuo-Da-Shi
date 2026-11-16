@@ -12,6 +12,8 @@ import { storage } from "./storage";
 const app = express();
 app.set("trust proxy", 1);
 app.use("/api/stripe/webhook", express.raw({ type: "application/json" }));
+// Airwallex signs the exact bytes it sent, so its webhook also needs the raw body.
+app.use("/api/airwallex/webhook", express.raw({ type: "*/*" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

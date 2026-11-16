@@ -3,7 +3,7 @@ import { useMemo, useState } from "react";
 
 // 後台「訂單」分頁上方的統計：依日、週、月、季彙總。
 // 資料就是下面訂單列表那一份（type = topup 的積分異動），在瀏覽器裡分組，不另外查資料庫。
-//   Stripe 訂單   說明含「Stripe」的列：筆數、售出積分、實收金額（新台幣與美金分開）
+//   線上付款訂單   說明含「Stripe」或「Airwallex」的列：筆數、售出積分、實收金額（新台幣與美金分開）
 //   手動加值     管理員在用戶頁加的積分，不算營收，另列一欄
 // 實收金額從 2026-11 這次改版後才開始記錄（credit_transactions.paid_amount），更早的訂單只有積分。
 // 日期一律用瀏覽器的當地時間；一週從星期一開始。
@@ -47,7 +47,7 @@ export function OrderStatsPanel({ orders }: { orders: OrderRow[] }) {
       const { key, label } = periodOf(date, period);
       let b = map.get(key);
       if (!b) { b = { key, label, orders: 0, credits: 0, twd: 0, usd: 0, unpriced: 0, manual: 0 }; map.set(key, b); }
-      if (o.description?.includes("Stripe")) {
+      if (/Stripe|Airwallex/.test(o.description ?? "")) {
         b.orders += 1;
         b.credits += o.amount;
         const currency = (o.paidCurrency ?? "").toLowerCase();
@@ -122,7 +122,7 @@ export function OrderStatsPanel({ orders }: { orders: OrderRow[] }) {
         </div>
       )}
       <p className="text-[11px] text-gray-400 mt-3">
-        {tr("顯示最近")} {ROWS_SHOWN[period]} {tr("個")}{PERIODS.find(p => p.id === period)?.label}{tr("。實收金額是 Stripe 收到的金額（未扣手續費），這次改版之後的訂單才有記錄；手動加值是管理員加的積分，不算營收。")}
+        {tr("顯示最近")} {ROWS_SHOWN[period]} {tr("個")}{PERIODS.find(p => p.id === period)?.label}{tr("。實收金額是 Stripe 與 Airwallex 收到的金額（未扣手續費），這次改版之後的訂單才有記錄；手動加值是管理員加的積分，不算營收。")}
       </p>
     </div>
   );

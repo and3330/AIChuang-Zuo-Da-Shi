@@ -11,6 +11,7 @@ import { NavigationHeader } from "@/components/AppNav";
 import { hasGoldAccess } from "@/lib/zone";
 import { GOLD_MEMBERSHIP, IMAGE_COST, MEMBERSHIP, MIN_TOPUP, SIGNUP_CREDITS, TOPUP_PACKS, TRIAL, topupCredits } from "@shared/pricing";
 import { goldApplicationDone } from "@shared/safety";
+import { PaymentPicker, usePaymentProvider } from "@/components/PaymentPicker";
 
 // 會員商城（/store）：所有付費都在這一頁。數字都在 shared/pricing.ts。
 //
@@ -44,6 +45,7 @@ export default function StorePage() {
   const [customAmount, setCustomAmount] = useState("");
   const [paying, setPaying] = useState<"" | Kind>("");
   const [showGoldGuide, setShowGoldGuide] = useState(false);
+  const pay = usePaymentProvider();
 
   useSeo({
     title: tr("會員商城 - 開通會員與儲值積分 | AI 創意工坊"),
@@ -51,18 +53,22 @@ export default function StorePage() {
     keywords: tr("會員,積分,儲值,AI 圖片生成"),
   });
 
-  // Coming back from Stripe: confirm the payment and refresh the balance.
+  // Coming back from Stripe or Airwallex: confirm the payment and refresh the balance.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const payment = params.get("payment");
     const sessionId = params.get("session_id");
-    if (payment === "success" && sessionId) {
+    const intentId = params.get("provider") === "airwallex" ? params.get("intent_id") : null;
+    const paymentId = sessionId || intentId;
+    if (payment === "success" && paymentId) {
       window.history.replaceState({}, "", "/store");
       (async () => {
         try {
-          const res = await apiRequest("POST", "/api/stripe/verify-session", { sessionId });
+          const res = intentId
+            ? await apiRequest("POST", "/api/airwallex/verify", { intentId })
+            : await apiRequest("POST", "/api/stripe/verify-session", { sessionId });
           const data = await res.json();
-          if (data.success && !data.gold && data.kind !== "gold") trackPaymentConfirmed(sessionId);
+          if (data.success && !data.gold && data.kind !== "gold") trackPaymentConfirmed(paymentId);
           await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
           queryClient.invalidateQueries({ queryKey: ["/api/credits/transactions"] });
           if (data.gold) setShowGoldGuide(true);
@@ -90,7 +96,7 @@ export default function StorePage() {
   const checkout = async (kind: Kind) => {
     setPaying(kind);
     try {
-      const res = await apiRequest("POST", "/api/stripe/create-checkout", kind === "topup" ? { amount: finalAmount } : { kind });
+      const res = await apiRequest("POST", pay.checkoutPath, kind === "topup" ? { amount: finalAmount } : { kind });
       const data = await res.json();
       if (data.url) {
         if (kind !== "gold") sendMetaEvent("InitiateCheckout");
@@ -128,6 +134,8 @@ export default function StorePage() {
           </div>
         </section>
 
+        <PaymentPicker {...pay} className="bg-white border border-slate-200 rounded-3xl p-4" />
+
         {/* 階段一：還不是會員 */}
         {!isMember && (
           <section data-testid="store-stage-1">
@@ -164,7 +172,7 @@ export default function StorePage() {
                 </button>
               </div>
             </div>
-            <p className="text-[11px] text-slate-500 mt-3">{tr("註冊並完成信箱驗證已送你 {0} 積分。付款由 Stripe 處理。", { 0: SIGNUP_CREDITS })}</p>
+            <p className="text-[11px] text-slate-500 mt-3">{tr("註冊並完成信箱驗證已送你 {0} 積分。", { 0: SIGNUP_CREDITS })}{pay.note}</p>
           </section>
         )}
 
@@ -205,7 +213,7 @@ export default function StorePage() {
                 </button>
               </div>
               <p className="text-xs text-slate-500 mt-2" data-testid="text-topup-credits">
-                {finalCredits > 0 ? tr("可獲得 {0} 積分（約 {1} 張圖）。", { 0: finalCredits.toLocaleString(), 1: images(finalCredits) }) : tr("最少 NT${0}。", { 0: MIN_TOPUP })}{tr("付款由 Stripe 處理。")}
+                {finalCredits > 0 ? tr("可獲得 {0} 積分（約 {1} 張圖）。", { 0: finalCredits.toLocaleString(), 1: images(finalCredits) }) : tr("最少 NT${0}。", { 0: MIN_TOPUP })}{pay.note}
               </p>
             </>
           )}
@@ -237,7 +245,7 @@ export default function StorePage() {
                 {paying === "gold" ? tr("前往付款中…") : tr("加入黃金會員 US${0}", { 0: GOLD_MEMBERSHIP.priceUsd })}
               </button>
             </div>
-            <p className="text-[11px] text-slate-500 mt-3">{tr("積分與一般區共用，用完可以隨時加購。付款由 Stripe 處理。")}</p>
+            <p className="text-[11px] text-slate-500 mt-3">{tr("積分與一般區共用，用完可以隨時加購。")}{pay.note}</p>
           </section>
         )}
 

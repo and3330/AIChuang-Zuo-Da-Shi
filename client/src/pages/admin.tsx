@@ -474,7 +474,7 @@ export default function AdminPage() {
                     <p className="text-2xl font-bold">...</p>
                   ) : (
                     (() => {
-                      const stripeRevenue = orders?.filter(o => o.description?.includes("Stripe")).reduce((sum, o) => sum + o.amount, 0) || 0;
+                      const stripeRevenue = orders?.filter(o => /Stripe|Airwallex/.test(o.description ?? "")).reduce((sum, o) => sum + o.amount, 0) || 0;
                       const apiCostTwd = (stats?.totalCost || 0) * 32;
                       const profit = stripeRevenue - apiCostTwd;
                       return (
@@ -579,15 +579,15 @@ export default function AdminPage() {
                       </p>
                     </div>
                     <div className="p-3 bg-blue-50 rounded-lg text-center">
-                      <p className="text-xs text-gray-500">{tr("Stripe 付款")}</p>
+                      <p className="text-xs text-gray-500">{tr("線上付款（Stripe＋Airwallex）")}</p>
                       <p className="text-xl font-bold text-blue-600">
-                        {orders.filter(o => o.description?.includes("Stripe")).length}
+                        {orders.filter(o => /Stripe|Airwallex/.test(o.description ?? "")).length}
                       </p>
                     </div>
                     <div className="p-3 bg-purple-50 rounded-lg text-center">
                       <p className="text-xs text-gray-500">{tr("總收入（TWD）")}</p>
                       <p className="text-xl font-bold text-purple-600">
-                        ${orders.filter(o => o.description?.includes("Stripe")).reduce((sum, o) => sum + o.amount, 0)}
+                        ${orders.filter(o => /Stripe|Airwallex/.test(o.description ?? "")).reduce((sum, o) => sum + o.amount, 0)}
                       </p>
                     </div>
                   </div>
@@ -622,8 +622,8 @@ export default function AdminPage() {
                             <td className="px-3 py-2 font-medium text-sm">{order.username || "-"}</td>
                             <td className="px-3 py-2 text-gray-500 text-xs">{order.email || "-"}</td>
                             <td className="px-3 py-2">
-                              {order.description?.includes("Stripe") ? (
-                                <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">{tr("Stripe 付款")}</span>
+                              {/Stripe|Airwallex/.test(order.description ?? "") ? (
+                                <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">{tr("{0} 付款", { 0: order.description?.startsWith("Airwallex") ? "Airwallex" : "Stripe" })}</span>
                               ) : order.description?.includes("管理員") ? (
                                 <span className="px-2 py-0.5 text-xs rounded-full bg-orange-100 text-orange-700">{tr("管理員調整")}</span>
                               ) : order.description?.includes("歡迎") || order.description?.includes("注册") ? (

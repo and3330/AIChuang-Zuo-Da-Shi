@@ -4,6 +4,7 @@ import { createServer, type Server } from "http";
 import { randomBytes, randomInt } from "crypto";
 import bcrypt from "bcryptjs";
 import Stripe from "stripe";
+import { airwallexConfigured, createIntent, getIntent, hostedCheckoutUrl, webhookIsGenuine, type AirwallexIntent } from "./airwallex";
 import { ATLAS_SEED_MODEL, createAtlasSeedClient } from "./atlasSeed";
 import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene, type DramaScene } from "@shared/schema";
@@ -734,38 +735,69 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
   // ===== STRIPE PAYMENT ROUTES =====
 
+  /**
+   * What a purchase request is for, checked against the account. Shared by Stripe and Airwallex so both
+   * sell exactly the same things at the same prices. Returns the error to send when it is not allowed.
+   */
+  async function purchaseFor(req: Request): Promise<
+    | { error: { status: number; body: { error: string; code?: string } } }
+    | { user: NonNullable<Awaited<ReturnType<typeof storage.getUser>>>; kind: "trial" | "gold" | "membership" | "topup"; credits: number; amount: number; currency: "usd" | "twd"; name: string; description: string }
+  > {
+    const user = await storage.getUser(req.session.userId!);
+    if (!user) return { error: { status: 404, body: { error: "用戶不存在" } } };
+    const kind = req.body?.kind === "trial" || req.body?.kind === "gold" || req.body?.kind === "membership" ? req.body.kind as "trial" | "gold" | "membership" : "topup";
+    const amount = req.body?.amount;
+    const fail = (status: number, error: string, code?: string) => ({ error: { status, body: code ? { error, code } : { error } } });
+    if (kind === "trial") {
+      if (user.isMember) return fail(400, "你已經是會員了，直接加購積分即可。");
+      if (user.trialUsedAt) return fail(400, "小試身手每個帳號只能買一次，歡迎開通會員。");
+      return { user, kind, credits: TRIAL.credits, amount: TRIAL.priceUsd, currency: "usd",
+        name: byLang(req, "AI 創意工坊 - 小試身手", "AI Creative Studio - Starter pack"),
+        description: byLang(req, `${TRIAL.credits} 積分，每個帳號限購一次`, `${TRIAL.credits} credits, once per account`) };
+    }
+    if (kind === "gold") {
+      if (user.isGold) return fail(400, "你已經是黃金會員了。");
+      if (!user.isMember && !user.isAdmin) return fail(403, "請先開通會員，才能升級黃金會員。", "membership_required");
+      if (!goldApplicationDone(user)) return fail(403, "請先到帳戶設定完成 Email 認證、真實姓名與條款確認。", "gold_application_required");
+      return { user, kind, credits: GOLD_MEMBERSHIP.credits, amount: GOLD_MEMBERSHIP.priceUsd, currency: "usd",
+        name: byLang(req, "AI 創意工坊 - 黃金會員", "AI Creative Studio - Gold membership"),
+        description: byLang(req, `一次性升級黃金會員，含 ${GOLD_MEMBERSHIP.credits} 積分`, `One-time upgrade to Gold membership, includes ${GOLD_MEMBERSHIP.credits} credits`) };
+    }
+    if (kind === "membership") {
+      if (user.isMember) return fail(400, "你已經是會員了，直接加購積分即可。");
+      return { user, kind, credits: MEMBERSHIP.credits, amount: MEMBERSHIP.priceUsd, currency: "usd",
+        name: byLang(req, "AI 創意工坊 - 開通會員", "AI Creative Studio - Membership"),
+        description: byLang(req, `一次性開通會員，含 ${MEMBERSHIP.credits} 積分`, `One-time membership, includes ${MEMBERSHIP.credits} credits`) };
+    }
+    if (!user.isMember && !user.isAdmin) return fail(403, "請先開通會員，之後就能加購積分。", "membership_required");
+    if (!amount || !Number.isInteger(amount) || amount < MIN_TOPUP) return fail(400, `儲值金額最少 NT$${MIN_TOPUP}`);
+    const credits = topupCredits(amount);
+    return { user, kind, credits, amount, currency: "twd",
+      name: byLang(req, `AI 創意工坊 - ${credits} 積分`, `AI Creative Studio - ${credits} credits`),
+      description: byLang(req, `儲值 NT$${amount}，獲得 ${credits} 積分`, `Top-up of NT$${amount}, ${credits} credits`) };
+  }
+
+  /**
+   * Adds the credits for a paid order once. `ref` names the payment ("Stripe 付款 cs_…", "Airwallex 付款 int_…");
+   * the credit row carries it, so a second call (webhook and return page both arriving) changes nothing.
+   */
+  async function fulfillOnce(ref: string, userId: string, credits: number, kind: string | undefined, amountMinor: number, currency: string): Promise<boolean> {
+    if (await storage.getCreditTransactionByDescription(ref)) return false;
+    await storage.atomicAddCredits(userId, credits, ref);
+    await storage.setTransactionPayment(ref, amountMinor, currency).catch(() => {});
+    await applyPurchasedTier(userId, kind);
+    return true;
+  }
+
   app.post("/api/stripe/create-checkout", requireAuth, async (req, res) => {
     try {
-      const user = await storage.getUser(req.session.userId!);
-      if (!user) {
-        return res.status(404).json({ error: "用戶不存在" });
-      }
-      const isMembership = req.body?.kind === "membership";
-      const isGoldUpgrade = req.body?.kind === "gold";
-      const isTrial = req.body?.kind === "trial";
+      const p = await purchaseFor(req);
+      if ("error" in p) return res.status(p.error.status).json(p.error.body);
+      const { user } = p;
+      const isMembership = p.kind === "membership";
+      const isGoldUpgrade = p.kind === "gold";
+      const isTrial = p.kind === "trial";
       const amount = req.body?.amount;
-
-      if (isTrial) {
-        if (user.isMember) return res.status(400).json({ error: "你已經是會員了，直接加購積分即可。" });
-        if (user.trialUsedAt) return res.status(400).json({ error: "小試身手每個帳號只能買一次，歡迎開通會員。" });
-      } else if (isGoldUpgrade) {
-        if (user.isGold) return res.status(400).json({ error: "你已經是黃金會員了。" });
-        if (!user.isMember && !user.isAdmin) {
-          return res.status(403).json({ error: "請先開通會員，才能升級黃金會員。", code: "membership_required" });
-        }
-        if (!goldApplicationDone(user)) {
-          return res.status(403).json({ error: "請先到帳戶設定完成 Email 認證、真實姓名與條款確認。", code: "gold_application_required" });
-        }
-      } else if (isMembership) {
-        if (user.isMember) return res.status(400).json({ error: "你已經是會員了，直接加購積分即可。" });
-      } else {
-        if (!user.isMember && !user.isAdmin) {
-          return res.status(403).json({ error: "請先開通會員，之後就能加購積分。", code: "membership_required" });
-        }
-        if (!amount || !Number.isInteger(amount) || amount < MIN_TOPUP) {
-          return res.status(400).json({ error: `儲值金額最少 NT$${MIN_TOPUP}` });
-        }
-      }
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host;
@@ -925,6 +957,93 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       res.json({ success: true, credits, newBalance: updatedUser?.credits, membership: session.metadata?.kind === "membership", gold: session.metadata?.kind === "gold", kind: session.metadata?.kind ?? "topup" });
     } catch (error: any) {
       console.error("Error verifying Stripe session:", error?.message || error);
+      res.status(500).json({ error: "驗證付款失敗" });
+    }
+  });
+
+  // ===== AIRWALLEX PAYMENT ROUTES (alongside Stripe; see server/airwallex.ts) =====
+
+  app.get("/api/airwallex/available", (_req, res) => {
+    res.json({ available: airwallexConfigured() });
+  });
+
+  app.post("/api/airwallex/create-checkout", requireAuth, async (req, res) => {
+    try {
+      if (!airwallexConfigured()) return res.status(503).json({ error: "Airwallex 付款目前無法使用，請改用 Stripe。" });
+      const p = await purchaseFor(req);
+      if ("error" in p) return res.status(p.error.status).json(p.error.body);
+      const currency = p.currency.toUpperCase();
+      const intent = await createIntent({
+        amount: p.amount, currency,
+        orderId: `AIC-${Date.now()}-${randomBytes(3).toString("hex")}`,
+        // The webhook and the return page check the paid intent against these.
+        metadata: { userId: p.user.id, credits: String(p.credits), kind: p.kind, amount: String(p.amount), currency },
+      });
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const baseUrl = `${protocol}://${req.headers.host}`;
+      const url = hostedCheckoutUrl({
+        intent,
+        successUrl: `${baseUrl}/store?payment=success&provider=airwallex&intent_id=${encodeURIComponent(intent.id)}`,
+        failUrl: `${baseUrl}/store?payment=cancelled`,
+        email: p.user.email,
+      });
+      res.json({ url });
+    } catch (error: any) {
+      console.error("Error creating Airwallex checkout:", error?.message || error);
+      res.status(500).json({ error: "無法建立付款頁面" });
+    }
+  });
+
+  /** A paid intent that matches what was ordered, or the reason it does not count. */
+  function paidIntent(intent: AirwallexIntent): { userId: string; credits: number; kind: string; amountMinor: number; currency: string } | null {
+    const m = intent.metadata ?? {};
+    const credits = parseInt(m.credits || "0");
+    if (intent.status !== "SUCCEEDED" || !m.userId || !(credits > 0)) return null;
+    // What was charged must be what this order costs.
+    if (String(intent.currency).toUpperCase() !== m.currency || Number(intent.amount) !== Number(m.amount)) return null;
+    return { userId: m.userId, credits, kind: m.kind, amountMinor: Math.round(Number(intent.amount) * 100), currency: String(intent.currency).toLowerCase() };
+  }
+
+  app.post("/api/airwallex/webhook", async (req, res) => {
+    const raw: Buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(JSON.stringify(req.body ?? {}));
+    if (!webhookIsGenuine(raw, req.get("x-timestamp"), req.get("x-signature"))) {
+      return res.status(400).json({ error: "invalid signature" });
+    }
+    try {
+      const event = JSON.parse(raw.toString("utf8"));
+      if (event?.name === "payment_intent.succeeded" && event?.data?.object?.id) {
+        // Read the intent from Airwallex itself rather than trusting the event body.
+        const intent = await getIntent(String(event.data.object.id));
+        const paid = paidIntent(intent);
+        if (paid) {
+          const added = await fulfillOnce(`Airwallex 付款 ${intent.id}`, paid.userId, paid.credits, paid.kind, paid.amountMinor, paid.currency);
+          console.log(`Airwallex webhook: ${added ? `credited ${paid.credits} to user ${paid.userId}` : `intent ${intent.id} already processed`}`);
+        } else {
+          console.warn(`Airwallex webhook: intent ${intent.id} not counted (status ${intent.status})`);
+        }
+      }
+      res.json({ received: true });
+    } catch (error: any) {
+      console.error("Error processing Airwallex webhook:", error?.message || error);
+      res.status(500).json({ error: "webhook failed" });
+    }
+  });
+
+  // Coming back from Airwallex's payment page: credit at once instead of waiting for the webhook.
+  app.post("/api/airwallex/verify", requireAuth, async (req, res) => {
+    try {
+      const intentId = String(req.body?.intentId ?? "");
+      if (!intentId) return res.status(400).json({ error: "缺少付款編號" });
+      const intent = await getIntent(intentId);
+      const paid = paidIntent(intent);
+      if (!paid) return res.status(400).json({ error: "付款尚未完成" });
+      if (paid.userId !== req.session.userId) return res.status(403).json({ error: "付款用戶不匹配" });
+      const added = await fulfillOnce(`Airwallex 付款 ${intent.id}`, paid.userId, paid.credits, paid.kind, paid.amountMinor, paid.currency);
+      const updatedUser = await storage.getUser(paid.userId);
+      res.json({ success: true, credits: paid.credits, newBalance: updatedUser?.credits, alreadyProcessed: !added,
+        membership: paid.kind === "membership", gold: paid.kind === "gold", kind: paid.kind ?? "topup" });
+    } catch (error: any) {
+      console.error("Error verifying Airwallex payment:", error?.message || error);
       res.status(500).json({ error: "驗證付款失敗" });
     }
   });

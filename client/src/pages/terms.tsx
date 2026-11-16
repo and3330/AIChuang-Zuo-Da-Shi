@@ -56,7 +56,7 @@ export default function TermsPage() {
                 <li>{tr("本平台採用積分制度，1 積分等值於 1 元新台幣（TWD）。")}</li>
                 <li><strong>{tr("圖片生成：")}</strong>{tr("每張消耗 5 積分。選擇去除浮水印時，每張額外加收 1 積分（共 6 積分/張）。")}</li>
                 <li><strong>{tr("影片生成：")}</strong>{tr("按時長與解析度計費，720P 每秒 8 積分，1080P 每秒 15 積分（支援 4 至 12 秒）。")}</li>
-                <li>{tr("積分充值最低金額為 50 積分，透過 Stripe 安全支付處理。")}</li>
+                <li>{tr("積分充值最低金額為 50 積分，透過 Stripe 或 Airwallex 安全支付處理。")}</li>
                 <li>{tr("積分在生成任務開始時扣除。若生成失敗，積分將自動退還至您的帳戶。")}</li>
                 <li>{tr("已消耗的積分不予退還，除非因本平台技術問題導致生成失敗。")}</li>
               </ul>
@@ -65,7 +65,7 @@ export default function TermsPage() {
             <section>
               <h2 className="text-lg font-semibold text-gray-800 mt-6 mb-3">{tr("四、付款與退款")}</h2>
               <ul className="list-disc pl-6 space-y-2">
-                <li>{tr("積分充值透過 Stripe 付款平台處理，支援信用卡及金融卡付款。")}</li>
+                <li>{tr("積分充值透過 Stripe 或 Airwallex 付款平台處理，支援信用卡及金融卡付款。")}</li>
                 <li>{tr("付款成功後，積分將即時存入您的帳戶。")}</li>
                 <li>{tr("因系統錯誤導致的重複扣款，本平台將主動退還多扣的積分。")}</li>
                 <li>{tr("已充值的積分原則上不提供現金退款。如有特殊情況，請聯繫客服處理。")}</li>
@@ -109,7 +109,7 @@ export default function TermsPage() {
               <h2 className="text-lg font-semibold text-gray-800 mt-6 mb-3">{tr("八、服務中斷與免責")}</h2>
               <ul className="list-disc pl-6 space-y-2">
                 <li>{tr("本平台將盡力維持服務的穩定運作，但不保證服務不會中斷。")}</li>
-                <li>{tr("因第三方 API 服務（AtlasCloud、Stripe）異常導致的服務中斷，本平台不承擔責任。")}</li>
+                <li>{tr("因第三方 API 服務（AtlasCloud、Stripe、Airwallex）異常導致的服務中斷，本平台不承擔責任。")}</li>
                 <li>{tr("因不可抗力（如天災、網路故障、法規變更）導致的服務中斷，本平台不承擔責任。")}</li>
                 <li>{tr("本平台保留因系統維護、升級等原因暫停服務的權利，並會儘量提前通知。")}</li>
               </ul>
