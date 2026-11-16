@@ -210,7 +210,7 @@ function sendError(res: Response, e: unknown) {
  * They must not buy credits, change account or adult-content settings, or sign
  * in another way. Mount before the site's own routes.
  */
-const EMBED_BLOCKED = [/^\/api\/stripe\//, /^\/api\/credits\/topup/, /^\/api\/account\/safety/, /^\/api\/auth\/google/, /^\/api\/admin\//];
+const EMBED_BLOCKED = [/^\/api\/stripe\//, /^\/api\/airwallex\//, /^\/api\/credits\/topup/, /^\/api\/account\/safety/, /^\/api\/auth\/google/, /^\/api\/admin\//];
 export function partnerEmbedGuard(req: Request, res: Response, next: NextFunction) {
   if (req.session?.embed && req.method !== "GET" && EMBED_BLOCKED.some(p => p.test(req.path))) {
     return res.status(403).json({ error: "這個功能在客戶小鎮的創作模式中無法使用。", code: "embed_not_allowed" });

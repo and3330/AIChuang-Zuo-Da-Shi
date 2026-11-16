@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { GOLD_MEMBERSHIP } from "@shared/pricing";
 import { GOLD_TERMS_OF_USE } from "@shared/safety";
+import { PaymentPicker, usePaymentProvider } from "@/components/PaymentPicker";
 
 // 帳戶設定「內容審查限制」的開關打開時跳出的視窗。一步一步：
 //   1. 說明   本項目需要加入黃金會員；還不是正式會員的話先帶去會員商城。
@@ -38,6 +39,7 @@ export function GoldApplyDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState(user?.realName ?? "");
   const [accepted, setAccepted] = useState(false);
   const [busy, setBusy] = useState(false);
+  const payment = usePaymentProvider();
 
   if (!user) return null;
   const isMember = !!user.isMember || !!user.isAdmin;
@@ -75,7 +77,7 @@ export function GoldApplyDialog({ onClose }: { onClose: () => void }) {
   }, tr("沒有完成"));
 
   const pay = () => run(async () => {
-    const res = await apiRequest("POST", "/api/stripe/create-checkout", { kind: "gold" });
+    const res = await apiRequest("POST", payment.checkoutPath, { kind: "gold" });
     const data = await res.json();
     if (!data.url) throw new Error(tr("無法建立付款頁面"));
     window.location.href = data.url;
@@ -186,7 +188,8 @@ export function GoldApplyDialog({ onClose }: { onClose: () => void }) {
               <button onClick={later} className="h-11 rounded-xl border border-slate-200 text-sm text-slate-600" data-testid="button-gold-apply-later">{tr("先不要")}</button>
               <button onClick={pay} disabled={busy} className="h-11 rounded-xl bg-amber-400 text-amber-950 text-sm font-bold disabled:opacity-40" data-testid="button-gold-apply-pay">{busy ? tr("前往付款中…") : tr("加入 US${0}", { 0: GOLD_MEMBERSHIP.priceUsd })}</button>
             </div>
-            <p className="text-[11px] text-slate-400 mt-3 text-center">{tr("付款由 Stripe 處理。")}</p>
+            <PaymentPicker {...payment} className="mt-4" />
+            <p className="text-[11px] text-slate-400 mt-3 text-center">{payment.note}</p>
           </>
         )}
       </div>

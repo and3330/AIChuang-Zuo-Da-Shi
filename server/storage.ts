@@ -208,7 +208,7 @@ export class DatabaseStorage implements IStorage {
   async atomicAddCredits(userId: string, amount: number, description: string): Promise<void> {
     const wallet = amount !== 0 ? await walletAccountFor(userId) : null;
     if (wallet) { await this.walletMove(userId, wallet, amount, description); return; }
-    const isStripePayment = description.startsWith("Stripe");
+    const isStripePayment = description.startsWith("Stripe") || description.startsWith("Airwallex");
     const [updated] = await db.update(users)
       .set({ credits: sql`${users.credits} + ${amount}` })
       .where(eq(users.id, userId))
