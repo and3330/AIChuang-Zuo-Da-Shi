@@ -1,10 +1,15 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "wouter";
-import { installMetaButtonEvents, sendMetaEvent } from "@/lib/metaPixel";
+import { installMetaButtonEvents, sendMetaEvent, trackPendingGoogleRegistration } from "@/lib/metaPixel";
+import { useUser } from "@/hooks/use-user";
 
 export default function MetaEvents() {
   const [location] = useLocation();
+  const { user } = useUser();
   const lastPath = useRef(location);
+  useEffect(() => {
+    if (user?.id) void trackPendingGoogleRegistration();
+  }, [user?.id, location]);
   useEffect(() => installMetaButtonEvents(), []);
   useEffect(() => {
     if (lastPath.current === location) return;

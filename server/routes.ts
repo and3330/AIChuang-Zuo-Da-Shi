@@ -9,6 +9,7 @@ import { ATLAS_SEED_MODEL, createAtlasSeedClient } from "./atlasSeed";
 import { storage } from "./storage";
 import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene, type DramaScene } from "@shared/schema";
 import { sendVerificationEmail } from "./verificationEmail";
+import { metaPurchase, registerMetaRegistrationRoutes } from "./metaConversions";
 import { byLang, outputLanguageNote, requestLang } from "./lang";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
@@ -88,6 +89,8 @@ declare module "express-session" {
     userId: string;
     username: string;
     isAdmin: boolean;
+    /** One-time analytics receipt, created only after Google creates a new account. */
+    pendingMetaRegistration?: { userId: string; eventId: string };
     /** Set when a partner workspace entered through /embed/enter. */
     embed?: { sessionId: string; returnOrigin: string };
   }
@@ -423,6 +426,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       }
 
       let user = await storage.getUserByGoogleId(googleUser.id);
+      let registrationEventId: string | undefined;
 
       if (!user) {
         user = await storage.getUserByEmail(googleUser.email);
@@ -445,6 +449,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
           email: googleUser.email,
           password: "",
         });
+        registrationEventId = randomBytes(16).toString("hex");
 
         if (googleUser.picture) {
           await storage.updateUserGoogleId(user.id, googleUser.id, googleUser.picture);
@@ -478,6 +483,9 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         req.session.userId = user.id;
         req.session.username = user.username;
         req.session.isAdmin = user.isAdmin || false;
+        if (registrationEventId) {
+          req.session.pendingMetaRegistration = { userId: user.id, eventId: registrationEventId };
+        }
       }
 
       res.redirect("/");
@@ -495,6 +503,8 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       res.json({ success: true });
     });
   });
+
+  registerMetaRegistrationRoutes(app, requireAuth);
 
   app.get("/api/auth/me", async (req, res) => {
     if (!req.session.userId) {
@@ -936,11 +946,12 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         return res.status(403).json({ error: "付款用戶不匹配" });
       }
 
+      const purchase = metaPurchase(session);
       const stripeDesc = `Stripe 付款 ${sessionId}`;
       const existingTx = await storage.getCreditTransactionByDescription(stripeDesc);
       if (existingTx) {
         console.log(`Stripe session ${sessionId} already processed, skipping`);
-        return res.json({ success: true, credits, alreadyProcessed: true, membership: session.metadata?.kind === "membership", gold: session.metadata?.kind === "gold", kind: session.metadata?.kind ?? "topup" });
+        return res.json({ success: true, credits, alreadyProcessed: true, membership: session.metadata?.kind === "membership", gold: session.metadata?.kind === "gold", kind: session.metadata?.kind ?? "topup", purchase });
       }
 
       const user = await storage.getUser(userId);
@@ -954,7 +965,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       const updatedUser = await storage.getUser(userId);
       console.log(`Stripe verify: credited ${credits} to user ${userId}, new balance: ${updatedUser?.credits}`);
-      res.json({ success: true, credits, newBalance: updatedUser?.credits, membership: session.metadata?.kind === "membership", gold: session.metadata?.kind === "gold", kind: session.metadata?.kind ?? "topup" });
+      res.json({ success: true, credits, newBalance: updatedUser?.credits, membership: session.metadata?.kind === "membership", gold: session.metadata?.kind === "gold", kind: session.metadata?.kind ?? "topup", purchase });
     } catch (error: any) {
       console.error("Error verifying Stripe session:", error?.message || error);
       res.status(500).json({ error: "驗證付款失敗" });
@@ -1040,8 +1051,10 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       if (paid.userId !== req.session.userId) return res.status(403).json({ error: "付款用戶不匹配" });
       const added = await fulfillOnce(`Airwallex 付款 ${intent.id}`, paid.userId, paid.credits, paid.kind, paid.amountMinor, paid.currency);
       const updatedUser = await storage.getUser(paid.userId);
+      // Same Meta purchase event as Stripe (its ID is a hash, so the intent ID is not sent to Meta).
+      const purchase = metaPurchase({ id: intent.id, payment_status: "paid", amount_total: paid.amountMinor, currency: paid.currency, metadata: { kind: paid.kind } });
       res.json({ success: true, credits: paid.credits, newBalance: updatedUser?.credits, alreadyProcessed: !added,
-        membership: paid.kind === "membership", gold: paid.kind === "gold", kind: paid.kind ?? "topup" });
+        membership: paid.kind === "membership", gold: paid.kind === "gold", kind: paid.kind ?? "topup", purchase });
     } catch (error: any) {
       console.error("Error verifying Airwallex payment:", error?.message || error);
       res.status(500).json({ error: "驗證付款失敗" });

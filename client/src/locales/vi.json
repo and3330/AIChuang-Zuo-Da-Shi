@@ -2642,7 +2642,14 @@
   "第一張會照這份內容重拍成你的角色，其餘鏡頭沿用同樣的場景與光線。哪裡判讀錯了可以直接改。": "Ảnh đầu tiên sẽ được tái tạo thành nhân vật của bạn theo nội dung này; các ảnh còn lại sẽ giữ nguyên bối cảnh và ánh sáng. Bạn có thể chỉnh sửa trực tiếp bất kỳ phần nào AI nhận diện sai.",
   "AI 正在判讀照片…": "AI đang phân tích ảnh…",
   "也可以上傳新的照片（例如更清楚的正面照），重新生成時會一起用上。": "Bạn cũng có thể tải lên ảnh mới (ví dụ ảnh chính diện rõ hơn); chúng sẽ được dùng khi tạo lại.",
-  "上傳新照片": "Tải ảnh mới lên"
+  "上傳新照片": "Tải ảnh mới lên",
+  "角色完成": "Hoàn tất nhân vật",
+  "其餘三個角度已經付過費，之後在角色卡片上按「生成其餘三張」就會做，不再扣積分。": "Ba góc còn lại đã được thanh toán. Sau này, chỉ cần nhấn \"Tạo ba ảnh còn lại\" trên thẻ nhân vật để tạo, không bị trừ thêm điểm.",
+  "像了角色就完成；其餘三個角度之後要用時再到角色卡片上生成。": "Nếu đã giống thì nhân vật đã hoàn tất; khi cần dùng ba góc còn lại, hãy tạo từ thẻ nhân vật.",
+  "像，就用這張": "Giống rồi, dùng ảnh này",
+  "正在生成其餘三張": "Đang tạo ba ảnh còn lại",
+  "✓ 正面圖": "✓ Ảnh chính diện",
+  "生成其餘三張（已付費）": "Tạo ba ảnh còn lại (đã thanh toán)"
  },
  "server": {
   "（含去浮水印）": "（đã xóa hình mờ）",
@@ -2671,6 +2678,7 @@
   "找不到正面圖，請重新生成四視圖。": "Không tìm thấy ảnh chính diện, hãy tạo lại bốn góc nhìn.",
   "這張照片不在角色圖庫裡。": "Ảnh này không có trong thư viện ảnh của nhân vật.",
   "其餘三張生成失敗，請再按一次確認。": "Ba ảnh còn lại tạo không thành công, hãy nhấn xác nhận thêm một lần nữa.",
+  "其餘三張生成失敗，請再按一次「生成其餘三張」。": "Ba ảnh còn lại tạo thất bại, vui lòng nhấn lại \"Tạo ba ảnh còn lại\".",
   "正面圖重新生成失敗，沒有算次數，請再試一次。": "Không thể tạo lại ảnh chính diện, lần này không bị tính lượt; hãy thử lại.",
   "全部視圖生成失敗": "Không thể tạo tất cả góc nhìn",
   "請先上傳至少一張角色參考圖": "Hãy tải lên ít nhất một ảnh tham khảo nhân vật trước",

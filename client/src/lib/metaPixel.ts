@@ -1,4 +1,4 @@
-/** Only fixed event names are sent. Never forward form values or API responses. */
+/** Fixed event names; Purchase sends only an allowlisted amount, currency and opaque event ID. */
 export type MetaEvent =
   | "PageView" | "CompleteRegistration" | "InitiateCheckout"
   | "AuthEntryClick" | "RegistrationStart" | "LoginSuccess" | "GoogleLoginClick"
@@ -13,6 +13,7 @@ declare global {
 
 const standard = new Set<MetaEvent>(["PageView", "CompleteRegistration", "InitiateCheckout"]);
 const paidSessions = new Set<string>();
+const conversionReceipts = new Set<string>();
 const safePaths = new Set([
   "/", "/login", "/create/image", "/create/video", "/photoset",
   "/product", "/ugc", "/drama", "/library", "/character-library", "/store",
@@ -27,6 +28,45 @@ export function sendMetaEvent(event: MetaEvent): boolean {
     // A blocked Pixel must never prevent login, generation or checkout.
     return false;
   }
+}
+
+function sendConversionOnce(event: "CompleteRegistration" | "Purchase", eventId: string, value?: { value: number; currency: string }): boolean {
+  const key = `meta-conversion:${event}:${eventId}`;
+  try {
+    if (conversionReceipts.has(key)) return true;
+    try { if (localStorage.getItem(key)) return true; } catch { /* Storage may be blocked. */ }
+    if (typeof window === "undefined" || !safePaths.has(window.location.pathname) || !window.fbq) return false;
+    window.fbq("track", event, value ?? {}, { eventID: eventId });
+    conversionReceipts.add(key);
+    try { localStorage.setItem(key, "1"); } catch { /* Memory still prevents duplicate effects. */ }
+    return true;
+  } catch { return false; }
+}
+
+/** Uses only server-verified paid totals, never prices or flags from the return URL. */
+export function trackPurchase(purchase: unknown): boolean {
+  if (!purchase || typeof purchase !== "object") return false;
+  const { value, currency, eventId } = purchase as Record<string, unknown>;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return false;
+  if (currency !== "USD" && currency !== "TWD") return false;
+  if (typeof eventId !== "string" || !/^purchase_[a-f0-9]{64}$/.test(eventId)) return false;
+  return sendConversionOnce("Purchase", eventId, { value, currency });
+}
+
+/** Read a session-bound receipt; acknowledge only after fbq accepted it locally. */
+export async function trackPendingGoogleRegistration() {
+  try {
+    const response = await fetch("/api/auth/meta-registration", { credentials: "same-origin", cache: "no-store" });
+    if (!response.ok) return;
+    const { eventId } = await response.json();
+    if (typeof eventId !== "string" || !/^[a-f0-9]{32}$/.test(eventId)) return;
+    if (!sendConversionOnce("CompleteRegistration", `registration_${eventId}`)) return;
+    await fetch("/api/auth/meta-registration", {
+      method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId }),
+    });
+  } catch { /* Analytics must not interrupt sign-in. Retry on a later page load. */ }
 }
 
 /** A successful submission is not the same thing as a completed generation. */
