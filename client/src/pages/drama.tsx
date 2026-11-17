@@ -1,5 +1,7 @@
 import { tr } from "@/lib/i18n";
+import { EnhancePromptButton, type EnhanceKind } from "@/components/EnhancePromptButton";
 import { IMAGE_COST } from "@shared/pricing";
+import { DRAMA_SECONDS, DIALOGUE_MAX_CHARS, dialogueChars, dialogueSeconds, dramaSceneSeconds, dramaVideoCost } from "@shared/dramaMotion";
 import { VaultPicker } from "@/components/VaultPicker";
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Link } from "wouter";
@@ -253,9 +255,9 @@ function DarkInput({
 }
 
 function DarkTextarea({
-  value, onChange, placeholder, rows = 3, className = "",
-}: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number; className?: string }) {
-  return (
+  value, onChange, placeholder, rows = 3, className = "", enhance,
+}: { value: string; onChange: (v: string) => void; placeholder?: string; rows?: number; className?: string; enhance?: EnhanceKind }) {
+  const box = (
     <textarea
       value={value}
       onChange={e => onChange(e.target.value)}
@@ -265,6 +267,8 @@ function DarkTextarea({
         placeholder-[#94a3b8] focus:outline-none focus:border-indigo-500 transition-colors resize-none ${className}`}
     />
   );
+  if (!enhance) return box;
+  return <div>{box}<div className="flex justify-end mt-1"><EnhancePromptButton value={value} onChange={onChange} kind={enhance} /></div></div>;
 }
 
 function DarkSelect({
@@ -1256,13 +1260,76 @@ function SceneFlowCanvas({
   );
 }
 
+// ─── 十欄分鏡欄位與鎖定錨點（導演模式寫的，全部可以改） ──────────────────────
+function StoryboardFields({ scene, onUpdate, onLockChange, isLast }: {
+  scene: DramaScene;
+  isLast?: boolean;
+  onUpdate: (patch: Partial<DramaScene>) => void;
+  /** A lock is shared by every scene that shows that asset, so an edit changes all of them. */
+  onLockChange: (id: string, lock: string) => void;
+}) {
+  const field = (label: string, key: "framing" | "angle" | "purpose" | "sound", placeholder: string) => (
+    <div>
+      <label className="text-[10px] text-[#64748b] tracking-wide mb-1 block">{label}</label>
+      <DarkInput value={scene[key] || ""} onChange={v => onUpdate({ [key]: v.slice(0, 60) })} placeholder={placeholder} />
+    </div>
+  );
+  const chars = dialogueChars(scene.dialogue);
+  const needSeconds = dialogueSeconds(scene.dialogue);
+  const haveSeconds = dramaSceneSeconds(scene);
+  return (
+    <div className="space-y-2" data-testid="storyboard-fields">
+      {chars > DIALOGUE_MAX_CHARS ? (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5" data-testid="warn-dialogue-long">
+          {tr("台詞 {0} 字，一幕講不完（一幕最多約 {1} 字）。建議拆成兩幕，兩個人輪流拍。", { 0: chars, 1: DIALOGUE_MAX_CHARS })}
+        </p>
+      ) : needSeconds > haveSeconds ? (
+        <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 flex items-center gap-2" data-testid="warn-dialogue-seconds">
+          <span className="flex-1">{tr("台詞約需 {0} 秒，這一幕只有 {1} 秒，可能講不完。", { 0: needSeconds, 1: haveSeconds })}</span>
+          <button type="button" onClick={() => onUpdate({ plannedSeconds: needSeconds })} className="underline shrink-0">{tr("改成 {0} 秒", { 0: needSeconds })}</button>
+        </p>
+      ) : null}
+      <label className={`flex items-start gap-2 text-[11px] ${isLast ? "text-[#cbd5e1]" : "text-[#475569]"}`}>
+        <input type="checkbox" checked={!!scene.endOnNext && !isLast} disabled={isLast}
+          onChange={e => onUpdate({ endOnNext: e.target.checked })} className="mt-0.5 accent-indigo-500" data-testid="checkbox-end-on-next" />
+        <span>{tr("轉場：動作收在下一幕的畫面")}<br /><span className="text-[10px] text-[#94a3b8]">{tr("動畫會用下一幕的分鏡圖當最後一格，兩幕接起來比較順。下一幕要先有圖。")}</span></span>
+      </label>
+      <div className="grid grid-cols-2 gap-2">
+        {field(tr("景別"), "framing", tr("例：近景"))}
+        {field(tr("角度"), "angle", tr("例：仰拍"))}
+      </div>
+      {field(tr("敘事目的"), "purpose", tr("例：揭示｜照片背面的名字"))}
+      {field(tr("聲音"), "sound", tr("例：雨聲、遠處車聲"))}
+      {(scene.locks ?? []).length > 0 && (
+        <div>
+          <label className="text-[10px] text-[#64748b] tracking-wide mb-1 block">{tr("固定外觀（鎖定錨點）")}</label>
+          <p className="text-[10px] text-[#94a3b8] mb-1.5">{tr("每一幕生圖都會一字不改地帶上這些描述，角色、道具與場景才不會每幕長得不一樣。改這裡會一起改所有用到它的幕。")}</p>
+          <div className="space-y-1.5">
+            {(scene.locks ?? []).map(l => (
+              <div key={l.id} className="rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-2">
+                <span className="text-[10px] font-semibold text-indigo-600">{l.id}・{l.name}</span>
+                <textarea value={l.lock} onChange={e => onLockChange(l.id, e.target.value.slice(0, 240))} rows={2}
+                  aria-label={tr("{0} 的固定外觀", { 0: l.name })}
+                  className="mt-1 w-full text-[11px] leading-relaxed bg-white border border-[#e2e8f0] rounded-md px-2 py-1 resize-none" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── AI Script Generation Dialog ──────────────────────────────────────────────
+type AIScriptScene = Pick<DramaScene, "title" | "description" | "dialogue" | "cameraMovement" | "useCharA" | "useCharB" | "plannedSeconds" | "videoPrompt" | "framing" | "angle" | "sound" | "purpose" | "locks" | "endOnNext">;
 function AIScriptDialog({
-  open, onClose, onApply, defaultSceneCount, genre, characterAName, characterBName,
+  open, onClose, onApply, defaultSceneCount, genre, characterAName, characterBName, projectId, episodeId,
 }: {
+  projectId?: string;
+  episodeId?: string;
   open: boolean;
   onClose: () => void;
-  onApply: (scenes: Array<{ title: string; description: string; dialogue: string; cameraMovement: string; useCharA: boolean; useCharB: boolean }>) => void;
+  onApply: (scenes: AIScriptScene[], intent: string) => void;
   defaultSceneCount: number;
   genre?: string;
   characterAName?: string;
@@ -1276,14 +1343,14 @@ function AIScriptDialog({
 
   const aiMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/drama/ai-generate-script", {
-      pitch, sceneCount: count, genre, characterAName, characterBName,
+      pitch, sceneCount: count, genre, characterAName, characterBName, projectId, episodeId,
     }).then(r => r.json()),
     onSuccess: (data) => {
       if (!data.scenes || data.scenes.length === 0) {
         toast({ title: tr("AI 沒有產出有效腳本"), variant: "destructive" });
         return;
       }
-      onApply(data.scenes);
+      onApply(data.scenes, typeof data.intent === "string" ? data.intent : "");
       toast({ title: tr("AI 已生成 {0} 幕腳本！", { 0: data.scenes.length }) });
       setPitch("");
       onClose();
@@ -1295,7 +1362,7 @@ function AIScriptDialog({
     <Modal open={open} onClose={onClose} title={tr("🤖 AI 智慧腳本助手")}>
       <div className="space-y-4">
         <div className="bg-indigo-600/5 border border-indigo-500/20 rounded-xl p-3 text-xs text-indigo-600 leading-relaxed">
-          {tr("💡 用一兩句話描述劇情概念，AI 會依 WAN 3.0 提示詞最佳實踐自動產出整集分鏡（含場景描述、台詞、運鏡）。")}
+          {tr("💡 用一兩句話描述劇情概念，AI 會用導演模式寫出整集：導演意圖（鉤子、節拍、反轉）、角色與場景的固定外觀，以及每一幕的景別、角度、運鏡、聲音、敘事目的、秒數與動態提示詞。")}
         </div>
 
         <div>
@@ -1325,7 +1392,7 @@ function AIScriptDialog({
         )}
 
         <div className="bg-[#ca8a04]/5 border border-[#ca8a04]/20 rounded-lg p-2.5 text-[11px] text-[#ca8a04]">
-          {tr("⚠️ AI 會「覆蓋」當前所有幕的標題、描述、台詞、運鏡。已生成圖片的幕不會受影響但內容會被換新。")}
+          {tr("⚠️ AI 會「覆蓋」當前所有幕的腳本內容（描述、台詞、分鏡欄位、秒數與動態提示詞）。已生成的圖片與影片會保留，但內容會換新。")}
         </div>
 
         <DarkButton
@@ -1333,7 +1400,7 @@ function AIScriptDialog({
           disabled={!pitch.trim() || aiMutation.isPending}
           className="w-full justify-center"
         >
-          {aiMutation.isPending ? tr("🤖 AI 撰寫中…約 10 秒") : tr("✨ 生成腳本")}
+          {aiMutation.isPending ? tr("🤖 AI 導演撰寫中…約 30 秒") : tr("✨ 生成腳本")}
         </DarkButton>
       </div>
     </Modal>
@@ -1396,14 +1463,14 @@ function EpisodeView({
   const { user } = useUser();
   const isMobile = useIsMobile();
 
-  const { data: episode, isLoading } = useQuery<DramaEpisode>({
+  const { data: episode, isLoading, dataUpdatedAt: episodeUpdatedAt } = useQuery<DramaEpisode>({
     queryKey: ["/api/drama/episodes", episodeId],
     queryFn: () => fetch(`/api/drama/episodes/${episodeId}`).then(r => r.json()),
     refetchInterval: (query) => {
       const ep = query.state.data as DramaEpisode | undefined;
       if (!ep) return false;
       const scenes: DramaScene[] = JSON.parse(ep.scenes || "[]");
-      const busy = scenes.some(s => s.imageStatus === "generating" || s.videoStatus === "generating") || ep.status === "generating";
+      const busy = scenes.some(s => s.imageStatus === "generating" || s.videoStatus === "generating") || ep.status === "generating" || ep.compiledStatus === "compiling";
       return busy ? 3000 : false;
     },
   });
@@ -1419,9 +1486,9 @@ function EpisodeView({
   const [animateDialog, setAnimateDialog] = useState<{ sceneIdx: number } | null>(null);
   const [animDuration, setAnimDuration] = useState(5);
   const [animResolution, setAnimResolution] = useState<"720p" | "1080p">("720p");
-  const [animUseOmni, setAnimUseOmni] = useState(false);
   const [animUseFirstLast, setAnimUseFirstLast] = useState(false);
   const [showAIDialog, setShowAIDialog] = useState(false);
+  const [showIntent, setShowIntent] = useState(false);
   // Tracks whether *this* tab fired a chain-mode整集重生 batch — used so the
   // progress badge stays visible all the way down to the very last scene
   // (where only 1 in-flight remains and our heuristic would otherwise miss it).
@@ -1447,6 +1514,12 @@ function EpisodeView({
   // Compile crossfade (ms) between adjacent scenes — sent to /compile.
   // Slider exposes 0 / 200 / 400 / 800 ms (default 400 = subtle fade).
   const [compileCrossfadeMs, setCompileCrossfadeMs] = useState<number>(400);
+  // 一鍵做到底：分鏡圖 → 全部動畫 → 合成，一步完成自動接下一步；任何一步失敗就停。
+  // 只在這個分頁開著時接續；伺服器上已經開始的那一步不受影響。
+  const [autoRun, setAutoRun] = useState<null | "images" | "trial" | "review" | "videos" | "compile">(null);
+  const autoTrialIdx = useRef(0);   // 試拍的那一幕
+  const autoSince = useRef(0);      // 只用這個時間點之後抓到的集數資料判斷進度
+  const autoFiring = useRef(false); // 正在送出下一步，避免重複送
 
   // Mobile UX: long-press action sheet & inspector sheet
   const [actionSheetIdx, setActionSheetIdx] = useState<number | null>(null);
@@ -1515,7 +1588,7 @@ function EpisodeView({
   const emitRefundToast = useCallback(
     (sceneNumbers: number[]) => {
       if (sceneNumbers.length === 0) return;
-      const perScene = 3;
+      const perScene = IMAGE_COST;
       if (sceneNumbers.length === 1) {
         toast({
           title: tr("第 {0} 幕重生失敗", { 0: sceneNumbers[0] }),
@@ -1821,8 +1894,8 @@ function EpisodeView({
   });
 
   const animateAllMutation = useMutation({
-    mutationFn: ({ duration, resolution, useOmniMode }: any) =>
-      apiRequest("POST", `/api/drama/episodes/${episodeId}/animate-all`, { duration, resolution, useOmniMode, generateAudio: true }).then(r => r.json()),
+    mutationFn: ({ resolution }: { resolution: "720p" | "1080p" }) =>
+      apiRequest("POST", `/api/drama/episodes/${episodeId}/animate-all`, { resolution, generateAudio: true }).then(r => r.json()),
     onMutate: () => {
       animateGeneratingObservedRef.current = false;
       setAnimateBatchActive(true);
@@ -1901,6 +1974,10 @@ function EpisodeView({
   const updateScene = (idx: number, updates: Partial<DramaScene>) => {
     setLocalScenes(prev => prev.map((s, i) => i === idx ? { ...s, ...updates } : s));
   };
+  // 鎖定錨點在每一幕都要一字不差，所以改一幕就改所有用到同一個資產的幕。
+  const updateLock = (id: string, lock: string) => {
+    setLocalScenes(prev => prev.map(s => (s.locks?.some(l => l.id === id) ? { ...s, locks: s.locks.map(l => (l.id === id ? { ...l, lock } : l)) } : s)));
+  };
 
   const addScene = () => {
     if (localScenes.length >= 12) { toast({ title: tr("最多 12 幕") }); return; }
@@ -1913,7 +1990,11 @@ function EpisodeView({
 
   const removeScene = (idx: number) => {
     if (localScenes.length <= 2) { toast({ title: tr("最少需要 2 幕") }); return; }
-    setLocalScenes(prev => prev.filter((_, i) => i !== idx).map((s, i) => ({ ...s, sceneNumber: i + 1 })));
+    // 導演意圖存在第一幕上；刪掉第一幕時交給新的第一幕。
+    setLocalScenes(prev => prev.filter((_, i) => i !== idx).map((s, i) => ({
+      ...s, sceneNumber: i + 1,
+      ...(i === 0 && idx === 0 && prev[0]?.directorIntent ? { directorIntent: prev[0].directorIntent } : {}),
+    })));
     if (selectedIdx === idx) setSelectedIdx(null);
     else if (selectedIdx !== null && selectedIdx > idx) setSelectedIdx(selectedIdx - 1);
   };
@@ -1930,12 +2011,126 @@ function EpisodeView({
     });
   };
 
+  // The animate dialog opens on the scene's own planned length.
+  useEffect(() => {
+    if (animateDialog) setAnimDuration(dramaSceneSeconds(localScenes[animateDialog.sceneIdx]));
+  }, [animateDialog]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const autoStop = (title?: string, description?: string) => {
+    setAutoRun(null);
+    autoFiring.current = false;
+    if (title) toast({ title, description, variant: "destructive" });
+  };
+  const autoEnter = (stage: "images" | "trial" | "videos" | "compile") => {
+    autoSince.current = Date.now();
+    autoFiring.current = false;
+    setAutoRun(stage);
+    queryClient.invalidateQueries({ queryKey: ["/api/drama/episodes", episodeId] });
+  };
+  const autoStart = () => {
+    autoFiring.current = true;
+    saveScenesMutation.mutate(localScenes, {
+      onSuccess: () => {
+        if (localScenes.some(s => s.imageStatus !== "completed")) {
+          generateImagesMutation.mutate(undefined, { onSuccess: () => autoEnter("images"), onError: () => autoStop() });
+        } else autoEnter("images");
+      },
+      onError: () => autoStop(),
+    });
+  };
+
+  useEffect(() => {
+    if (!autoRun || autoFiring.current || !episode || episodeUpdatedAt <= autoSince.current) return;
+    const sc: DramaScene[] = JSON.parse(episode.scenes || "[]");
+    const hasVideo = (x: DramaScene) => !!(x.videoBunnyUrl || x.videoUrl);
+    if (autoRun === "images") {
+      if (sc.some(x => x.imageStatus === "generating") || episode.status === "generating") return;
+      if (sc.some(x => x.imageStatus !== "completed")) {
+        autoStop(tr("自動流程停下來了"), tr("有分鏡圖沒有生成成功。重生那一幕之後，可以再按一次「一鍵做到底」。"));
+        return;
+      }
+      if (sc.every(hasVideo)) { autoEnter("videos"); return; }
+      autoFiring.current = true;
+      if (sc.some(hasVideo)) {
+        // 已經有拍好的幕，就不再試拍，直接補齊其他幕
+        animateAllMutation.mutate({ resolution: "720p" }, { onSuccess: () => autoEnter("videos"), onError: () => autoStop() });
+        return;
+      }
+      // 先試拍一幕（優先挑有台詞的），確認長相、聲音和台詞都對了，才整批生成
+      const idx = Math.max(0, sc.findIndex(x => x.dialogue?.trim()));
+      autoTrialIdx.current = idx;
+      animateSceneMutation.mutate(
+        { sceneIdx: idx, duration: dramaSceneSeconds(sc[idx]), resolution: "720p" },
+        { onSuccess: () => autoEnter("trial"), onError: () => autoStop() },
+      );
+    } else if (autoRun === "trial") {
+      const t = sc[autoTrialIdx.current];
+      if (!t || t.videoStatus === "generating") return;
+      if (!hasVideo(t)) {
+        autoStop(tr("自動流程停下來了"), tr("試拍的那一幕沒有生成成功，積分已退回。"));
+        return;
+      }
+      setSelectedIdx(autoTrialIdx.current);
+      setAutoRun("review");
+    } else if (autoRun === "review") {
+      return;
+    } else if (autoRun === "videos") {
+      if (sc.some(x => x.videoStatus === "generating") || episode.animateAllInProgress) return;
+      if (!sc.every(hasVideo)) {
+        autoStop(tr("自動流程停下來了"), tr("有幾幕動畫沒有生成成功，積分已退回。可以再按一次「生成全部動畫」補齊。"));
+        return;
+      }
+      autoFiring.current = true;
+      compileMutation.mutate(compileCrossfadeMs, { onSuccess: () => autoEnter("compile"), onError: () => autoStop() });
+    } else {
+      if (episode.compiledStatus === "compiling") return;
+      if (episode.compiledStatus === "failed") { autoStop(tr("自動流程停下來了"), tr("合成沒有成功，可以按「重試」。")); return; }
+      if (episode.compiledStatus === "completed" && episode.compiledVideoUrl) {
+        setAutoRun(null);
+        toast({ title: tr("整集完成"), description: tr("可以直接播放與下載。") });
+      }
+    }
+  }, [autoRun, episode, episodeUpdatedAt]); // eslint-disable-line react-hooks/exhaustive-deps
+
   if (isLoading) return <div className="flex items-center justify-center h-64"><Spinner /></div>;
   if (!episode) return <div className="text-center py-20 text-[#ef4444]">{tr("找不到集數")}</div>;
 
   const serverScenes: DramaScene[] = JSON.parse(episode.scenes || "[]");
   const selectedScene = selectedIdx !== null ? localScenes[selectedIdx] : null;
   const selectedServerScene = selectedIdx !== null ? serverScenes[selectedIdx] : null;
+
+  const directorIntent = localScenes[0]?.directorIntent?.trim() || "";
+  const episodeAssets = Array.from(new Map(localScenes.flatMap(s => s.locks ?? []).map(l => [l.id, l])).values());
+  const episodeSeconds = localScenes.reduce((t, s) => t + dramaSceneSeconds(s), 0);
+
+  // 動畫秒數以畫面上（可能還沒儲存）的規劃為準；批次生成前會先儲存。
+  const secondsAt = (i: number) => dramaSceneSeconds(localScenes[i] ?? serverScenes[i]);
+  const animatableIdx = serverScenes
+    .map((s, i) => (s.imageStatus === "completed" && s.bunnyUrl && !(s.videoStatus === "completed" && s.videoBunnyUrl) && s.videoStatus !== "generating" ? i : -1))
+    .filter(i => i >= 0);
+  const batchSeconds = animatableIdx.reduce((t, i) => t + secondsAt(i), 0);
+  const batchCost = dramaVideoCost(batchSeconds, "720p");
+  const startAnimateAll = () => saveScenesMutation.mutate(localScenes, { onSuccess: () => animateAllMutation.mutate({ resolution: "720p" }) });
+  const autoVideoSeconds = localScenes.reduce((t, _s, i) => t + (serverScenes[i]?.videoBunnyUrl || serverScenes[i]?.videoUrl ? 0 : secondsAt(i)), 0);
+  const autoCost = creditCost + dramaVideoCost(autoVideoSeconds, "720p");
+  const autoLabel = autoRun === "images" ? tr("分鏡圖") : autoRun === "trial" ? tr("試拍") : autoRun === "videos" ? tr("動畫") : tr("合成");
+  const autoContinue = () => {
+    autoFiring.current = true;
+    animateAllMutation.mutate({ resolution: "720p" }, { onSuccess: () => autoEnter("videos"), onError: () => autoStop() });
+  };
+  const autoReviewBar = (
+    <span className="flex flex-wrap items-center gap-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-lg" data-testid="status-auto-review">
+      <span>{tr("試拍好了：先看第 {0} 幕的長相、聲音和台詞。", { 0: autoTrialIdx.current + 1 })}</span>
+      <button type="button" onClick={autoContinue} disabled={animateAllMutation.isPending} className="font-semibold underline" data-testid="button-auto-continue">{tr("滿意，繼續其他幕")}</button>
+      <button type="button" onClick={() => autoStop()} className="underline" data-testid="button-auto-review-stop">{tr("停下來我改")}</button>
+    </span>
+  );
+  const autoDisabled = (user?.credits ?? 0) < autoCost || saveScenesMutation.isPending || generateImagesMutation.isPending
+    || animateAllMutation.isPending || !!episode.animateAllInProgress || localScenes.some(s => !s.description.trim());
+  const autoConfirmAndStart = () => {
+    if (!confirm(tr("一鍵做到底：自動生成分鏡圖，先試拍一幕給你確認，滿意後再生成其他幕的動畫（720P + AI 音效），最後合成整集。\n\n預估共 {0} 積分（分鏡圖 {1} 積分、動畫 {2} 秒）。失敗的部分會退回積分，任何一步失敗就會停下來。\n\n過程中請不要關閉這個頁面。確定開始？", { 0: autoCost, 1: creditCost, 2: autoVideoSeconds }))) return;
+    autoStart();
+  };
 
   // Per-scene effective chain mode: episode-level toggle OR per-scene override
   const chainEffective: boolean[] = localScenes.map(s => {
@@ -1993,6 +2188,11 @@ function EpisodeView({
           >
             🤖
           </button>
+          {(directorIntent || episodeAssets.length > 0) && (
+            <button onClick={() => setShowIntent(true)} className="text-xs px-2.5 py-1.5 rounded-lg bg-indigo-600/10 text-indigo-600 shrink-0" data-testid="mobile-director-intent" aria-label={tr("導演意圖")}>
+              🎬
+            </button>
+          )}
         </div>
 
         {/* Mobile: where am I in the flow */}
@@ -2168,6 +2368,21 @@ function EpisodeView({
             <br />
             {tr("待生成 {0} 幕", { 0: pendingCount })}
           </div>
+          {autoRun === "review" ? (
+            <span className="shrink-0 flex gap-1">
+              <button onClick={autoContinue} disabled={animateAllMutation.isPending} className="px-2.5 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold" data-testid="mobile-auto-continue">{tr("試拍 OK，繼續")}</button>
+              <button onClick={() => autoStop()} className="px-2 py-2 rounded-lg border border-[#e2e8f0] text-xs" data-testid="mobile-auto-review-stop">{tr("停")}</button>
+            </span>
+          ) : autoRun ? (
+            <button onClick={() => autoStop()} className="px-2.5 py-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold shrink-0" data-testid="mobile-auto-stop">
+              {tr("⚡ {0}中・停止", { 0: autoLabel })}
+            </button>
+          ) : !flowCompiled && localScenes.length >= 2 && (
+            <button onClick={autoConfirmAndStart} disabled={autoDisabled}
+              className="px-2.5 py-2 rounded-lg border border-indigo-200 bg-indigo-50 text-indigo-700 text-xs font-semibold shrink-0 disabled:opacity-50" data-testid="mobile-auto-run">
+              {tr("⚡ 一鍵到底 (-{0})", { 0: autoCost })}
+            </button>
+          )}
           {(() => {
             // Animate-all if all images done
             const animatable = serverScenes.filter(s => s.imageStatus === "completed" && s.bunnyUrl && !(s.videoStatus === "completed" && s.videoBunnyUrl) && s.videoStatus !== "generating").length;
@@ -2186,12 +2401,11 @@ function EpisodeView({
               );
             }
             if (pendingCount === 0 && animatable > 0) {
-              const batchCost = animatable * 5 * 8;
               return (
                 <button
                   onClick={() => {
-                    if (!confirm(tr("為 {0} 幕生成影片（5秒 720P + AI 音效），共消耗 {1} 積分？", { 0: animatable, 1: batchCost }))) return;
-                    animateAllMutation.mutate({ duration: 5, resolution: "720p", useOmniMode: false });
+                    if (!confirm(tr("為 {0} 幕生成影片（共 {1} 秒・720P + AI 音效），共消耗 {2} 積分？", { 0: animatable, 1: batchSeconds, 2: batchCost }))) return;
+                    startAnimateAll();
                   }}
                   disabled={animateAllMutation.isPending || (user?.credits ?? 0) < batchCost}
                   className="px-3 py-2 rounded-lg bg-[#0ea5e9] text-white text-xs font-semibold shrink-0 disabled:opacity-50"
@@ -2297,6 +2511,9 @@ function EpisodeView({
         </DarkButton>
 
         <DarkButton variant="secondary" onClick={addScene} disabled={localScenes.length >= 12}>{tr("＋ 新增幕")}</DarkButton>
+        {(directorIntent || episodeAssets.length > 0) && (
+          <DarkButton variant="secondary" onClick={() => setShowIntent(true)} data-testid="button-director-intent">{tr("🎬 導演意圖")}</DarkButton>
+        )}
         </FlowStep>
         <FlowStep n={2} title={tr("分鏡圖")} meta={tr("{0}/{1} 完成・每幕 {2} 積分", { 0: flowImg, 1: flowTotal, 2: IMAGE_COST })} state={flowState(2)}>
         <DarkButton
@@ -2405,7 +2622,6 @@ function EpisodeView({
           const generatingCount = serverScenes.filter(s => s.videoStatus === "generating").length;
           const totalVideoTargets = serverScenes.filter(s => s.imageStatus === "completed" && s.bunnyUrl).length;
           const completedVideos = serverScenes.filter(s => s.videoStatus === "completed" && s.videoBunnyUrl).length;
-          const batchCost = animatable * 5 * 8; // 5s @ 720p
           // Authoritative: server-persisted `animateAllInProgress` flag, set
           // when /animate-all dispatches and cleared when the loop ends. This
           // intentionally does NOT fall back to "≥2 scenes generating" — that
@@ -2452,10 +2668,10 @@ function EpisodeView({
           return animatable > 0 ? (
             <DarkButton
               onClick={() => {
-                if (!confirm(tr("即將為 {0} 幕生成影片（5秒 720P + AI 音效），共消耗 {1} 積分，確定？", { 0: animatable, 1: batchCost }))) return;
-                animateAllMutation.mutate({ duration: 5, resolution: "720p", useOmniMode: false });
+                if (!confirm(tr("即將為 {0} 幕生成影片（每幕照自己的秒數，共 {1} 秒・720P + AI 音效），共消耗 {2} 積分，確定？", { 0: animatable, 1: batchSeconds, 2: batchCost }))) return;
+                startAnimateAll();
               }}
-              disabled={animateAllMutation.isPending || (user?.credits ?? 0) < batchCost}
+              disabled={animateAllMutation.isPending || saveScenesMutation.isPending || (user?.credits ?? 0) < batchCost}
               style={{ background: "#0ea5e9", borderColor: "#0ea5e9" }}
             >
               {animateAllMutation.isPending ? tr("⏳ 派發中...") : tr("🎬 生成全部動畫（{0} 積分）", { 0: batchCost })}
@@ -2529,6 +2745,20 @@ function EpisodeView({
           {flowVid < flowTotal || flowTotal === 0 ? <span className="text-[11px] text-[#94a3b8]">{tr("全部動畫完成後開放")}</span> : null}
         </FlowStep>
         <span className="self-center text-xs text-[#64748b] pl-1" data-testid="episode-flow-hint">{flowHint}</span>
+        {autoRun === "review" ? (
+          <span className="self-center">{autoReviewBar}</span>
+        ) : autoRun ? (
+          <span className="self-center flex items-center gap-2 text-xs text-indigo-700 bg-indigo-50 border border-indigo-200 px-3 py-1.5 rounded-lg" data-testid="status-auto-run">
+            <span className="animate-pulse">{tr("⚡ 自動進行中：{0}", { 0: autoLabel })}</span>
+            <button type="button" onClick={() => autoStop()} className="underline">{tr("停止自動")}</button>
+          </span>
+        ) : !flowCompiled && localScenes.length >= 2 && (
+          <span className="self-center">
+            <DarkButton onClick={autoConfirmAndStart} disabled={autoDisabled} style={{ background: "#4f46e5", borderColor: "#4f46e5" }} data-testid="button-auto-run">
+              {tr("⚡ 一鍵做到底（約 {0} 積分）", { 0: autoCost })}
+            </DarkButton>
+          </span>
+        )}
       </div>
 
       {/* ── Compiled Episode Player ─────────────────────────────────────────── */}
@@ -2701,10 +2931,13 @@ function EpisodeView({
                 <DarkTextarea
                   value={selectedScene.description}
                   onChange={v => updateScene(selectedIdx!, { description: v })}
+                  enhance="image"
                   placeholder={tr("描述場景內容，AI 將根據此生成圖片...")}
                   rows={4}
                 />
               </div>
+
+              <StoryboardFields scene={selectedScene} isLast={selectedIdx === localScenes.length - 1} onUpdate={patch => updateScene(selectedIdx!, patch)} onLockChange={updateLock} />
 
               {/* Prompt Snippets Library */}
               <PromptSnippetsPanel
@@ -2784,9 +3017,19 @@ function EpisodeView({
                 <DarkTextarea
                   value={selectedScene.videoPrompt || ""}
                   onChange={v => updateScene(selectedIdx!, { videoPrompt: v })}
-                  placeholder={tr("留空＝用場景描述。填入＝動畫優先用此（含運鏡、景別、光線）")}
+                  enhance="video"
+                  placeholder={tr("留空＝生成動畫時 AI 會依這一幕的秒數自動寫。填入＝動畫用這一段。")}
                   rows={3}
                 />
+                <div className="mt-2">
+                  <label className="text-[10px] text-[#64748b] tracking-wide block mb-1">
+                    {tr("這一幕動畫：")}<span className="text-indigo-600 font-bold">{tr("{0} 秒", { 0: dramaSceneSeconds(selectedScene) })}</span>
+                    <span className="ml-1 text-[#94a3b8]">{tr("（720P {0} 積分）", { 0: dramaVideoCost(dramaSceneSeconds(selectedScene), "720p") })}</span>
+                  </label>
+                  <input type="range" min={DRAMA_SECONDS.min} max={DRAMA_SECONDS.max} value={dramaSceneSeconds(selectedScene)}
+                    onChange={e => updateScene(selectedIdx!, { plannedSeconds: Number(e.target.value) })}
+                    className="w-full accent-indigo-500" aria-label={tr("這一幕動畫的秒數")} data-testid="slider-scene-seconds" />
+                </div>
               </div>
 
               {/* Per-scene Chain Mode override (跨幕銜接) */}
@@ -3000,14 +3243,14 @@ function EpisodeView({
                   disabled={
                     generateFramesMutation.isPending
                     || !selectedScene.description.trim()
-                    || (user?.credits ?? 0) < 6
+                    || (user?.credits ?? 0) < 2 * IMAGE_COST
                     || selectedServerScene?.firstFrameStatus === "generating"
                     || selectedServerScene?.lastFrameStatus === "generating"
                   }
                   data-testid="button-generate-frames"
                 >
                   {generateFramesMutation.isPending ? tr("派發中…") :
-                   (selectedServerScene?.firstFrameUrl && selectedServerScene?.lastFrameUrl) ? tr("🔄 重新生成首尾幀 (-6積分)") : tr("🎞 生成首尾幀 (-6積分)")}
+                   (selectedServerScene?.firstFrameUrl && selectedServerScene?.lastFrameUrl) ? tr("🔄 重新生成首尾幀 (-{0}積分)", { 0: 2 * IMAGE_COST }) : tr("🎞 生成首尾幀 (-{0}積分)", { 0: 2 * IMAGE_COST })}
                 </DarkButton>
               </div>
 
@@ -3022,7 +3265,7 @@ function EpisodeView({
                   <DarkButton variant="secondary" className="w-full justify-center"
                     onClick={() => regenerateSceneMutation.mutate({ sceneIdx: selectedIdx! })}
                     disabled={regenerateSceneMutation.isPending}>
-                    {tr("🔄 重新生成圖片 (-3積分)")}
+                    {tr("🔄 重新生成圖片 (-{0}積分)", { 0: IMAGE_COST })}
                   </DarkButton>
                 )}
 
@@ -3033,7 +3276,7 @@ function EpisodeView({
                   </DarkButton>
                 )}
 
-                {selectedServerScene?.imageStatus === "completed" && selectedServerScene?.videoStatus !== "completed" && selectedServerScene?.videoStatus !== "generating" && (
+                {selectedServerScene?.imageStatus === "completed" && selectedServerScene?.videoStatus !== "generating" && (
                   <DarkButton className="w-full justify-center" style={{ background: "#7c3aed" }}
                     onClick={() => {
                       // Initialise animate dialog flags from the scene's saved preference
@@ -3041,7 +3284,7 @@ function EpisodeView({
                       setAnimUseFirstLast(!!selectedScene.useFirstLastFrame && hasFrames);
                       setAnimateDialog({ sceneIdx: selectedIdx! });
                     }}>
-                    {tr("🎬 生成動畫影片")}
+                    {selectedServerScene?.videoStatus === "completed" ? tr("🔁 重新生成動畫") : tr("🎬 生成動畫影片")}
                   </DarkButton>
                 )}
 
@@ -3122,20 +3365,10 @@ function EpisodeView({
               <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">
                 {tr("影片時長：")}<span className="text-indigo-600 font-bold">{tr("{0} 秒", { 0: animDuration })}</span>
               </label>
-              <input type="range" min={4} max={12} value={animDuration}
+              <input type="range" min={DRAMA_SECONDS.min} max={DRAMA_SECONDS.max} value={animDuration}
                 onChange={e => setAnimDuration(Number(e.target.value))} className="w-full accent-indigo-500" />
-              <div className="flex justify-between text-xs text-[#94a3b8] mt-1"><span>{tr("4秒")}</span><span>{tr("12秒")}</span></div>
-            </div>
-
-            <div onClick={() => setAnimUseOmni(!animUseOmni)}
-              className={`flex items-center justify-between p-3 rounded-xl border-2 cursor-pointer transition-all ${animUseOmni ? "border-indigo-500 bg-indigo-600/5" : "border-[#e2e8f0] hover:border-indigo-500/30"}`}>
-              <div>
-                <p className="text-sm font-semibold text-[#0f172a]">{tr("🌟 全能模式（WAN 3.0 暫不支援）")}</p>
-                <p className="text-xs text-[#64748b] mt-0.5">{tr("WAN 3.0 僅以場景圖作為首幀，此開關目前不會加入多圖參考")}</p>
-              </div>
-              <div className={`w-10 h-6 rounded-full relative flex-shrink-0 transition-all ${animUseOmni ? "bg-indigo-600" : "bg-[#e2e8f0]"}`}>
-                <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-all ${animUseOmni ? "left-5" : "left-1"}`} />
-              </div>
+              <div className="flex justify-between text-xs text-[#94a3b8] mt-1"><span>{tr("{0} 秒", { 0: DRAMA_SECONDS.min })}</span><span>{tr("{0} 秒", { 0: DRAMA_SECONDS.max })}</span></div>
+              <p className="text-xs text-[#94a3b8] mt-1">{tr("一幕是一個鏡頭，一次最長 30 秒。太長容易拖，一般 3 到 10 秒最順。")}</p>
             </div>
 
             {/* First/Last frame mode (only enabled if both frames exist) */}
@@ -3162,7 +3395,7 @@ function EpisodeView({
               <label className="text-xs text-[#64748b] uppercase tracking-wide mb-2 block">{tr("解析度")}</label>
               <div className="grid grid-cols-2 gap-3">
                 {(["720p", "1080p"] as const).map(r => {
-                  const cost = r === "1080p" ? Math.ceil(animDuration * 15) : Math.ceil(animDuration * 8);
+                  const cost = dramaVideoCost(animDuration, r);
                   return (
                     <button key={r} onClick={() => setAnimResolution(r)}
                       className={`p-3 rounded-xl border-2 text-sm transition-all ${animResolution === r ? "border-indigo-500 bg-indigo-600/10 text-indigo-600" : "border-[#e2e8f0] text-[#64748b] hover:border-indigo-500/40"}`}>
@@ -3176,7 +3409,7 @@ function EpisodeView({
 
             <div className="bg-[#f8fafc] rounded-lg p-3 text-sm text-[#64748b]">
               {tr("消耗")}<span className="font-bold text-indigo-600">
-                {animResolution === "1080p" ? Math.ceil(animDuration * 15) : Math.ceil(animDuration * 8)} {tr("積分")}
+                {dramaVideoCost(animDuration, animResolution)} {tr("積分")}
               </span>
               {tr("（現有 {0} 積分）", { 0: user?.credits ?? 0 })}
             </div>
@@ -3184,10 +3417,10 @@ function EpisodeView({
             <DarkButton
               onClick={() => animateSceneMutation.mutate({
                 sceneIdx: animateDialog.sceneIdx, duration: animDuration,
-                resolution: animResolution, useOmniMode: animUseOmni,
+                resolution: animResolution, useOmniMode: false,
                 useFirstLastFrame: animUseFirstLast,
               })}
-              disabled={animateSceneMutation.isPending || (user?.credits ?? 0) < (animResolution === "1080p" ? Math.ceil(animDuration * 15) : Math.ceil(animDuration * 8))}
+              disabled={animateSceneMutation.isPending || (user?.credits ?? 0) < (dramaVideoCost(animDuration, animResolution))}
               className="w-full justify-center"
               style={{ background: "#7c3aed" }}
             >
@@ -3195,6 +3428,49 @@ function EpisodeView({
             </DarkButton>
           </div>
         )}
+      </Modal>
+
+      {/* Director's intent + the episode's locked assets */}
+      <Modal open={showIntent} onClose={() => setShowIntent(false)} title={tr("🎬 導演意圖")}>
+        <div className="space-y-4" data-testid="director-intent">
+          <p className="text-xs text-[#64748b]">{tr("{0} 幕・動畫共約 {1} 秒", { 0: localScenes.length, 1: episodeSeconds })}</p>
+          {directorIntent && (
+            <ul className="space-y-1.5">
+              {directorIntent.split("\n").filter(l => l.trim()).map((l, i) => {
+                const [k, ...v] = l.split("｜");
+                return (
+                  <li key={i} className="text-xs text-[#334155] leading-relaxed">
+                    {v.length ? <><b className="text-[#0f172a]">{k.replace(/^[-・•]\s*/, "")}</b>｜{v.join("｜")}</> : l}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {episodeAssets.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-[#0f172a] mb-1.5">{tr("資產清單（固定外觀）")}</p>
+              <div className="space-y-1.5">
+                {episodeAssets.map(a => (
+                  <div key={a.id} className="rounded-lg border border-[#e2e8f0] bg-[#f8fafc] p-2">
+                    <span className="text-[11px] font-semibold text-indigo-600">{a.id}・{a.name}</span>
+                    <textarea value={a.lock} onChange={e => updateLock(a.id, e.target.value.slice(0, 240))} rows={2}
+                      aria-label={tr("{0} 的固定外觀", { 0: a.name })}
+                      className="mt-1 w-full text-[11px] leading-relaxed bg-white border border-[#e2e8f0] rounded-md px-2 py-1 resize-none" />
+                  </div>
+                ))}
+              </div>
+              <p className="text-[10px] text-[#94a3b8] mt-1.5">{tr("改完記得按儲存。已經生成的圖不會自動改變，要重新生成那一幕。")}</p>
+            </div>
+          )}
+          <div className="space-y-1">
+            <p className="text-xs font-semibold text-[#0f172a]">{tr("分鏡總表")}</p>
+            {localScenes.map((sc, i) => (
+              <p key={sc.id} className="text-[11px] text-[#475569] leading-relaxed">
+                <b>{i + 1}</b>｜{tr("{0} 秒", { 0: dramaSceneSeconds(sc) })}｜{[sc.framing, sc.angle].filter(Boolean).join("・") || "—"}｜{sc.title}{sc.purpose ? `｜${sc.purpose}` : ""}
+              </p>
+            ))}
+          </div>
+        </div>
       </Modal>
 
       {/* AI Script Generation Dialog */}
@@ -3205,7 +3481,9 @@ function EpisodeView({
         genre={project?.genre ?? undefined}
         characterAName={project?.characterAName ?? undefined}
         characterBName={project?.characterBName ?? undefined}
-        onApply={(aiScenes) => {
+        projectId={projectId}
+        episodeId={episodeId}
+        onApply={(aiScenes, intent) => {
           // If AI returns FEWER scenes than current AND any of the trailing scenes
           // have generated media, warn user before discarding them
           const trailingWithMedia = localScenes
@@ -3241,6 +3519,12 @@ function EpisodeView({
               cameraMovement: ai.cameraMovement,
               useCharA: ai.useCharA,
               useCharB: ai.useCharB,
+              // 腳本重寫了這一幕：秒數與動態提示詞跟著換；AI 沒寫動態提示詞就清空，生成動畫時會補寫。
+              plannedSeconds: ai.plannedSeconds ?? existing?.plannedSeconds,
+              videoPrompt: ai.videoPrompt,
+              framing: ai.framing, angle: ai.angle, sound: ai.sound, purpose: ai.purpose, locks: ai.locks,
+              endOnNext: ai.endOnNext,
+              directorIntent: i === 0 ? (intent || undefined) : undefined,
               imageStatus: existing?.imageStatus ?? "pending",
             };
           });
@@ -3310,7 +3594,7 @@ function EpisodeView({
                       </button>
                     )}
 
-                    {ss?.imageStatus === "completed" && ss?.videoStatus !== "completed" && ss?.videoStatus !== "generating" && (
+                    {ss?.imageStatus === "completed" && ss?.videoStatus !== "generating" && (
                       <button
                         onClick={() => {
                           const hasFrames = !!(ss?.firstFrameUrl && ss?.lastFrameUrl);
@@ -3321,7 +3605,7 @@ function EpisodeView({
                         className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-[#7c3aed]/10 text-[#7c3aed] text-sm font-medium"
                         data-testid="action-animate"
                       >
-                        <span className="text-lg">🎬</span><span>{tr("生成動畫影片")}</span>
+                        <span className="text-lg">🎬</span><span>{ss?.videoStatus === "completed" ? tr("重新生成動畫") : tr("生成動畫影片")}</span>
                       </button>
                     )}
 
@@ -3403,8 +3687,9 @@ function EpisodeView({
                   </div>
                   <div>
                     <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">{tr("場景描述")}</label>
-                    <DarkTextarea value={selectedScene.description} onChange={v => updateScene(selectedIdx!, { description: v })} placeholder={tr("描述場景內容...")} rows={4} />
+                    <DarkTextarea value={selectedScene.description} onChange={v => updateScene(selectedIdx!, { description: v })} placeholder={tr("描述場景內容...")} rows={4} enhance="image" />
                   </div>
+                  <StoryboardFields scene={selectedScene} isLast={selectedIdx === localScenes.length - 1} onUpdate={patch => updateScene(selectedIdx!, patch)} onLockChange={updateLock} />
                   <div>
                     <label className="text-[10px] text-[#64748b] uppercase tracking-wide mb-1.5 block">{tr("台詞（選填）")}</label>
                     <DarkInput value={selectedScene.dialogue || ""} onChange={v => updateScene(selectedIdx!, { dialogue: v })} placeholder={tr("人物台詞")} />

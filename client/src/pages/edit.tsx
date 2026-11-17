@@ -7,6 +7,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "@/components/AppNav";
+import { EnhancePromptButton } from "@/components/EnhancePromptButton";
 import type { ImageGeneration } from "@shared/schema";
 import { IMAGE_RATIOS } from "@shared/imageSizes";
 import { EXPRESSIONS, PHOTO_LOOKS } from "@shared/photosetOptions";
@@ -333,6 +334,7 @@ export default function EditPage() {
                   <p className={`text-xs ${box ? "text-green-600" : "text-amber-600"}`}>{box ? tr("✓ 已框選範圍，可以重新拖曳調整。") : tr("① 先在左邊的圖上拖曳出一個方框。")}</p>
                   <textarea value={text} onChange={e => setText(e.target.value.slice(0, 300))} rows={3} disabled={busy}
                     placeholder={tr("② 框內要改成什麼？例如：換成一杯冰拿鐵、把標誌拿掉、改成短袖")} className={inputCls} data-testid="input-edit-text" />
+                  <div className="flex justify-end"><EnhancePromptButton value={text} onChange={v => setText(v.slice(0, 300))} kind="image" disabled={busy} /></div>
                 </div>
               )}
               {tool === "expression" && (
@@ -344,6 +346,7 @@ export default function EditPage() {
                 <textarea value={text} onChange={e => setText(e.target.value.slice(0, 300))} rows={3} disabled={busy}
                   placeholder={tr("要加入什麼？放在哪裡？例如：右手拿著一束白色鬱金香")} className={inputCls} data-testid="input-edit-text" />
               )}
+              {tool === "object" && <div className="flex justify-end"><EnhancePromptButton value={text} onChange={v => setText(v.slice(0, 300))} kind="image" disabled={busy} /></div>}
               {tool === "recolor" && (
                 <div className="grid grid-cols-2 gap-2">
                   <input value={target} onChange={e => setTarget(e.target.value.slice(0, 30))} placeholder={tr("要換色的東西，例如：洋裝")} disabled={busy} className={inputCls} data-testid="input-edit-target" />

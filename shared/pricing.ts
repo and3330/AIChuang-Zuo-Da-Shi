@@ -22,24 +22,37 @@ export const VIDEO_COST_PER_SECOND = { "720p": 8, "1080p": 15 } as const;
  * 影片頁可以選的模型：價格，以及這個模型做得到的選項（頁面只顯示做得到的）。
  *   ratios   文字生影片可選的畫面比例；圖生影片一律跟隨首幀圖片。
  *   audio    模型本身會不會輸出音軌（WAN 會；Kling 沒有開關，以實際輸出為準）。
- * 影片長度兩個模型在網站上都開放 VIDEO_SECONDS 的範圍。夥伴 API 與故事動畫只用 WAN。
+ *   minSeconds / maxSeconds  一次生成可以做的長度（AtlasCloud 規格，2026-11 查過：三個都到 30 秒）。
+ *   keyframes  一次生成最多可以放幾張關鍵幀（首幀＋中間幀）。Kling 4.0 收 middle_images，總共 10 張；
+ *              WAN 與 Seedance 只收首幀（和尾幀），中間的鏡頭靠提示詞切換。
+ * 影片頁的長度滑桿仍用 VIDEO_SECONDS；UGC 短片用 maxSeconds 一次做完整支。夥伴 API 與故事動畫只用 WAN。
  */
 export const VIDEO_MODELS = {
   wan: {
     label: "WAN 3.0", desc: "阿里 WAN 3.0，速度快、價格低，自帶音訊。",
     perSecond: { "720p": 8, "1080p": 15 }, ratios: ["16:9", "9:16", "1:1", "4:3", "3:4"], audio: true,
+    minSeconds: 2, maxSeconds: 30, keyframes: 1,
   },
   kling: {
     label: "Kling 4.0", desc: "可靈 Kling 4.0，人物與動作更細緻，適合要求高的作品。",
     perSecond: { "720p": 12, "1080p": 20 }, ratios: ["16:9", "9:16", "1:1", "21:9"], audio: false,
+    minSeconds: 3, maxSeconds: 30, keyframes: 10,
   },
   // AtlasCloud list price (2026-11): 720p US$0.30/s, 1080p US$0.59/s — about 2.7× Kling's.
   // Priced for about a 40% gross margin (1 credit = NT$1, after the 8% payment fee).
   seedance: {
     label: "Seedance 2.5", desc: "字節 Seedance 2.5，畫面與動作最細緻、自帶音訊，價格最高。",
     perSecond: { "720p": 18, "1080p": 35 }, ratios: ["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"], audio: true,
+    minSeconds: 4, maxSeconds: 30, keyframes: 1,
   },
 } as const;
+
+/** Seconds one generation of this model may run, clamped to what the model accepts. */
+export function clampVideoSeconds(model: string | null | undefined, seconds: unknown): number {
+  const m = VIDEO_MODELS[videoModelKey(model)];
+  const n = Math.round(Number(seconds) || VIDEO_SECONDS.default);
+  return Math.max(m.minSeconds, Math.min(m.maxSeconds, n));
+}
 export type VideoModelKey = keyof typeof VIDEO_MODELS;
 export const VIDEO_MODEL_KEYS = Object.keys(VIDEO_MODELS) as VideoModelKey[];
 export const VIDEO_SECONDS = { min: 4, max: 12, default: 5 } as const;

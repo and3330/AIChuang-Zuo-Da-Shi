@@ -225,7 +225,7 @@ export const insertImageToImageSchema = createInsertSchema(imageGenerations).pic
 export const insertBatchImageToImageSchema = z.object({
   type: z.literal("image-to-image"),
   originalImageUrl: z.string(),
-  prompts: z.array(z.string()).min(2).max(10),
+  prompts: z.array(z.string()).min(1).max(10),
   /** Extra reference images shared by every prompt (e.g. character refs).
    *  With originalImageUrl that is at most 10 images for the edit model. */
   additionalImageUrls: z.array(z.string()).max(9).optional(),
@@ -242,10 +242,12 @@ export const insertBatchImageToImageSchema = z.object({
 export const insertImageToVideoSchema = z.object({
   type: z.literal("image-to-video"),
   originalImageUrl: z.string(),
-  additionalImageUrls: z.array(z.string()).max(3).optional(),
+  /** Kling 4.0 only: keyframes after the first frame, in timeline order (sent as middle_images; 10 images in all). */
+  additionalImageUrls: z.array(z.string()).max(9).optional(),
   referenceAudioUrl: z.string().optional(),
   prompt: z.string(),
-  duration: z.number().min(4).max(12).optional().default(5),
+  /** The route clamps this to the chosen model's own range (VIDEO_MODELS[...].minSeconds–maxSeconds). */
+  duration: z.number().min(2).max(30).optional().default(5),
   cameraFixed: z.boolean().optional().default(false),
   aspectRatio: z.enum(["16:9", "9:16", "1:1", "4:3", "3:4", "21:9"]).optional().default("16:9"),
   resolution: z.enum(["720p", "1080p"]).optional().default("1080p"),
@@ -331,6 +333,9 @@ export type StoryScene = {
   status: "pending" | "generating" | "completed" | "failed";
 };
 
+/** One locked asset: S1… characters, P1… props, L1… locations. `lock` is a keyword stack. */
+export type DramaLock = { id: string; name: string; lock: string };
+
 export type DramaScene = {
   id: string;
   sceneNumber: number;
@@ -351,6 +356,8 @@ export type DramaScene = {
   imageError?: string;
   // First / Last frame mode (AIComicBuilder-style 首尾幀插值)
   useFirstLastFrame?: boolean;
+  /** 轉場：這一幕的動畫收在下一幕分鏡圖的畫面（用下一幕的圖當尾幀）。 */
+  endOnNext?: boolean;
   firstFrameUrl?: string;
   firstFrameBunnyUrl?: string;
   firstFrameStatus?: "pending" | "generating" | "completed" | "failed";
@@ -359,6 +366,19 @@ export type DramaScene = {
   lastFrameStatus?: "pending" | "generating" | "completed" | "failed";
   /** AI-generated professional video prompt (overrides description if present) */
   videoPrompt?: string;
+  /** How many seconds this scene's animation should run (planned by the script AI or set by
+   *  the user). Batch animation uses it; `videoDuration` is what the finished video actually ran. */
+  plannedSeconds?: number;
+  /** Ten-column storyboard fields written by the director-mode script AI (all editable). */
+  framing?: string;   // 景別
+  angle?: string;     // 角度
+  sound?: string;     // 聲音（環境音、音效、人聲；不含配樂）
+  purpose?: string;   // 敘事目的「標籤｜理由」
+  /** Locked visual anchors of the characters, props and location in this scene, copied word for
+   *  word from the episode's asset list so every scene describes them the same way. */
+  locks?: DramaLock[];
+  /** The episode's director's intent. Kept on the first scene only (no extra episode column). */
+  directorIntent?: string;
   /** Per-scene chain-mode override. "inherit" follows the episode-level toggle. */
   chainModeOverride?: "on" | "off" | "inherit";
   /** Per-scene override for which image is fed in as the continuity reference.

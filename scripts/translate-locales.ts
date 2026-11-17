@@ -113,7 +113,7 @@ Rules:
 
 ${JSON.stringify(input, null, 1)}`;
   const file = join(work, `${lang}-${section}-${n}.json`);
-  writeFileSync(file, JSON.stringify({ model: MODEL, max_tokens: 16000, temperature: 0.2, messages: [{ role: "user", content: prompt }] }), "utf8");
+  writeFileSync(file, JSON.stringify({ model: MODEL, max_tokens: 16000, ...(MODEL.startsWith("openai/gpt-5") ? {} : { temperature: 0.2 }), messages: [{ role: "user", content: prompt }] }), "utf8");
   const reply = await atlas(file);
   const start = reply.indexOf("{"), end = reply.lastIndexOf("}");
   const parsed = JSON.parse(reply.slice(start, end + 1)) as Record<string, unknown>;

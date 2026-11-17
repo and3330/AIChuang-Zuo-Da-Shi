@@ -6,6 +6,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "@/components/AppNav";
+import { EnhancePromptButton } from "@/components/EnhancePromptButton";
 import { LibraryPicker } from "@/components/LibraryPicker";
 import { CharacterWizard } from "@/components/CharacterWizard";
 import { VaultPicker } from "@/components/VaultPicker";
@@ -676,6 +677,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
         <textarea value={sceneText} onChange={e => { setSceneText(e.target.value.slice(0, 400)); if (plan) resetPlan(); }} rows={2} disabled={busy}
           placeholder={situationPath ? tr("例如：改成傍晚的光線、人少一點") : tr("例如：午後的老咖啡店，靠窗的位置，暖色的陽光斜照進來")}
           className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent" data-testid="input-scene-text" />
+        <div className="flex justify-end mt-1"><EnhancePromptButton value={sceneText} onChange={v => { setSceneText(v.slice(0, 400)); if (plan) resetPlan(); }} kind="image" disabled={busy} /></div>
       </div>
     </>
   );
@@ -748,6 +750,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
           className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 placeholder:text-slate-400 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-70"
           data-testid="input-photoset-direction"
         />
+        <div className="flex justify-end mt-1"><EnhancePromptButton value={direction} onChange={v => { setDirection(v.slice(0, 1000)); if (plan) setPlan(null); }} kind="copy" disabled={busy} testId="enhance-photoset-direction" /></div>
         <p id="photoset-direction-count" className="mt-1 text-right text-xs tabular-nums text-slate-500" aria-live="polite">
           {direction.length}／1,000
         </p>
@@ -1006,6 +1009,7 @@ export default function PhotosetPage({ variant = "studio" }: { variant?: Variant
                     </div>
                     <textarea value={shot.prompt} onChange={(e) => updateShot(idx, { prompt: e.target.value })} disabled={busy} rows={3} placeholder={tr("描述這張的景別、角度、姿勢、表情與光線")}
                       className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm leading-relaxed focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-slate-50" />
+                    <div className="flex justify-end"><EnhancePromptButton value={shot.prompt} onChange={v => updateShot(idx, { prompt: v })} kind="image" disabled={busy} /></div>
                     {!isSheet && (
                       <div className="flex items-center gap-x-3 gap-y-1 flex-wrap text-xs">
                         {shot.poseRef && <img src={shot.poseRef} alt={tr("姿勢參考")} className="w-9 h-11 rounded-md object-contain border border-slate-200 bg-slate-50" />}
