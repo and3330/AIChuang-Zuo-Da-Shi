@@ -24,7 +24,34 @@ import {
   sanitizeProfile, profilePrompt, looksPrompt, PROFILE_ATTRS, MAX_FACE_PHOTOS,
   type CharacterProfile, type FaceBox,
 } from "@shared/characterProfile";
-import { motionPromptRequest, finishMotionPrompt } from "@shared/dramaMotion";
+import { motionPromptRequest, finishMotionPrompt, dramaSceneSeconds, sceneShotNote } from "@shared/dramaMotion";
+
+/**
+ * Write one scene's motion prompt with the Seed model (free). The model is told the previous and
+ * next scene, the scene's own length, and whether chain mode asks it to bridge them.
+ * Returns "" when the model gave nothing; throws on a provider error.
+ */
+export async function writeDramaMotionPrompt(scenes: any[], sceneIdx: number, episodeChainOn: boolean, seconds?: number): Promise<string> {
+  const scene = scenes[sceneIdx];
+  const ov = scene?.chainModeOverride ?? "inherit";
+  const chain = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
+  const nextScene = scenes[sceneIdx + 1];
+  const hasLastFrame = !!(scene.useFirstLastFrame && (scene.lastFrameBunnyUrl || scene.lastFrameUrl))
+    || !!(scene.endOnNext && (nextScene?.bunnyUrl || nextScene?.imageUrl));
+  const resp = await createAtlasSeedClient().messages.create({
+    model: ATLAS_SEED_MODEL,
+    max_tokens: 400,
+    messages: [{
+      role: "user",
+      content: motionPromptRequest({
+        scene, prev: sceneIdx > 0 ? scenes[sceneIdx - 1] : null, next: scenes[sceneIdx + 1] ?? null,
+        chain, hasLastFrame, durationSeconds: dramaSceneSeconds(scene, seconds),
+      }),
+    }],
+  });
+  const textBlock = resp.content.find((b: any) => b.type === "text") as any;
+  return finishMotionPrompt(textBlock?.text || "");
+}
 import {
   insertCharacterLibrarySchema,
   updateCharacterLibrarySchema,
@@ -1132,27 +1159,7 @@ ${rawText}`;
 
       if (!atlasIsConfigured()) return res.status(500).json({ error: "ATLASCLOUD_API_KEY 未設定" });
 
-      const anthropic = createAtlasSeedClient();
-
-      // Always pass prev/next scene context to Claude so rewriter understands
-      // the episode timeline. Chain Mode adds extra "must bridge" requirements.
-      const episodeChainOn = !!episode.chainMode;
-      const ov = scene?.chainModeOverride ?? "inherit";
-      const sceneChainOn = ov === "on" ? true : ov === "off" ? false : episodeChainOn;
-      const prevScene = sceneIdx > 0 ? scenes[sceneIdx - 1] : null;
-      const nextScene = sceneIdx + 1 < scenes.length ? scenes[sceneIdx + 1] : null;
-
-      const hasLastFrame = !!(scene.useFirstLastFrame && (scene.lastFrameBunnyUrl || scene.lastFrameUrl));
-      const prompt = motionPromptRequest({ scene, prev: prevScene, next: nextScene, chain: sceneChainOn, hasLastFrame });
-
-      const claudeResp = await anthropic.messages.create({
-        model: ATLAS_SEED_MODEL,
-        max_tokens: 400,
-        messages: [{ role: "user", content: prompt }],
-      });
-
-      const textBlock = claudeResp.content.find((b: any) => b.type === "text") as any;
-      const videoPrompt = finishMotionPrompt(textBlock?.text || "");
+      const videoPrompt = await writeDramaMotionPrompt(scenes, sceneIdx, !!episode.chainMode);
       if (!videoPrompt) return res.status(500).json({ error: "AI 未產生提示詞" });
 
       scenes[sceneIdx].videoPrompt = videoPrompt;
@@ -1298,7 +1305,7 @@ ${rawText}`;
           const continuityNote = continuityRef
             ? "（第 1 張參考圖為上一幕的結尾畫面，請從此畫面自然延續構圖、角色站位、光線與氛圍）"
             : "";
-          const baseDesc = `${scene.description}${dialoguePart}${continuityNote}`;
+          const baseDesc = `${scene.description}${sceneShotNote(scene)}${dialoguePart}${continuityNote}`;
 
           const genOne = async (framePrompt: string, label: "first" | "last"): Promise<string | null> => {
             try {

@@ -18,14 +18,17 @@
  *                shots of that person with the product, plus a ready-to-post
  *                caption and hashtags. Image order sent to the image model is
  *                [...reference images, ...product images].
- *   ugc        — UGC 實拍短片 (/ugc). Same inputs as product, but the plan is a short
- *                video script: each shot has a first-frame image prompt (`prompt`),
- *                an English image-to-video motion prompt (`motion`), an on-screen
- *                subtitle (`subtitle`) and a length (`seconds`). The rules come from the
- *                owner's own prompt skills (short-video, video-continuity,
- *                image-to-video, hook library): 4–5 shots, a hook first, the same
- *                subject description repeated in every shot, motion written as
- *                "anchor + subject motion + camera + light", and no invented speech.
+ *   ugc        — UGC 實拍短片 (/ugc). Same inputs as product, plus the film's length and
+ *                the video model. The plan is a product script laid out like the
+ *                「AI 短劇導演」skill's storyboard: a director's intent, then a ten-column
+ *                table (shot, time, angle, framing, action, sound, camera, purpose,
+ *                subtitle, clip). Shots are grouped into Clips; one Clip is one video
+ *                generation, as long as the model allows (VIDEO_MODELS[...].maxSeconds,
+ *                30 s for all three), so a film up to 30 s is made in ONE generation with
+ *                the cuts written into its prompt and no editing afterwards. Each clip
+ *                has one English, time-coded multi-shot prompt (`clips[].motion`).
+ *                Keyframes: Kling 4.0 takes one per shot (first frame + middle_images),
+ *                the others only the clip's first frame; `shots[].keyframe` marks them.
  *
  * POST /api/photosets/plan returns the shot list. planner "ai" asks Claude to
  * look at the images; planner "preset" (character mode only) returns the
@@ -48,6 +51,7 @@ import type { ObjectStorageService } from "./objectStorage";
 import { assertAllowedRemoteUrl, fetchImageWithLimits } from "./ssrfGuard";
 import { PHOTO_LOOKS, poseById, type Pose } from "@shared/photosetOptions";
 import { LANGUAGE_NAME, languageNote, type RequestLang } from "./lang";
+import { VIDEO_MODELS, type VideoModelKey } from "@shared/pricing";
 
 const PLANNER_MODEL = ATLAS_SEED_MODEL;
 
@@ -59,6 +63,12 @@ export const PHOTOSET_MAX_REFERENCES = 9;
 const PLANNER_REFERENCE_LOOKS = 3;
 /** Product mode: photos of the product. */
 export const PHOTOSET_MAX_PRODUCT_IMAGES = 3;
+/** UGC film length. Every video model makes 30 s in one go, so the page never needs editing. */
+export const UGC_MIN_SECONDS = 8;
+export const UGC_MAX_SECONDS = 30;
+export const UGC_DEFAULT_SECONDS = 15;
+/** No shot shorter than this (「AI 短劇導演」Clip rule). */
+const UGC_MIN_SHOT_SECONDS = 1.5;
 
 export const planRequestSchema = z.object({
   mode: z.enum(["scene", "character", "product", "ugc"]).default("scene"),
@@ -102,6 +112,9 @@ export const planRequestSchema = z.object({
   lang: z.enum(["zh", "zh-CN", "en", "ja", "vi"]).optional(),
   /** Scene mode: the full reading of the 情境圖 (from POST /api/photosets/read-photo), possibly edited by the person. */
   photoReading: z.string().trim().max(3000).optional(),
+  /** ugc mode: the whole film's length, and the video model that will make it. */
+  totalSeconds: z.number().int().min(UGC_MIN_SECONDS).max(UGC_MAX_SECONDS).optional(),
+  videoModel: z.enum(["wan", "kling", "seedance"]).optional(),
 });
 
 /* ---------- full reading of the photo to copy (照片同款) ---------- */
@@ -167,14 +180,25 @@ function firstJsonObject(text: string): unknown {
 type PlanRequest = z.infer<typeof planRequestSchema>;
 export type PhotosetShot = {
   title: string; prompt: string;
-  /** ugc mode: image-to-video motion prompt (English), on-screen subtitle, clip length. */
-  motion?: string; subtitle?: string; seconds?: number;
+  /** Legacy single-shot motion prompt (ugc plans now carry one per clip in `clips`). */
+  motion?: string;
+  /** ugc mode, the storyboard columns: on-screen subtitle, length (0.5 s steps), start time in the film,
+   *  framing, angle, camera move, visible action, sound, narrative purpose; `keyframe` = gets its own picture. */
+  subtitle?: string; seconds?: number; start?: number;
+  framing?: string; angle?: string; camera?: string; action?: string; sound?: string; purpose?: string;
+  keyframe?: boolean;
 };
+/** ugc mode: one video generation. `shots` are 0-based indexes into plan.shots, in order. */
+export type PhotosetClip = { shots: number[]; seconds: number; motion: string };
 export type PhotosetPlan = {
   analysis: string; shots: PhotosetShot[];
   customPrompt?: string;
   /** Product mode only: a post to go with the pictures. */
   caption?: string; hashtags?: string[];
+  /** ugc mode: director's intent (hook, structure, rhythm) and the video generations. */
+  intent?: string; clips?: PhotosetClip[];
+  /** The planner's unchecked clip list, only between parsePlan and finishUgcPlan. */
+  rawClips?: unknown;
 };
 
 /* ---------- fixed nine-shot character sheet ---------- */
@@ -361,43 +385,80 @@ function buildUgcPrompt(req: PlanRequest, refLooks: number, productLooks: number
   const info: string[] = [];
   if (req.productName?.trim()) info.push(`商品名稱：${req.productName.trim()}`);
   if (req.sellingPoints?.trim()) info.push(`賣家提供的賣點（字幕與文案只能根據這些與圖片上看得到的內容）：${req.sellingPoints.trim()}`);
-  return `你是一位短影音導演兼 UGC 帶貨內容企劃。你會看到 ${refLooks + productLooks} 張圖：前 ${refLooks} 張是同一位「人物」的參考圖，只用來確認這個人的臉部五官、髮型髮色與身形；後 ${productLooks} 張是同一件「商品」的照片。
+  const model = ugcModel(req);
+  const spec = VIDEO_MODELS[model];
+  const total = ugcSeconds(req);
+  const clipCount = Math.ceil(total / spec.maxSeconds);
+  const perShotFrames = spec.keyframes > 1;
+  const clipLine = clipCount === 1
+    ? `整支 ${total} 秒在「一次」影片生成裡完成（${spec.label} 一次最長 ${spec.maxSeconds} 秒），鏡頭之間的切換直接寫在影片提示詞裡，成品不需要再剪接。`
+    : `${spec.label} 一次最長 ${spec.maxSeconds} 秒，所以分成 ${clipCount} 個 Clip（每個 Clip 是一次影片生成，不超過 ${spec.maxSeconds} 秒），Clip 內的鏡頭切換寫在提示詞裡。`;
+  const frameLine = perShotFrames
+    ? `${spec.label} 可以放關鍵幀：每個鏡頭都會先生成一張「關鍵幀圖」（該鏡頭開始的那一格），依時間順序一起交給影片模型。在 motion 裡用 @image_1、@image_2…（依鏡頭在 Clip 內的順序編號）指出每個鏡頭從哪一張關鍵幀開始。`
+    : `${spec.label} 只收一張首幀：每個 Clip 只有第一個鏡頭會生成「首幀圖」，後面的鏡頭完全靠 motion 的文字描述切換出來，所以每個鏡頭的畫面在 motion 裡都要寫得具體完整。`;
+  return `你是一位 UGC 帶貨短影音的導演兼分鏡師。身為導演，你決定觀眾在什麼時候、用什麼方式看到商品；身為分鏡師，你用影片模型能生成的單位把這支片拆成鏡頭。你會看到 ${refLooks + productLooks} 張圖：前 ${refLooks} 張是同一位「人物」的參考圖，只用來確認這個人的臉部五官、髮型髮色與身形；後 ${productLooks} 張是同一件「商品」的照片。
 
-請寫一支 ${req.count} 個鏡頭的直式（9:16）UGC 實拍短片腳本：這位人物用手機自拍或請朋友手持拍攝，分享自己實際使用這件商品，適合 Reels、TikTok、Shorts。每個鏡頭會先生成一張「首幀圖」，再用圖生影片把它變成 4–6 秒的影片，所以每個鏡頭要同時給首幀圖的描述與動態的描述。
+請寫一支 ${total} 秒、${req.count} 個鏡頭的直式（9:16）UGC 商品腳本：這位人物用手機自拍或請朋友手持拍攝，分享自己實際使用這件商品，適合 Reels、TikTok、Shorts。
+${clipLine}
+${frameLine}
 ${info.length ? `\n【商品資訊】\n${info.join("\n")}\n` : ""}
-【先分析】
-用 2–3 句繁體中文描述：這件商品是什麼（品類、外觀、顏色、材質），以及你選定的「一個」拍攝地點、時段與光線（要是這類商品實際會被使用的日常場景）。
+【analysis：先分析】
+用 2–3 句繁體中文描述：這件商品是什麼（品類、外觀、顏色、材質、包裝上看得到的特徵），以及你選定的「一個」拍攝地點、時段與光線（要是這類商品實際會被使用的日常場景）。
 
-【整支片的結構】（${req.count} 個鏡頭依序對應，鏡頭較少時合併中間段）
-1. 鉤子：前 2–3 秒就要讓人停下來。人物看向鏡頭、商品已經在畫面裡，像是影片從事情中途切入。
-2. 展示：開箱或拿起商品，對著鏡頭展示外觀。
-3. 使用：實際使用商品的過程，手部與商品的近景。
-4. 感受：使用後的反應或細節特寫，靠表情與小動作表現，不靠台詞。
-5. 收尾：人物拿著商品看向鏡頭，停在一個可以定格的畫面。
+【intent：導演意圖】繁體中文 3–5 句，依序寫：
+1. 鉤子：用哪一種鉤子公式（反直覺的結論／具體數字加時間／點名某一種人／從事情中途切入），以及前 3 秒觀眾看到什麼。
+2. 結構：這支商品腳本的段落安排（見下方商品腳本結構）。
+3. 節奏：哪裡快、哪裡停留；畫面與現場音怎麼配合。
+4. 收尾：最後一個畫面停在哪裡。
 
-【每個鏡頭的 prompt（首幀圖）】
+【商品腳本結構】（${req.count} 個鏡頭依序對應，鏡頭較少時合併中間段）
+1. 鉤子（前 3 秒內）：人物看向鏡頭、商品已經在畫面裡，像是影片從事情中途切入。
+2. 情境或痛點：這件商品會出現的日常時刻，用看得見的動作表現，不用台詞說明。
+3. 商品登場：拿起或打開商品，對著鏡頭展示外觀與包裝。
+4. 使用示範：實際使用的過程，手部與商品的近景。
+5. 效果與細節：使用後的反應或質地、細節特寫，靠表情與小動作表現。
+6. 行動呼籲：人物拿著商品看向鏡頭，停在一個可以定格的畫面。
+
+【分鏡規則】
+- 每個鏡頭都要有存在的理由，purpose 寫「目的標籤｜一句話理由」，目的標籤從這些挑：鉤子、建立、展示、示範、細節、反應、轉折、收尾。
+- 景別要有遠近變化（特寫、近景、中景、全景），連續兩個鏡頭不要用同一個景別；至少一個商品或手部的特寫。
+- 情緒越重，表達越輕：用表情與小動作，不要直接寫「她很開心」。
+- 每個鏡頭只做一個清楚、物理上合理的動作；動作要小而真實（拿起、轉動、打開、塗抹、喝一口、對鏡頭微笑、點頭）。
+- 鏡頭時長參考：簡單動作 2–3 秒、展示或使用 3–5 秒、反應或表情 1.5–2.5 秒、細節特寫 1.5–2 秒、收尾定格 2–3 秒。每個鏡頭至少 ${UGC_MIN_SHOT_SECONDS} 秒，以 0.5 秒為單位，全部鏡頭加起來剛好 ${total} 秒。
+- 不要自編台詞或旁白；人物不開口說話。聲音只用非語言的現場音（例如 soft room tone, cap click, fabric rustle, pouring sound）${spec.audio ? "" : `；${spec.label} 不輸出聲音，sound 欄仍寫建議的後製音效`}。
+- 畫面裡不出現文字；字幕另外由 subtitle 欄位提供，後製再疊上去。
+
+【每個鏡頭的欄位】
+- title：4–10 字的鏡頭名稱。
+- purpose：見上方分鏡規則。
+- framing：景別（大遠景／遠景／全景／中景／近景／特寫／大特寫 擇一）。
+- angle：角度（平視／俯拍／仰拍／頂拍／微俯 擇一）。
+- camera：運鏡（手持微晃、自拍視角、POV、緩慢推近、固定鏡頭、跟拍 等，幅度要小）。
+- action：畫面內容，繁體中文一句話，只寫看得見的動作，關鍵道具要點名。
+- sound：聲音。
+- seconds：這個鏡頭的秒數。
+- prompt：${perShotFrames ? "這個鏡頭的關鍵幀圖" : "這個鏡頭開始那一格的畫面（只有每個 Clip 的第一個鏡頭會真的生成成首幀圖）"}提示詞，規則如下。
+- subtitle：字幕，規則如下。
+
+【prompt（關鍵幀圖）的規則】
 ${SHOT_RULES}
-- 首幀是影片的第一格：畫面是動作「開始前」的靜止瞬間，不要寫動作的過程。
+- 關鍵幀是該鏡頭的第一格：畫面是動作「開始前」的靜止瞬間，不要寫動作的過程。
 - 風格是手機實拍：手持或自拍視角、現場自然光、構圖隨性、背景是真實的居家或日常環境。
 - 每個鏡頭都要用同一句話重複寫出：人物的服裝、商品的外觀（品類、形狀、顏色、材質）、拍攝地點，讓每個鏡頭看起來是同一次拍攝。
 - 商品必須清楚可辨識，不要變形，不要出現第二種商品。
 
-【每個鏡頭的 motion（圖生影片的動態，用英文寫）】
-- 一段連貫的英文段落，40–70 個英文單字，不要條列。
-- 首幀圖模型已經看得到，所以只用半句話點出主體，其餘都寫「接下來幾秒發生的變化」。
-- 依序寫三件事：主體動作（一個鏡頭只做一個清楚、物理上合理的動作）、鏡頭運動（handheld、slight push-in、POV、static 擇一，幅度要小）、光線或氛圍的細微變化。
-- 動作要小而真實：拿起、轉動、打開、塗抹、喝一口、對鏡頭微笑、點頭。不要快速剪接、不要特效、不要畫面文字。
-- 聲音只寫非語言的現場音（例如 soft room tone, cap click, fabric rustle）。不要寫任何人物說話的台詞。
-- 結尾加上：The product keeps its exact shape, color and label. Natural phone-video look, no text overlay.
-
-【每個鏡頭的 subtitle（上字幕用的一句話）】
-- 繁體中文，每句 8–18 字，第一人稱口語。這是後製要疊在畫面上的字幕，不是人物說的話。
-- 第一個鏡頭的字幕是鉤子，從這四種寫法挑一種：反直覺的結論、具體數字加時間、點名某一種人、從事情中途切入。
-- 不要用暖場句（大家好、今天要分享）、自我介紹、弱疑問句（有沒有人跟我一樣）、形容詞堆疊（超好用又實用）。
+【subtitle（字幕）的規則】
+- 繁體中文，每句 8–18 字，第一人稱口語。這是後製疊在畫面上的字幕，不是人物說的話。
+- 第一個鏡頭的字幕就是鉤子。不要用暖場句（大家好、今天要分享）、自我介紹、弱疑問句（有沒有人跟我一樣）、形容詞堆疊（超好用又實用）。
 - 只能寫圖片上看得到的特徵與賣家提供的賣點，不要編造成分、價格、折扣或數據；不要寫療效、醫療功效、「保證有效」「第一」「最」這類宣稱。
 - 最後一個鏡頭的字幕是自然的行動呼籲。
 
-【每個鏡頭的 seconds】整數，4 到 6，整支片合計 15–25 秒。${userExtras(req)}
+【clips：影片提示詞】共 ${clipCount} 個 Clip。每個 Clip 給 shots（屬於這個 Clip 的鏡頭編號，從 1 開始、依序、連續，所有 Clip 合起來剛好涵蓋全部鏡頭${clipCount === 1 ? "，所以就是全部鏡頭" : `，每個 Clip 的秒數加總不超過 ${spec.maxSeconds} 秒`}）與 motion。motion 的寫法：
+- 英文、電報式（省略冠詞與繫動詞），一整段，${Math.min(2500, 400 + req.count * 260)} 個字元以內。
+- 開頭先寫兩行鎖定，之後每個鏡頭都沿用、不改字：Style lock: vertical 9:16 handheld smartphone UGC footage, natural light, realistic skin and fabric, no filters. Subject lock: （人物的髮型、服裝、體型，一句英文）; （商品的品類、形狀、顏色、材質、包裝，一句英文）.
+- 接著依序寫每個鏡頭：Shot N (起–迄秒，以 Clip 起點從 0 計算, framing, camera)${perShotFrames ? ", opens on @image_N" : ""}: 主體動作 + 鏡頭運動 + 光線或氛圍的細微變化。第二個鏡頭起，開頭寫 hard cut to 或 match cut to。每個鏡頭的動作開頭先用半句話回引人物或商品（例如 same woman, same bottle）。
+- 只寫非語言聲音（Sound: …）${spec.audio ? "" : "，可以省略"}；不寫台詞、旁白、配樂。
+- 結尾固定加上：The product keeps its exact shape, color and label in every shot. No text overlay, no subtitles, no speech.${userExtras(req)}
 
 【貼文文案】
 - caption：繁體中文，60–120 字，第一人稱，搭配這支影片發布用；規則同字幕。
@@ -405,8 +466,71 @@ ${SHOT_RULES}
 
 【輸出格式】
 只輸出一個 JSON 物件，不要有任何其他文字或 Markdown：
-{"analysis":"……","shots":[{"title":"4–10 字的鏡頭名稱","prompt":"首幀圖提示詞","motion":"English motion paragraph","subtitle":"字幕","seconds":5}],"caption":"……","hashtags":["……"]}
-shots 陣列必須剛好 ${req.count} 個元素。`;
+{"analysis":"……","intent":"……","shots":[{"title":"……","purpose":"鉤子｜……","framing":"近景","angle":"平視","camera":"手持微晃","action":"……","sound":"……","seconds":3,"prompt":"關鍵幀提示詞","subtitle":"字幕"}],"clips":[{"shots":[1,2,3],"motion":"Style lock: …"}],"caption":"……","hashtags":["……"]}
+shots 陣列必須剛好 ${req.count} 個元素，clips 陣列剛好 ${clipCount} 個元素。`;
+}
+
+export function ugcModel(req: Pick<PlanRequest, "videoModel">): VideoModelKey {
+  return req.videoModel ?? "kling";
+}
+export function ugcSeconds(req: Pick<PlanRequest, "totalSeconds">): number {
+  return req.totalSeconds ?? UGC_DEFAULT_SECONDS;
+}
+
+/**
+ * ugc mode: make the shot lengths add up to the film, give every shot its start time, check the
+ * planner's clip grouping, and mark which shots get a picture. Throws PhotosetPlanError when the
+ * plan cannot be turned into video generations.
+ */
+export function finishUgcPlan(plan: PhotosetPlan, rawClips: unknown, req: Pick<PlanRequest, "totalSeconds" | "videoModel">): PhotosetPlan {
+  const spec = VIDEO_MODELS[ugcModel(req)];
+  const total = ugcSeconds(req);
+  const n = plan.shots.length;
+  // Lengths: scale to the film, 0.5 s steps, at least the minimum, then put the rounding on the longest shot.
+  const asked = plan.shots.map(s => (s.seconds && s.seconds > 0 ? s.seconds : total / n));
+  const scale = total / asked.reduce((a, b) => a + b, 0);
+  const secs = asked.map(s => Math.max(UGC_MIN_SHOT_SECONDS, Math.round(s * scale * 2) / 2));
+  let diff = total - secs.reduce((a, b) => a + b, 0);
+  while (Math.abs(diff) >= 0.5) {
+    const step = diff > 0 ? 0.5 : -0.5;
+    const order = secs.map((s, i) => i).sort((a, b) => secs[b] - secs[a]);
+    const i = order.find(k => secs[k] + step >= UGC_MIN_SHOT_SECONDS);
+    if (i === undefined) throw new PhotosetPlanError(400, `${total} 秒放不下 ${n} 個鏡頭，請減少鏡頭數。`);
+    secs[i] += step;
+    diff -= step;
+  }
+  let start = 0;
+  const shots = plan.shots.map((s, i) => {
+    const shot = { ...s, seconds: secs[i], start };
+    start += secs[i];
+    return shot;
+  });
+
+  // Clips: the planner's grouping when it covers every shot in order, otherwise one clip if that fits.
+  const parsed = (Array.isArray(rawClips) ? rawClips : [])
+    .map((c: any) => ({
+      shots: (Array.isArray(c?.shots) ? c.shots : []).map((x: unknown) => Math.round(Number(x)) - 1),
+      motion: typeof c?.motion === "string" ? c.motion.trim().slice(0, 3000) : "",
+    }))
+    .filter(c => c.motion.length > 0);
+  const flat = parsed.flatMap(c => c.shots);
+  const ordered = flat.length === n && flat.every((x, i) => x === i) && parsed.every(c => c.shots.length > 0);
+  let groups: { shots: number[]; motion: string }[];
+  if (ordered) groups = parsed;
+  else if (parsed.length > 0 && total <= spec.maxSeconds) groups = [{ shots: shots.map((_, i) => i), motion: parsed.map(c => c.motion).join(" ") }];
+  else throw new PhotosetPlanError(502, "AI 沒有寫好影片提示詞，請再試一次。");
+
+  const clips: PhotosetClip[] = groups.map(g => {
+    const seconds = Math.round(g.shots.reduce((t, i) => t + secs[i], 0));
+    if (seconds > spec.maxSeconds) throw new PhotosetPlanError(502, "AI 分段超過影片模型的長度上限，請再試一次。");
+    return { shots: g.shots, motion: g.motion, seconds: Math.max(spec.minSeconds, seconds) };
+  });
+  const firsts = new Set(clips.map(c => c.shots[0]));
+  return {
+    ...plan,
+    shots: shots.map((s, i) => ({ ...s, keyframe: spec.keyframes > 1 || firsts.has(i) })),
+    clips,
+  };
 }
 
 /** Appended to the planner prompt when the visitor's interface is not Chinese. */
@@ -421,7 +545,7 @@ const OUTPUT_LANGUAGE: Record<string, string> = {
 function plannerLanguage(lang: RequestLang | undefined): string {
   if (!lang || lang === "zh") return "";
   if (lang === "en") return OUTPUT_LANGUAGE.en;
-  return languageNote(lang, ["每個鏡頭的 prompt", "motion"], "字數規定改為相當的長度；hashtags 用這個語言常用的標籤。");
+  return languageNote(lang, ["每個鏡頭的 prompt", "clips 的 motion（本來就是英文）"], "字數規定改為相當的長度；hashtags 用這個語言常用的標籤。");
 }
 
 /** Pull the first JSON object out of the model's text and validate it. */
@@ -462,7 +586,10 @@ export function parsePlan(value: unknown, count: number): PhotosetPlan {
       prompt: typeof s?.prompt === "string" ? s.prompt.trim() : "",
       ...(typeof s?.motion === "string" && s.motion.trim() ? { motion: s.motion.trim().slice(0, 1200) } : {}),
       ...(typeof s?.subtitle === "string" && s.subtitle.trim() ? { subtitle: s.subtitle.trim().slice(0, 60) } : {}),
-      ...(Number.isFinite(Number(s?.seconds)) ? { seconds: Math.max(4, Math.min(6, Math.round(Number(s.seconds)))) } : {}),
+      ...(Number(s?.seconds) > 0 ? { seconds: Math.max(UGC_MIN_SHOT_SECONDS, Math.min(UGC_MAX_SECONDS, Math.round(Number(s.seconds) * 2) / 2)) } : {}),
+      ...Object.fromEntries((["framing", "angle", "camera", "action", "sound", "purpose"] as const)
+        .filter(k => typeof s?.[k] === "string" && s[k].trim())
+        .map(k => [k, s[k].trim().slice(0, k === "action" ? 200 : 80)])),
     }))
     .filter((s: PhotosetShot) => s.prompt.length > 0)
     .slice(0, count);
@@ -479,6 +606,9 @@ export function parsePlan(value: unknown, count: number): PhotosetPlan {
     shots,
     ...(typeof parsed?.caption === "string" && parsed.caption.trim() ? { caption: parsed.caption.trim().slice(0, 600) } : {}),
     ...(hashtags.length > 0 ? { hashtags } : {}),
+    ...(typeof parsed?.intent === "string" && parsed.intent.trim() ? { intent: parsed.intent.trim().slice(0, 1200) } : {}),
+    // ugc mode: checked and replaced by finishUgcPlan; other modes drop it.
+    ...(Array.isArray(parsed?.clips) ? { rawClips: parsed.clips } : {}),
   };
 }
 
@@ -581,6 +711,10 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
       if (body.productImageUrls.length === 0) throw new PhotosetPlanError(400, "請先上傳商品照片。");
       if (body.referenceImageUrls.length === 0) throw new PhotosetPlanError(400, "請先選擇角色。");
     }
+    if (body.mode === "ugc") {
+      const most = Math.min(VIDEO_MODELS[ugcModel(body)].keyframes > 1 ? 10 : 8, Math.floor(ugcSeconds(body) / UGC_MIN_SHOT_SECONDS));
+      if (body.count < 2 || body.count > most) throw new PhotosetPlanError(400, `${ugcSeconds(body)} 秒的影片可以放 2 到 ${most} 個鏡頭。`);
+    }
 
     // Fixed character sheet: no model call needed.
     if (body.mode === "character" && body.planner === "preset") {
@@ -620,7 +754,7 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
 
     const message = await anthropic.messages.create({
       model: PLANNER_MODEL,
-      max_tokens: Math.min(12000, Math.max(4000, body.count * (body.mode === "ugc" ? 1100 : 750) + 1000)),
+      max_tokens: Math.min(14000, Math.max(4000, body.count * (body.mode === "ugc" ? 1300 : 750) + (body.mode === "ugc" ? 3000 : 1000))),
       tools: [{
         name: "submit_photoset_plan",
         description: "Return the requested photo shoot plan as structured data. Do not use this tool if you cannot assist with the requested content.",
@@ -634,16 +768,32 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
                 type: "object",
                 properties: {
                   title: { type: "string" }, prompt: { type: "string" },
-                  motion: { type: "string" }, subtitle: { type: "string" },
-                  seconds: { type: "integer", minimum: 4, maximum: 6 },
+                  ...(body.mode === "ugc" ? {
+                    purpose: { type: "string" }, framing: { type: "string" }, angle: { type: "string" },
+                    camera: { type: "string" }, action: { type: "string" }, sound: { type: "string" },
+                    subtitle: { type: "string" }, seconds: { type: "number", minimum: UGC_MIN_SHOT_SECONDS, maximum: UGC_MAX_SECONDS },
+                  } : {}),
                 },
-                required: body.mode === "ugc" ? ["title", "prompt", "motion", "subtitle", "seconds"] : ["title", "prompt"],
+                required: body.mode === "ugc"
+                  ? ["title", "purpose", "framing", "angle", "camera", "action", "sound", "seconds", "prompt", "subtitle"]
+                  : ["title", "prompt"],
               },
             },
             caption: { type: "string" },
             hashtags: { type: "array", items: { type: "string" } },
+            ...(body.mode === "ugc" ? {
+              intent: { type: "string" },
+              clips: {
+                type: "array", minItems: 1,
+                items: {
+                  type: "object",
+                  properties: { shots: { type: "array", items: { type: "integer" } }, motion: { type: "string" } },
+                  required: ["shots", "motion"],
+                },
+              },
+            } : {}),
           },
-          required: ["analysis", "shots"],
+          required: body.mode === "ugc" ? ["analysis", "intent", "shots", "clips"] : ["analysis", "shots"],
         },
       }],
       tool_choice: { type: "auto" },
@@ -653,7 +803,9 @@ export function createPhotosetPlanner(objectStorageService: ObjectStorageService
     });
 
     // Merge only after a valid, non-refused plan. Never turn a refusal into shots.
-    const plan = readPlannerMessage(message, body.count);
+    const read = readPlannerMessage(message, body.count);
+    const { rawClips, ...rest } = read;
+    const plan = body.mode === "ugc" ? finishUgcPlan(rest, rawClips, body) : rest;
     return {
       ...plan,
       shots: plan.shots.map(shot => ({

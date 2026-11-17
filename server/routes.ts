@@ -1,4 +1,4 @@
-import { fallbackMotionPrompt } from "@shared/dramaMotion";
+import { fallbackMotionPrompt, dramaSceneSeconds, dramaResolution, dramaVideoCost, sceneShotNote } from "@shared/dramaMotion";
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { randomBytes, randomInt } from "crypto";
@@ -7,18 +7,20 @@ import Stripe from "stripe";
 import { airwallexConfigured, createIntent, getIntent, hostedCheckoutUrl, webhookIsGenuine, type AirwallexIntent } from "./airwallex";
 import { ATLAS_SEED_MODEL, createAtlasSeedClient } from "./atlasSeed";
 import { storage } from "./storage";
-import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene, type DramaScene } from "@shared/schema";
+import { insertUserSchema, loginSchema, insertImageGenerationSchema, insertTextToImageSchema, insertImageToImageSchema, insertBatchImageToImageSchema, insertImageToVideoSchema, insertTextToVideoSchema, sendVerificationCodeSchema, registerWithVerificationSchema, insertStoryGenerationSchema, type StoryScene, type DramaScene, type DramaLock } from "@shared/schema";
 import { sendVerificationEmail } from "./verificationEmail";
 import { metaPurchase, registerMetaRegistrationRoutes } from "./metaConversions";
 import { byLang, outputLanguageNote, requestLang } from "./lang";
 import { ObjectStorageService } from "./objectStorage";
 import { BunnyStorageService, addWatermark } from "./bunnyStorage";
 import { enhanceImagePrompt, enhanceVideoPrompt, plainImagePrompt } from "./promptEnhancer";
-import { GOLD_MEMBERSHIP, IMAGE_COST, MEMBERSHIP, MIN_TOPUP, TRIAL, topupCredits, SIGNUP_CREDITS, VIDEO_COST_PER_SECOND, VIDEO_MODELS, imageCost, videoCostPerSecond, videoModelKey } from "@shared/pricing";
+import { GOLD_MEMBERSHIP, IMAGE_COST, MEMBERSHIP, MIN_TOPUP, TRIAL, topupCredits, SIGNUP_CREDITS, VIDEO_COST_PER_SECOND, VIDEO_MODELS, clampVideoSeconds, imageCost, videoCostPerSecond, videoModelKey } from "@shared/pricing";
 import { ADULT_AGE, GOLD_ZONE_HEADER, GOLD_ZONE_VALUE, ageFromBirthDate, canUseNsfw, containsMinorTerms, containsNsfw, goldApplicationDone, hasAdultConsent } from "@shared/safety";
 import sharp from "sharp";
-import { registerDramaLibraryRoutes } from "./dramaLibrary";
+import { registerDramaLibraryRoutes, writeDramaMotionPrompt } from "./dramaLibrary";
+import { dramaScriptPrompt, parseDramaScript } from "./dramaScript";
 import { registerPhotosetRoutes, createPhotosetPlanner } from "./photoset";
+import { registerEnhanceRoutes } from "./enhancePrompt";
 import { registerPartnerRoutes, partnerEmbedGuard } from "./partnerApi";
 import { partnerWalletConfigured, setWalletAccountLookup, forgetWalletAccount, refreshBalanceSoon } from "./partnerWallet";
 import { registerAssetLibraryRoutes } from "./assetLibrary";
@@ -1543,7 +1545,15 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
       if (videoType === "text-to-video" && !(VIDEO_MODELS[engine].ratios as readonly string[]).includes(validatedData.aspectRatio)) {
         return res.status(400).json({ error: `${VIDEO_MODELS[engine].label} 不支援 ${validatedData.aspectRatio} 的畫面比例。` });
       }
-      const duration = Math.max(4, Math.min(12, req.body.duration || 5));
+      // Text-to-video keeps the video page's 4–12 s; image-to-video may use the model's full range
+      // (the UGC page makes a whole 30-second film in one generation).
+      const duration = i2v ? clampVideoSeconds(engine, req.body.duration) : Math.max(4, Math.min(12, Number(req.body.duration) || 5));
+      if (i2v && (req.body.additionalImageUrls?.length ?? 0) > 0) {
+        if (engine !== "kling") return res.status(400).json({ error: `${VIDEO_MODELS[engine].label} 只收一張首幀，中間的關鍵幀只有 Kling 4.0 可以用。` });
+        if (!req.body.additionalImageUrls.every((u: unknown) => typeof u === "string" && /^https:\/\//i.test(u))) {
+          return res.status(400).json({ error: "關鍵幀必須是 https 網址。" });
+        }
+      }
       const resolution = req.body.resolution === "720p" ? "720p" : "1080p";
       const VIDEO_CREDITS_PER_SECOND = videoCostPerSecond(engine, resolution);
       const videoRefusal = promptRefusal(String(req.body.prompt ?? ""), inGoldZone(req, user), !!user.isAdmin);
@@ -1570,6 +1580,7 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
 
       const generation = await storage.createVideoGeneration({
         ...validatedData,
+        duration, // the length that was charged
         userId,
         provider,
         model: modelId,
@@ -1662,17 +1673,22 @@ Sitemap: ${CANONICAL_URL}/sitemap.xml`;
         if (!atlasIsConfigured()) {
           throw new Error("ATLASCLOUD_API_KEY environment variable is not set");
         }
-        if ((generation.additionalImageUrls?.length ?? 0) > 0 || generation.referenceAudioUrl) {
-          console.warn(`[Atlas] WAN 3.0 image-to-video ignores extra reference images / reference audio (generation ${generationId})`);
+        const engineKey = videoModelKey(generation.model);
+        // Kling 4.0 takes the extra images as keyframes (middle_images); the other models ignore them.
+        const keyframes = engineKey === "kling" ? (generation.additionalImageUrls ?? []).slice(0, 9) : [];
+        if ((keyframes.length === 0 && (generation.additionalImageUrls?.length ?? 0) > 0) || generation.referenceAudioUrl) {
+          console.warn(`[Atlas] ${engineKey} image-to-video ignores extra reference images / reference audio (generation ${generationId})`);
         }
         const firstFrameUrl = await toPublicImageUrl(
           generation.originalImageUrl,
           objectStorageService,
           `users/${userFolder}/video-inputs/${generationId}.jpg`,
         );
+        const middleImages = await Promise.all(keyframes.map((u, i) => toPublicImageUrl(u, objectStorageService, `users/${userFolder}/video-inputs/${generationId}-k${i + 2}.jpg`)));
         const { videoUrl, predictionId, processingTime } = await atlasGenerateVideo({
           prompt: opts.rawPrompt || !containsNsfw(generation.prompt) ? generation.prompt : enhanceVideoPrompt(generation.prompt),
           image: firstFrameUrl,
+          middleImages,
           resolution: generation.resolution || "1080p",
           duration: generation.duration || 5,
           engine: videoModelKey(generation.model),
@@ -3277,12 +3293,14 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
   // ─── AI Script Generator (Claude) ─────────────────────────────────────────
   app.post("/api/drama/ai-generate-script", requireAuth, async (req, res) => {
     try {
-      const { pitch, sceneCount, genre, characterAName, characterBName } = req.body as {
+      const { pitch, sceneCount, genre, characterAName, characterBName, projectId, episodeId } = req.body as {
         pitch: string;
         sceneCount: number;
         genre?: string;
         characterAName?: string;
         characterBName?: string;
+        projectId?: string;
+        episodeId?: string;
       };
 
       if (!pitch || !pitch.trim()) {
@@ -3294,47 +3312,33 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const charB = characterBName?.trim() || "角色B";
       const genreText = genre?.trim() || "短劇";
 
-      const prompt = `你是 WAN 3.0 與 Seedream 5.5 的資深短劇分鏡編劇，熟悉抖音/TikTok 直式短劇（漫劇）的爆款敘事節奏與 BytePlus ARK 圖生影片的提示詞最佳實踐。
+      // 同一部劇的其他集已經定好的角色、道具、場景外觀，這一集沿用原文。
+      const seriesAssets: DramaLock[] = [];
+      if (typeof projectId === "string" && projectId) {
+        const project = await storage.getDramaProject(projectId);
+        if (project && project.userId === req.session.userId!) {
+          const others = (await storage.getDramaEpisodesByProject(projectId))
+            .filter(ep => ep.id !== episodeId)
+            .sort((a, b) => (b.episodeNumber ?? 0) - (a.episodeNumber ?? 0));
+          const seenIds = new Set<string>();
+          for (const ep of others) {
+            let sc: any[] = [];
+            try { sc = JSON.parse(ep.scenes || "[]"); } catch { sc = []; }
+            for (const l of sc.flatMap((x: any) => Array.isArray(x?.locks) ? x.locks : [])) {
+              if (typeof l?.id !== "string" || typeof l?.lock !== "string" || seenIds.has(l.id)) continue;
+              seenIds.add(l.id);
+              seriesAssets.push({ id: l.id, name: String(l.name ?? l.id).slice(0, 30), lock: l.lock.slice(0, 240) });
+            }
+          }
+        }
+      }
 
-請依下列概念，產出一集完整 ${count} 幕的短劇分鏡腳本：
-
-【劇情概念】${pitch.trim()}
-【類型】${genreText}
-【角色 A 名稱】${charA}
-【角色 B 名稱】${charB}
-【總幕數】${count}
-
-撰寫規則：
-1. 嚴格遵守「起承轉合」節奏：第 1 幕建立鉤子（hook，前 3 秒抓住觀眾）；中段加深衝突；最後 1-2 幕高潮反轉並收尾
-2. 每幕的 description 用繁體中文，60-120 字，須包含：
-   - 場景地點（具體：高級辦公室、雨夜街角、咖啡廳窗邊…）
-   - 角色動作與表情（不寫角色名，寫「他/她」或具體稱謂）
-   - 光線與氛圍（黃金時刻、霓虹冷光、燭光、逆光剪影…）
-   - 構圖（特寫、過肩、低角度、俯視…）
-3. dialogue 寫一句最具戲劇張力的台詞（10-30 字），可以為空字串
-4. cameraMovement 從以下選一個：none / push_in / pull_out / pan_left / pan_right / tilt_up / tilt_down / orbit / zoom_in / zoom_out / static
-5. title 用 4-8 字精煉幕名（如：電梯初遇、雨中告白、真相揭穿）
-6. 同一集中的場景需有畫面變化（不同地點、不同光線、不同情緒）
-7. useCharA 與 useCharB：依劇情判斷該幕是否需要該角色出現（boolean）
-
-請只回傳 JSON，不要任何其他說明文字：
-{
-  "scenes": [
-    {
-      "title": "幕名稱",
-      "description": "場景描述...",
-      "dialogue": "一句台詞或空字串",
-      "cameraMovement": "push_in",
-      "useCharA": true,
-      "useCharB": true
-    }
-  ]
-}`;
+      const prompt = dramaScriptPrompt({ pitch: pitch.trim(), genre: genreText, charA, charB, count, seriesAssets: seriesAssets.slice(0, 16) });
 
       const message = await anthropic.messages.create({
         model: ATLAS_SEED_MODEL,
-        max_tokens: 4096,
-        messages: [{ role: "user", content: prompt + outputLanguageNote(req, ["description"]) }],
+        max_tokens: 12000,
+        messages: [{ role: "user", content: prompt + outputLanguageNote(req, ["description", "videoPrompt", "assets 的 lock"]) }],
       });
 
       // Combine all text blocks (model may return multiple text segments)
@@ -3348,7 +3352,6 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       const fencedMatch = allText.match(/```(?:json)?\s*([\s\S]*?)```/);
       const candidates: string[] = [];
       if (fencedMatch?.[1]) candidates.push(fencedMatch[1].trim());
-      // Greedy match for largest JSON object containing "scenes"
       const greedyMatch = allText.match(/\{[\s\S]*"scenes"[\s\S]*\}/);
       if (greedyMatch) candidates.push(greedyMatch[0]);
       const firstMatch = allText.match(/\{[\s\S]*\}/);
@@ -3364,34 +3367,13 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         return res.status(500).json({ error: "AI 回應格式錯誤，請再試一次" });
       }
 
-      // Whitelist validation
-      const validCameras = new Set([
-        "push_in", "pull_out", "pan_left", "pan_right", "tilt_up", "tilt_down",
-        "orbit", "zoom_in", "zoom_out", "static",
-        // Tolerate frontend-style camera values too
-        "slow push in, gentle light", "slow zoom out, fade out",
-        "pan left, smooth", "pan right, smooth", "tilt up, reveal", "tilt down, settle",
-        "orbit around subject", "static, fixed camera", "handheld, slight shake", "drone aerial shot",
-      ]);
-
-      const scenes = (parsed.scenes as any[]).slice(0, count).map((s: any, i: number) => {
-        const title = String(s?.title ?? "").trim().slice(0, 30) || `第 ${i + 1} 幕`;
-        const description = String(s?.description ?? "").trim().slice(0, 500);
-        const dialogue = String(s?.dialogue ?? "").trim().slice(0, 100);
-        const cmRaw = String(s?.cameraMovement ?? "").trim();
-        const cameraMovement = cmRaw === "none" || !validCameras.has(cmRaw) ? "" : cmRaw;
-        return {
-          title, description, dialogue, cameraMovement,
-          useCharA: s?.useCharA !== false,
-          useCharB: s?.useCharB !== false,
-        };
-      });
-
-      if (scenes.length === 0) {
+      // 導演意圖、資產清單（鎖定錨點）與十欄分鏡；每一幕的 locks 由伺服器從資產清單逐字抄入。
+      const script = parseDramaScript(parsed, count, seriesAssets);
+      if (script.scenes.length === 0) {
         return res.status(500).json({ error: "AI 沒有產出有效幕，請更具體描述劇情" });
       }
 
-      res.json({ scenes });
+      res.json(script);
     } catch (e: any) {
       console.error("AI script generation error:", e);
       res.status(500).json({ error: e.message || "AI 生成失敗" });
@@ -3706,7 +3688,9 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       if (!episode || episode.userId !== req.session.userId!) {
         return res.status(404).json({ error: "找不到集數" });
       }
-      const { duration = 5, resolution = "720p", useOmniMode = false, generateAudio = true, onlyMissing = true } = req.body;
+      const { useOmniMode = false, generateAudio = true, onlyMissing = true } = req.body;
+      // 秒數：有指定就全部用它，否則每一幕用自己規劃的秒數。解析度只收 720p／1080p。
+      const resolution = dramaResolution(req.body.resolution);
 
       const scenes: any[] = JSON.parse(episode.scenes);
       // Pick scenes that need animating
@@ -3722,8 +3706,13 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         return res.status(400).json({ error: "沒有需要生成影片的場景（請先完成圖片生成）" });
       }
 
-      const perSceneCost = resolution === "1080p" ? Math.ceil(duration * 15) : Math.ceil(duration * 8);
-      const totalCost = perSceneCost * targets.length;
+      const secondsOf: Record<number, number> = {};
+      const costOf: Record<number, number> = {};
+      for (const i of targets) {
+        secondsOf[i] = dramaSceneSeconds(scenes[i], req.body.duration);
+        costOf[i] = dramaVideoCost(secondsOf[i], resolution);
+      }
+      const totalCost = targets.reduce((t, i) => t + costOf[i], 0);
 
       const user = await storage.getUser(req.session.userId!);
       if (!user || (user.credits ?? 0) < totalCost) {
@@ -3739,17 +3728,17 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       let balance = user.credits ?? 0;
       for (const i of targets) {
         scenes[i].videoStatus = "generating";
-        scenes[i].videoDuration = duration;
+        scenes[i].videoDuration = secondsOf[i];
         scenes[i].videoResolution = resolution;
         delete scenes[i].videoError;
-        balance -= perSceneCost;
+        balance -= costOf[i];
         await storage.updateUserCredits(req.session.userId!, balance);
         await storage.createCreditTransaction({
           userId: req.session.userId!,
           type: "consume",
-          amount: -perSceneCost,
+          amount: -costOf[i],
           balance,
-          description: `漫劇動畫第 ${i + 1} 幕（${duration}秒 ${resolution}，批次）`,
+          description: `漫劇動畫第 ${i + 1} 幕（${secondsOf[i]}秒 ${resolution}，批次）`,
         });
       }
       // Reset any stale cancel flag from a previous batch before kicking off,
@@ -3791,7 +3780,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
             try {
               await animateDramaScene(
                 episodeId, episode.projectId, i,
-                { duration, resolution, useOmniMode, generateAudio },
+                { duration: secondsOf[i], resolution, useOmniMode, generateAudio },
                 objectStorageService, bunnyStorage
               );
             } catch (err) {
@@ -3806,12 +3795,12 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
               const u = await storage.getUser(userId);
               let bal = u?.credits ?? 0;
               for (const i of skipped) {
-                bal += perSceneCost;
+                bal += costOf[i];
                 await storage.updateUserCredits(userId, bal);
                 await storage.createCreditTransaction({
                   userId,
                   type: "refund",
-                  amount: perSceneCost,
+                  amount: costOf[i],
                   balance: bal,
                   description: `漫劇整集動畫批次中止退款（第 ${i + 1} 幕）`,
                 });
@@ -3827,7 +3816,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
                 }
                 await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(sc) });
               }
-              console.log(`[Drama batch animate] episode ${episodeId} cancelled — refunded ${skipped.length} scenes (${skipped.length * perSceneCost} credits)`);
+              console.log(`[Drama batch animate] episode ${episodeId} cancelled — refunded ${skipped.length} scenes (${skipped.reduce((t, i) => t + costOf[i], 0)} credits)`);
             } catch (refundErr) {
               console.error(`[Drama batch animate] refund failed:`, refundErr);
             }
@@ -3969,10 +3958,12 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         return res.status(400).json({ error: "請先完成圖片生成" });
       }
 
-      const { duration = 5, resolution = "720p", prompt, useOmniMode = false, generateAudio = true, useFirstLastFrame = false } = req.body;
-      const creditCost = resolution === "1080p"
-        ? Math.ceil(duration * 15)
-        : Math.ceil(duration * 8);
+      const { prompt, useOmniMode = false, generateAudio = true, useFirstLastFrame = false } = req.body;
+      if (scene.videoStatus === "generating") return res.status(409).json({ error: "這一幕的動畫已經在生成中" });
+      // 先驗證再扣積分：秒數夾在 2–30，解析度只收 720p／1080p（其他值一律當 720p）。
+      const duration = dramaSceneSeconds(scene, req.body.duration);
+      const resolution = dramaResolution(req.body.resolution);
+      const creditCost = dramaVideoCost(duration, resolution);
 
       const user = await storage.getUser(req.session.userId!);
       if (!user || (user.credits ?? 0) < creditCost) {
@@ -4162,7 +4153,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
         try {
           const dialoguePart = scenes[i].dialogue?.trim() ? `，台詞：「${scenes[i].dialogue}」` : "";
-          const scenePrompt = `${scenes[i].description}${dialoguePart}`;
+          const scenePrompt = `${scenes[i].description}${sceneShotNote(scenes[i])}${dialoguePart}`;
 
           const useA = scenes[i].useCharA !== false;
           const useB = scenes[i].useCharB !== false;
@@ -4406,7 +4397,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         ...styleList,
       ];
       const dialoguePart = scene.dialogue?.trim() ? `，台詞：「${scene.dialogue}」` : "";
-      const scenePrompt = `${scene.description}${dialoguePart}`;
+      const scenePrompt = `${scene.description}${sceneShotNote(scene)}${dialoguePart}`;
       const useSeed = scene._tempSeed || episode.globalSeed;
 
       let requestBody: any;
@@ -4519,7 +4510,26 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       // Prefer AI-generated video prompt → caller-supplied prompt → description
       // The scene description describes a still picture, so it is not used as
       // the motion prompt: without a written one we fall back to a safe motion.
-      const videoPrompt = opts.prompt || scene.videoPrompt || fallbackMotionPrompt(scene);
+      let videoPrompt: string = opts.prompt || scene.videoPrompt || "";
+      if (!videoPrompt) {
+        // 沒寫過動態提示詞：先請 AI 依這一幕的秒數與前後幕寫一段（免費）並存起來；寫不出來才用通用動態。
+        try {
+          videoPrompt = await writeDramaMotionPrompt(scenes, sceneIdx, !!episode.chainMode, opts.duration);
+          if (videoPrompt) {
+            const latest = await storage.getDramaEpisode(episodeId);
+            if (latest) {
+              const sc: any[] = JSON.parse(latest.scenes);
+              if (sc[sceneIdx] && !sc[sceneIdx].videoPrompt) {
+                sc[sceneIdx].videoPrompt = videoPrompt;
+                await storage.updateDramaEpisode(episodeId, { scenes: JSON.stringify(sc) });
+              }
+            }
+          }
+        } catch (e: any) {
+          console.error(`Drama scene ${sceneIdx + 1}: motion prompt not written, using the fallback:`, e?.message);
+        }
+        if (!videoPrompt) videoPrompt = fallbackMotionPrompt(scene);
+      }
 
       // AtlasCloud WAN 3.0 image-to-video: one first frame plus an optional
       // last frame, both public URLs; output ratio follows the first frame.
@@ -4530,6 +4540,11 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
       if (useFirstLast) {
         firstImageUrl = (scene.firstFrameBunnyUrl || scene.firstFrameUrl).split("?")[0];
         lastImageUrl = (scene.lastFrameBunnyUrl || scene.lastFrameUrl).split("?")[0];
+      } else if (scene.endOnNext) {
+        // 轉場：動作收在下一幕分鏡圖的畫面
+        const next = scenes[sceneIdx + 1];
+        const nextImage = (next?.bunnyUrl || next?.imageUrl || "").split("?")[0];
+        if (nextImage) lastImageUrl = nextImage;
       }
       if (!firstImageUrl) throw new Error("此幕尚未生成圖片，無法製作動畫");
 
@@ -4576,7 +4591,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
         const ep2 = await storage.getDramaEpisode(episodeId);
         if (ep2) {
           const user = await storage.getUser(ep2.userId);
-          const creditCost = opts.resolution === "1080p" ? Math.ceil(opts.duration * 15) : Math.ceil(opts.duration * 8);
+          const creditCost = dramaVideoCost(opts.duration, opts.resolution);
           if (user) {
             const newBalance = (user.credits ?? 0) + creditCost;
             await storage.updateUserCredits(ep2.userId, newBalance);
@@ -4602,6 +4617,7 @@ ${Array.from({ length: total }, (_, i) => `第 ${i + 1} 幕：${getNarrativeRole
 
   // ─── 寫真套圖：情境圖分析 + 鏡頭規劃（生成走既有批次端點）─────────────
   registerPhotosetRoutes(app, { requireAuth, objectStorageService });
+  registerEnhanceRoutes(app, { requireAuth });
 
   // ─── 作品庫：使用者所有完成的圖片與影片 ───────────────────────────────
   registerVaultRoutes(app, {

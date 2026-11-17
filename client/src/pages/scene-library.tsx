@@ -1,4 +1,5 @@
 import { tr } from "@/lib/i18n";
+import { EnhancePromptButton } from "@/components/EnhancePromptButton";
 import { useState, useRef } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -137,6 +138,7 @@ function SceneFormModal({
             placeholder={tr("例如：暮色中的學校天台，鐵欄杆，遠處城市天際線")}
             className="w-full mt-1 bg-white border border-[#cbd5e1] rounded-lg px-3 py-2 text-sm text-[#0f172a]"
             data-testid="textarea-scene-description" />
+          <div className="flex justify-end mt-1"><EnhancePromptButton value={description} onChange={setDescription} kind="image" /></div>
         </div>
 
         <div>

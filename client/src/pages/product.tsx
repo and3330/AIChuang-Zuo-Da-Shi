@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@/hooks/use-user";
 import { NavigationHeader } from "@/components/AppNav";
 import { CharacterWizard } from "@/components/CharacterWizard";
+import { EnhancePromptButton } from "@/components/EnhancePromptButton";
 import type { CharacterLibraryItem, FourViewUrls, ImageGeneration } from "@shared/schema";
 import { IMAGE_RATIOS, imageSizeFor, type ImageRatioId } from "@shared/imageSizes";
 import { IMAGE_COST, WATERMARK_REMOVAL_COST, imageCost } from "@shared/pricing";
@@ -248,11 +249,14 @@ export default function ProductPage() {
             <input value={productName} onChange={e => { setProductName(e.target.value.slice(0, 80)); }} placeholder={tr("例如：玫瑰保濕精華 30ml")}
               className="mt-1 w-full h-11 px-3 border border-slate-200 rounded-xl text-sm" data-testid="input-product-name" />
           </label>
-          <label className="block mt-3">
-            <span className="text-xs text-slate-600">{tr("賣點或想說的話（選填，文案會照這個寫）")}</span>
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-600">{tr("賣點或想說的話（選填，文案會照這個寫）")}</span>
+              <EnhancePromptButton value={sellingPoints} onChange={v => setSellingPoints(v.slice(0, 800))} kind="copy" context={productName} disabled={busy} testId="enhance-product-points" />
+            </div>
             <textarea value={sellingPoints} onChange={e => setSellingPoints(e.target.value.slice(0, 800))} rows={3} placeholder={tr("例如：質地清爽不黏、早晚都能用、這週免運")}
-              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm resize-none" data-testid="input-product-points" />
-          </label>
+              className="mt-1 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm resize-none" data-testid="input-product-points" aria-label={tr("賣點")} />
+          </div>
         </Section>
 
         <Section n={2} title={tr("角色")}>
@@ -292,11 +296,14 @@ export default function ProductPage() {
               </button>
             ))}
           </div>
-          <label className="block mt-3">
-            <span className="text-xs text-slate-600">{tr("其他要求（選填）")}</span>
+          <div className="mt-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-slate-600">{tr("其他要求（選填）")}</span>
+              <EnhancePromptButton value={extra} onChange={v => setExtra(v.slice(0, 300))} kind="copy" context={productName} disabled={busy} testId="enhance-product-extra" />
+            </div>
             <input value={extra} onChange={e => setExtra(e.target.value.slice(0, 300))} placeholder={tr("例如：在咖啡店、穿白色襯衫、多一點特寫")}
-              className="mt-1 w-full h-11 px-3 border border-slate-200 rounded-xl text-sm" data-testid="input-product-extra" />
-          </label>
+              className="mt-1 w-full h-11 px-3 border border-slate-200 rounded-xl text-sm" data-testid="input-product-extra" aria-label={tr("其他要求")} />
+          </div>
           <div className="grid grid-cols-2 gap-3 mt-3">
             <label className="block">
               <span className="text-xs text-slate-600">{tr("張數")}</span>
@@ -341,7 +348,10 @@ export default function ProductPage() {
             <ol className="mt-3 space-y-2">
               {plan.shots.map((s, i) => (
                 <li key={i} className="rounded-2xl border border-slate-200 p-3">
-                  <span className="text-xs font-bold text-slate-900">{i + 1}. {s.title}</span>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs font-bold text-slate-900">{i + 1}. {s.title}</span>
+                    <EnhancePromptButton value={s.prompt} onChange={v => updateShot(i, v)} kind="image" context={productName} disabled={busy} />
+                  </div>
                   <textarea value={s.prompt} onChange={e => updateShot(i, e.target.value)} rows={3} disabled={busy} aria-label={tr("鏡頭 {0} 的提示詞", { 0: i + 1 })}
                     className="mt-1.5 w-full px-2.5 py-2 border border-slate-200 rounded-lg text-xs leading-relaxed resize-none" data-testid={`product-shot-${i}`} />
                 </li>

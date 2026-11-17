@@ -413,6 +413,9 @@ export async function atlasGenerateVideo(args: {
   prompt: string;
   image: string;
   lastImage?: string | null;
+  /** Kling only: public keyframes between the first and last frame, in timeline order
+   *  (the prompt refers to them as @image_2, @image_3 …). Kling takes 10 images in all. */
+  middleImages?: string[];
   resolution?: string | null;
   /** Seconds, clamped to the model's 2–30 range. */
   duration?: number | null;
@@ -430,6 +433,8 @@ export async function atlasGenerateVideo(args: {
       resolution: wanResolution(args.resolution === "480p" ? "720p" : args.resolution),
       duration: klingDuration(args.duration),
     };
+    const middle = (args.middleImages ?? []).filter(Boolean).slice(0, args.lastImage ? 8 : 9);
+    if (middle.length > 0) klingPayload.middle_images = middle;
     if (args.lastImage) klingPayload.last_image = args.lastImage;
     return runWanVideo(klingPayload);
   }

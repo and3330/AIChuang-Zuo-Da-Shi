@@ -106,6 +106,28 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 
 - 集數編輯畫面（`drama.tsx` 的 EpisodeView）：上方改成工具列＋四步流程列（劇本 → 分鏡圖 → 動畫 → 合成，`FlowStep`），每一步的批次按鈕放在那一步；手機版多了四步指示，並修正主要按鈕被底部分頁列與客服泡泡蓋住的問題。替換分鏡圖與風格參考圖可「從作品選」（後端只接受自己 CDN 的網址）。
 - 動畫提示詞改用 `shared/dramaMotion.ts`：首幀錨點＋主體動態＋背景動態＋運鏡＋氛圍變化，不再重述靜態畫面；沒有寫過提示詞的幕在批次動畫時用 `fallbackMotionPrompt()`，不再直接拿畫面描述當動態提示詞。漫劇動畫與網站四視圖只有在提示詞含成人詞時才套用強化前綴。
+- 漫劇生成流程（2026-11-16）：
+  - AI 寫腳本（`POST /api/drama/ai-generate-script`，Seed 模型，不是 Claude）每一幕多回傳 `plannedSeconds`（3–10 秒，依內容決定）和 `videoPrompt`（動態提示詞），套用時一起寫進場景。
+  - 每一幕有自己的動畫秒數 `plannedSeconds`（檢視面板的滑桿，2–30 秒）。`videoDuration` 是影片實際生成的秒數。
+  - 秒數、解析度與計價集中在 `shared/dramaMotion.ts`：`dramaSceneSeconds()`、`dramaResolution()`、`dramaVideoCost()`（WAN 3.0，720p 每秒 8、1080p 每秒 15）。`animate-scene` 與 `animate-all` 都先驗證再扣積分；批次不再固定 5 秒，每一幕照自己的秒數計價與退款。
+  - 沒寫過動態提示詞的幕，生成動畫時會先用 `writeDramaMotionPrompt()`（`server/dramaLibrary.ts`）依秒數與前後幕補寫並存回場景，寫不出來才用 `fallbackMotionPrompt()`。
+  - 「一鍵做到底」（`drama.tsx` 的 `autoRun`）：前端依序送出分鏡圖 → 全部動畫（720P）→ 合成，用集數輪詢的資料判斷每一步是否完成；任何一步失敗就停。只在頁面開著時接續。
+  - 已完成的幕可以重新生成動畫；全能模式開關已移除（WAN 不支援）。
+- 漫劇腳本導演模式（2026-11-17，`server/dramaScript.ts`，方法取自公司的「AI 短劇導演」skill）：
+  - AI 寫腳本一次回傳 `{ intent, assets, scenes }`：導演意圖（鉤子、敘事模板、節拍、資訊差、反轉、視聽基調）、資產清單（S 角色／P 道具／L 場景，各一條鎖定錨點關鍵詞），以及每一幕的景別 `framing`、角度 `angle`、運鏡、畫面、聲音 `sound`、敘事目的 `purpose`、秒數與動態提示詞。
+  - 每一幕的 `locks` 由 `parseDramaScript()` 從資產清單逐字抄入；`sceneShotNote()`（`shared/dramaMotion.ts`）把景別、角度與鎖定錨點接在生圖提示詞後面（分鏡圖、單幕重生、首尾幀都用），動態提示詞也拿它做首幀錨點。舊的幕沒有這些欄位，提示詞不變。
+  - 導演意圖存在第一幕的 `directorIntent`（沒有新增資料表欄位）。頁面上「🎬 導演意圖」看意圖、資產清單與分鏡總表；檢視面板可改分鏡欄位，改鎖定錨點會一起改所有用到它的幕。
+- 漫劇參考 Dreamfab（github.com/autoip/dreamfab，MIT）的做法（2026-11-17）：
+  - 台詞決定秒數：`dialogueSeconds()`＝台詞字數（不算標點）÷4 無條件進位再加 1；`dramaSceneSeconds()` 沒有規劃秒數時取 5 秒與它的較大值，AI 腳本的秒數也不會低於它。一幕台詞上限 `DIALOGUE_MAX_CHARS`＝36 字；檢視面板會提醒「講不完」並可一鍵改秒數。
+  - 一幕只有一個人說話，說話的角色放 `assetIds` 第一個（locks 同類保留原順序）；兩人對話拆成兩幕正反打。
+  - 轉場 `endOnNext`：這一幕用下一幕的分鏡圖當尾幀（`animateDramaScene()`，首尾幀模式優先）；AI 腳本最多標兩幕，最後一幕不能標。
+  - 同一部劇沿用資產：`/api/drama/ai-generate-script` 收 `projectId`、`episodeId`，把同專案其他集的 locks（新的集數優先，最多 16 筆）交給 AI 原文沿用；AI 只寫了 id 也會補回。
+  - 一鍵做到底先試拍：分鏡圖完成後先生成一幕（優先有台詞的），停在「試拍好了」等使用者按「滿意，繼續其他幕」才跑 animate-all。已經有任何一幕動畫時不試拍。
+  - 提示詞規則：只寫要看到的、不寫否定句；招牌螢幕紙張寫成空白；避開鏡子倒影；兩人同框寫明人數；一隻手一件事；`MOTION_GUARD` 改成肯定句（單一連續鏡頭、頭和肩膀留在畫面裡）。
+  - 合成（`server/dramaCompiler.ts`）：每段去掉最後 0.3 秒（`TAIL_GUARD_SEC`，2 秒以下的片段不切），整集音量 `loudnorm` 到約 -16 LUFS。
+  - 沒做：對嘴與配音（要另外的 TTS／lip-sync 模型與費用，未選定）、背景配樂、自動品管抽格。
+  - `scripts/translate-locales.ts`：openai/gpt-5 系列不送 temperature（只接受預設值，送 0.2 會回 400）。
+- UGC 關鍵幀（2026-11-16）：先生第一張當基準，其餘幾張把它放在參考圖最後一張，服裝與場景才一致；每張可單獨重生；「一鍵全部生成」關鍵幀齊了自動接影片。批次圖片端點的 `prompts` 下限改成 1。
 - 素材圖庫批次（`server/assetLibrary.ts`）改成滾動式佇列，同時張數上限 32（預設 8）；遇到供應商限流會暫停 20 秒並把同時張數減半，連續失敗會自動停止。
 
 - 成本紀錄（`server/costs.ts`、後台「成本」分頁 `CostPanel.tsx`）：每次 AtlasCloud 生成成功記一筆到 `provider_costs`（估算，單價可用 `COST_*` 環境變數修正，另有 `USD_TWD_RATE`、`PAYMENT_FEE_RATE`，預設 32 與 0.08）；同頁直接呼叫 AtlasCloud 帳務 API（`/public/v1/balance`、`/public/v1/model-costs`）顯示真實餘額與花費。需要 `npm run db:push`。
@@ -140,7 +162,8 @@ The platform features a React-based frontend with shadcn/ui and Tailwind CSS for
 - 影片頁可選模型（`VIDEO_MODELS`，`shared/pricing.ts`）：WAN 3.0（8／15 積分每秒）與 Kling 4.0（12／20）。請求帶 `videoModel`，伺服器依模型計價並驗證文字生影片的畫面比例（WAN 多 4:3、3:4；Kling 多 21:9）。Kling 走 `kwaivgi/kling-v4.0/*`，參數是 `aspect_ratio`、沒有 `audio`。夥伴 API 與故事動畫仍只用 WAN。
 - 商品帶貨圖（`/product`，`client/src/pages/product.tsx`）：上傳商品照（最多 3 張）＋選角色＋選範本（UGC 實拍、生活情境、服飾商拍、Listing 套圖、圖片廣告、美食飲品）→ `POST /api/photosets/plan`（mode `product`）回傳鏡頭與貼文文案、標籤 → 走寫真同一個批次生成端點。圖片順序 `[...角色圖, ...商品圖]`。
 - 創作中心（`create-hub.tsx`）改成「熱門範本」牆＋「自由創作」（圖片生成、影片生成）。範本卡的 `href` 帶著流程參數（例如 `/product?template=ugc`、`/photoset?mode=scene`）；沒有示意圖的範本先用漸層加圖示。
-- UGC 實拍短片（`/ugc`，`client/src/pages/ugc.tsx`）：商品＋角色 → `POST /api/photosets/plan`（mode `ugc`）寫腳本（每個鏡頭有首幀描述 `prompt`、英文動態 `motion`、字幕 `subtitle`、秒數）→ 批次生成首幀（9:16、不含浮水印）→ 每個鏡頭各自 `POST /api/video-generations` 圖生影片。不開口說話、不自動合成；字幕稿與貼文文案可複製。腳本規則取自擁有者的提示詞 Skill（短影音、影片連續性、圖生影片、鉤子公式）。
+- UGC 實拍短片（`/ugc`，`client/src/pages/ugc.tsx`，2026-11-16 改版）：商品＋角色＋選「一個」影片模型、片長（10／15／20／30 秒）與鏡頭數（3–6）→ `POST /api/photosets/plan`（mode `ugc`，帶 `totalSeconds`、`videoModel`）寫商品腳本：導演意圖 `intent`＋分鏡（每鏡 `purpose` 敘事目的、`framing` 景別、`angle`、`camera` 運鏡、`action` 畫面、`sound`、`seconds`（0.5 秒單位）、`start`、關鍵幀 `prompt`、`subtitle`）＋`clips`（每個 Clip 一次影片生成，英文分鏡時間碼提示詞 `motion`）。寫法取自「AI 短劇導演」skill 的十欄分鏡與 Clip 組裝（鉤子 3 秒內、每鏡至少 1.5 秒、鎖定字串每鏡重複、不自編台詞、畫面不放字）。三個影片模型一次都能做 30 秒（`VIDEO_MODELS[...].maxSeconds`，AtlasCloud 規格 2026-11 查過），所以 30 秒內整支一次生成、不用剪接；超過才分段（`finishUgcPlan` 檢查分段、把秒數調成剛好等於片長）。關鍵幀：Kling 4.0 每鏡一張（第一張當 `image`，其餘以 `additionalImageUrls` 送出、伺服器轉成 `middle_images`，提示詞用 `@image_N` 指），WAN、Seedance 只有每段首幀。`/api/video-generations` 圖生影片的秒數改成依模型範圍（`clampVideoSeconds`），文字生影片仍 4–12 秒。字幕可複製成 SRT，完整腳本可複製。
+- 強化提示詞（2026-11-16）：`client/src/components/EnhancePromptButton.tsx` 放在每個寫提示詞的地方（UGC、商品帶貨圖、寫真工作室、圖片編輯、文字生圖／改圖／批次、故事場景、漫劇場景與動畫提示詞、場景庫），呼叫 `POST /api/prompts/enhance`（`server/enhancePrompt.ts`，Seed 模型、免費、每人每分鐘 20 次）。`kind` 決定強化模組：`image` 圖片／關鍵幀、`video` 影片動態（保留鎖定字串、時間碼與 @image_N）、`copy` 賣點與要求（不捏造）、`subtitle` 字幕鉤子。改寫後可以按「復原」。
 
 - 首頁（`landing.tsx`、`.lp-*`）改成粉紫色亮色版：底色 `#fff7fb`、白色卡片、紫到粉的漸層字與按鈕；漸層底上的文字一律 `text-white`。
 

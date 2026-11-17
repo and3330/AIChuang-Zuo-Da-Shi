@@ -295,12 +295,12 @@ async function runFfmpegConcat(
   // consistent colour space across the whole pipeline.
   for (let i = 0; i < n; i++) {
     segments.push(
-      `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,` +
+      `[${i}:v]trim=end=${durations[i].toFixed(3)},setpts=PTS-STARTPTS,scale=1080:1920:force_original_aspect_ratio=decrease,` +
         `pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,setsar=1,fps=30,format=yuv420p,setpts=PTS-STARTPTS[v${i}]`
     );
     if (audioFlags[i]) {
       segments.push(
-        `[${i}:a]aresample=async=1:first_pts=0,aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${i}]`
+        `[${i}:a]aresample=async=1:first_pts=0,atrim=end=${durations[i].toFixed(3)},aformat=sample_rates=48000:channel_layouts=stereo,asetpts=PTS-STARTPTS[a${i}]`
       );
     } else {
       // Use silence input for clips that lack an audio stream — trim it to
@@ -349,6 +349,10 @@ async function runFfmpegConcat(
     finalAudioLabel = "ac";
   }
 
+  // 整集音量拉到差不多的響度（約 -16 LUFS，短影音平台的常見值）
+  segments.push(`[${finalAudioLabel}]loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000[aout]`);
+  finalAudioLabel = "aout";
+
   // Optional subtitle burn — applied AFTER the concat/xfade stage so the
   // subtitle ASS file's timeline matches the final output timeline.
   if (assPath) {
@@ -390,6 +394,9 @@ async function runFfmpegConcat(
   });
 }
 
+/** AI 生成的片段片尾常有約 0.2 秒白雜訊，合成時不用最後這一段。 */
+const TAIL_GUARD_SEC = 0.3;
+
 // ─── Public API ──────────────────────────────────────────────────────────────
 
 export async function compileEpisode(
@@ -428,9 +435,9 @@ export async function compileEpisode(
     for (let i = 0; i < videoPaths.length; i++) {
       audioFlags.push(await hasAudioStream(videoPaths[i]));
       const probed = await probeDuration(videoPaths[i]);
-      durations.push(
-        probed ?? Math.max(1, opts.scenes[i].duration || 5)
-      );
+      const d = probed ?? Math.max(1, opts.scenes[i].duration || 5);
+      // AI 影片片尾常有一小段雜訊或定格，去掉最後 0.3 秒（太短的片段不切）
+      durations.push(d > 2 ? d - TAIL_GUARD_SEC : d);
     }
     console.log(`[DramaCompiler] audio per scene: ${audioFlags.map(b => b ? "Y" : "n").join("")}`);
     console.log(`[DramaCompiler] durations: ${durations.map(d => d.toFixed(2)).join(",")}`);

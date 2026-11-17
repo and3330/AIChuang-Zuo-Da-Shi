@@ -24,6 +24,7 @@ import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
 import { useSeo } from "@/hooks/use-seo";
+import { EnhancePromptButton } from "@/components/EnhancePromptButton";
 import type { UploadResult } from "@uppy/core";
 import type { ImageGeneration, VideoGeneration, StoryGeneration, StoryScene } from "@shared/schema";
 
@@ -1303,6 +1304,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                     value={textPrompt}
                     onChange={(e) => setTextPrompt(e.target.value)}
                   />
+                  <div className="flex justify-end mt-1.5"><EnhancePromptButton value={textPrompt} onChange={setTextPrompt} kind="image" testId="enhance-text-prompt" /></div>
                   <p className="text-xs text-gray-400 mt-1.5">
                     {isSequentialMode 
                       ? tr("描述系列圖片主題，AI 自動生成連貫的多張圖片") 
@@ -1451,6 +1453,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                         value={prompt}
                         onChange={(e) => setPrompt(e.target.value)}
                       />
+                      <div className="flex justify-end -mt-2"><EnhancePromptButton value={prompt} onChange={setPrompt} kind="image" testId="enhance-edit-prompt" /></div>
 
                       {isMultiImageMode && (
                         <div className="p-4 bg-green-50 border border-green-200 rounded-xl">
@@ -1529,6 +1532,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                               value={p}
                               onChange={(e) => updateBatchPrompt(index, e.target.value)}
                             />
+                            <div className="flex justify-end mt-1"><EnhancePromptButton value={p} onChange={v => updateBatchPrompt(index, v)} kind="image" /></div>
                           </div>
                         ))}
                       </div>
@@ -2562,6 +2566,7 @@ export default function Home({ section = "image" }: { section?: "image" | "video
                               placeholder={tr("描述第 {0} 幕的場景內容（例如：主角站在山頂俯瞰整個城市，夕陽西下）", { 0: idx + 1 })}
                               className="resize-none text-sm border-gray-100 bg-gray-50 rounded-lg focus:ring-2 focus:ring-emerald-500"
                             />
+                            <div className="flex justify-end"><EnhancePromptButton value={scene.description} onChange={v => updateStoryScene(idx, "description", v)} kind="image" /></div>
                             <div className="relative">
                               <span className="absolute left-2 top-1.5 text-[10px] text-amber-500 font-semibold pointer-events-none">💬</span>
                               <input
